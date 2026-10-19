@@ -3,27 +3,20 @@
 /*
  * RENAISSANCE ART GALLERY
  * ------------------------
- * Main architectural environment.
+ * Classical Italian / Renaissance gallery environment.
  *
- * Design:
- * - Warm classical gallery
- * - Large Renaissance / Roman archway
- * - Layered arch mouldings
- * - Classical pilasters
- * - Classical columns
- * - Wall panels
- * - Recessed ceiling coffers
- * - Long symmetrical exhibition corridor
- * - Central masterpiece at the far end
+ * Main composition:
  *
- * The file keeps the same map API used by fps.js:
+ * ENTRANCE
+ *    ↓
+ * GRAND ARCHWAY
+ *    ↓
+ * LONG EXHIBITION CORRIDOR
+ *    ↓
+ * CENTRAL MASTERPIECE
  *
- * {
- *   placements,
- *   getAreaIndex,
- *   getGridSegments,
- *   getGridParts
- * }
+ * The arch is designed as a monumental doorway rather
+ * than a ceiling arch.
  */
 
 
@@ -39,17 +32,16 @@ const WALL = 0.35;
 
 
 // ============================================================
-// CLASSICAL COLUMN DIMENSIONS
+// CLASSICAL COLUMNS
 // ============================================================
 
 const COLUMN_W = 1.15;
 const COLUMN_D = 1.15;
 
 const COLUMN_Z = [
-    9,
-    20,
-    31,
-    42
+    18,
+    29,
+    40
 ];
 
 
@@ -369,12 +361,10 @@ function addBox(
             ...pushQuad(
                 position,
                 normal,
-
                 a,
                 b,
                 c,
                 d,
-
                 n
             )
 
@@ -382,9 +372,7 @@ function addBox(
     };
 
 
-    // --------------------------------------------------------
     // FRONT
-    // --------------------------------------------------------
 
     add(
 
@@ -399,9 +387,7 @@ function addBox(
     );
 
 
-    // --------------------------------------------------------
     // BACK
-    // --------------------------------------------------------
 
     add(
 
@@ -416,9 +402,7 @@ function addBox(
     );
 
 
-    // --------------------------------------------------------
     // LEFT
-    // --------------------------------------------------------
 
     add(
 
@@ -433,9 +417,7 @@ function addBox(
     );
 
 
-    // --------------------------------------------------------
     // RIGHT
-    // --------------------------------------------------------
 
     add(
 
@@ -450,9 +432,7 @@ function addBox(
     );
 
 
-    // --------------------------------------------------------
     // TOP
-    // --------------------------------------------------------
 
     add(
 
@@ -467,9 +447,7 @@ function addBox(
     );
 
 
-    // --------------------------------------------------------
     // BOTTOM
-    // --------------------------------------------------------
 
     add(
 
@@ -487,12 +465,6 @@ function addBox(
 
 // ============================================================
 // ARCH RING
-// ============================================================
-//
-// Creates a curved architectural moulding.
-//
-// The arch is deliberately kept below the 8-unit ceiling so
-// that it is actually visible instead of being clipped.
 // ============================================================
 
 function addArchRing(
@@ -578,9 +550,7 @@ function addArchRing(
             Math.sin(a1);
 
 
-        // ----------------------------------------------------
-        // FRONT FACE
-        // ----------------------------------------------------
+        // FRONT OF ARCH
 
         elements.push(
 
@@ -620,9 +590,7 @@ function addArchRing(
         );
 
 
-        // ----------------------------------------------------
-        // BACK FACE
-        // ----------------------------------------------------
+        // BACK OF ARCH
 
         elements.push(
 
@@ -662,9 +630,7 @@ function addArchRing(
         );
 
 
-        // ----------------------------------------------------
         // INNER CURVE
-        // ----------------------------------------------------
 
         const midA =
             (a0 + a1) / 2;
@@ -717,9 +683,7 @@ function addArchRing(
         );
 
 
-        // ----------------------------------------------------
         // OUTER CURVE
-        // ----------------------------------------------------
 
         const outerNormal = [
 
@@ -773,6 +737,18 @@ function addArchRing(
 // ============================================================
 // GRAND RENAISSANCE ARCH
 // ============================================================
+//
+// IMPORTANT PROPORTION CHANGES:
+//
+// The arch is now:
+// - farther down the gallery
+// - wider
+// - lower at the spring point
+// - less deep
+// - less dominant vertically
+//
+// This makes it read as a monumental doorway.
+// ============================================================
 
 function addGrandArch(
     position,
@@ -785,39 +761,31 @@ function addGrandArch(
         WIDTH / 2;
 
 
-    /*
-     * The arch opening.
-     *
-     * springY = height at which the
-     * rounded portion begins.
-     */
+    // --------------------------------------------------------
+    // MAIN ARCH PROPORTIONS
+    // --------------------------------------------------------
 
-    const springY = 4.0;
+    const springY = 3.35;
 
+    const innerRadius = 3.75;
 
-    /*
-     * Keep the outermost point
-     * below the ceiling.
-     */
-
-    const innerRadius = 2.8;
-    const outerRadius = 3.25;
+    const outerRadius = 4.15;
 
 
     const frontZ =
-        z - 0.55;
+        z - 0.45;
 
 
     const backZ =
-        z + 0.55;
+        z + 0.45;
 
 
-    const steps = 48;
+    const steps = 56;
 
 
-    // ========================================================
-    // MAIN ARCH MOULDINGS
-    // ========================================================
+    // --------------------------------------------------------
+    // INNER ARCH
+    // --------------------------------------------------------
 
     addArchRing(
 
@@ -828,8 +796,8 @@ function addGrandArch(
         cx,
         springY,
 
-        2.80,
-        3.18,
+        innerRadius,
+        4.00,
 
         frontZ,
         backZ,
@@ -839,25 +807,9 @@ function addGrandArch(
     );
 
 
-    addArchRing(
-
-        position,
-        normal,
-        elements,
-
-        cx,
-        springY,
-
-        3.27,
-        3.50,
-
-        frontZ - 0.08,
-        backZ + 0.08,
-
-        steps
-
-    );
-
+    // --------------------------------------------------------
+    // SECOND MOULDING
+    // --------------------------------------------------------
 
     addArchRing(
 
@@ -868,22 +820,20 @@ function addGrandArch(
         cx,
         springY,
 
-        3.58,
-        3.78,
+        4.08,
+        4.25,
 
-        frontZ - 0.16,
-        backZ + 0.16,
+        frontZ - 0.07,
+        backZ + 0.07,
 
         steps
 
     );
 
 
-    // ========================================================
+    // --------------------------------------------------------
     // ARCH PIERS
-    // ========================================================
-
-    // Left main pier
+    // --------------------------------------------------------
 
     addBox(
 
@@ -891,39 +841,37 @@ function addGrandArch(
         normal,
         elements,
 
-        cx - 3.78,
-        0.0,
+        cx - 4.25,
+        0,
         frontZ,
 
-        cx - 2.80,
+        cx - 3.75,
         springY,
         backZ
 
     );
 
 
-    // Right main pier
-
     addBox(
 
         position,
         normal,
         elements,
 
-        cx + 2.80,
-        0.0,
+        cx + 3.75,
+        0,
         frontZ,
 
-        cx + 3.78,
+        cx + 4.25,
         springY,
         backZ
 
     );
 
 
-    // ========================================================
-    // PIER BASES
-    // ========================================================
+    // --------------------------------------------------------
+    // LARGE PILASTERS
+    // --------------------------------------------------------
 
     addBox(
 
@@ -931,48 +879,12 @@ function addGrandArch(
         normal,
         elements,
 
-        cx - 4.05,
-        0.0,
-        z - 0.72,
-
-        cx - 2.55,
-        0.32,
-        z + 0.72
-
-    );
-
-
-    addBox(
-
-        position,
-        normal,
-        elements,
-
-        cx + 2.55,
-        0.0,
-        z - 0.72,
-
-        cx + 4.05,
-        0.32,
-        z + 0.72
-
-    );
-
-
-    // Second base step
-
-    addBox(
-
-        position,
-        normal,
-        elements,
-
-        cx - 3.88,
-        0.32,
+        cx - 4.55,
+        0,
         z - 0.62,
 
-        cx - 2.68,
-        0.52,
+        cx - 3.55,
+        6.75,
         z + 0.62
 
     );
@@ -984,20 +896,92 @@ function addGrandArch(
         normal,
         elements,
 
-        cx + 2.68,
-        0.32,
+        cx + 3.55,
+        0,
         z - 0.62,
 
-        cx + 3.88,
-        0.52,
+        cx + 4.55,
+        6.75,
         z + 0.62
 
     );
 
 
-    // ========================================================
+    // --------------------------------------------------------
+    // PILASTER BASES
+    // --------------------------------------------------------
+
+    addBox(
+
+        position,
+        normal,
+        elements,
+
+        cx - 4.78,
+        0,
+        z - 0.82,
+
+        cx - 3.32,
+        0.22,
+        z + 0.82
+
+    );
+
+
+    addBox(
+
+        position,
+        normal,
+        elements,
+
+        cx + 3.32,
+        0,
+        z - 0.82,
+
+        cx + 4.78,
+        0.22,
+        z + 0.82
+
+    );
+
+
+    addBox(
+
+        position,
+        normal,
+        elements,
+
+        cx - 4.62,
+        0.22,
+        z - 0.68,
+
+        cx - 3.48,
+        0.42,
+        z + 0.68
+
+    );
+
+
+    addBox(
+
+        position,
+        normal,
+        elements,
+
+        cx + 3.48,
+        0.22,
+        z - 0.68,
+
+        cx + 4.62,
+        0.42,
+        z + 0.68
+
+    );
+
+
+    // --------------------------------------------------------
     // PILASTER CAPITALS
-    // ========================================================
+    // --------------------------------------------------------
 
     addBox(
 
@@ -1005,13 +989,13 @@ function addGrandArch(
         normal,
         elements,
 
-        cx - 4.00,
-        springY - 0.35,
-        z - 0.72,
+        cx - 4.68,
+        6.75,
+        z - 0.76,
 
-        cx - 2.58,
-        springY,
-        z + 0.72
+        cx - 3.32,
+        7.05,
+        z + 0.76
 
     );
 
@@ -1022,20 +1006,20 @@ function addGrandArch(
         normal,
         elements,
 
-        cx + 2.58,
-        springY - 0.35,
-        z - 0.72,
+        cx + 3.32,
+        6.75,
+        z - 0.76,
 
-        cx + 4.00,
-        springY,
-        z + 0.72
+        cx + 4.68,
+        7.05,
+        z + 0.76
 
     );
 
 
-    // ========================================================
+    // --------------------------------------------------------
     // CAPITAL DETAIL
-    // ========================================================
+    // --------------------------------------------------------
 
     addBox(
 
@@ -1043,13 +1027,13 @@ function addGrandArch(
         normal,
         elements,
 
-        cx - 4.18,
-        springY - 0.52,
-        z - 0.82,
+        cx - 4.82,
+        7.05,
+        z - 0.86,
 
-        cx - 2.42,
-        springY - 0.35,
-        z + 0.82
+        cx - 3.18,
+        7.25,
+        z + 0.86
 
     );
 
@@ -1060,24 +1044,20 @@ function addGrandArch(
         normal,
         elements,
 
-        cx + 2.42,
-        springY - 0.52,
-        z - 0.82,
+        cx + 3.18,
+        7.05,
+        z - 0.86,
 
-        cx + 4.18,
-        springY - 0.35,
-        z + 0.82
+        cx + 4.82,
+        7.25,
+        z + 0.86
 
     );
 
 
-    // ========================================================
+    // --------------------------------------------------------
     // TOP CORNICE
-    // ========================================================
-
-    const corniceY =
-        springY + outerRadius - 0.18;
-
+    // --------------------------------------------------------
 
     addBox(
 
@@ -1085,13 +1065,13 @@ function addGrandArch(
         normal,
         elements,
 
-        cx - 4.05,
-        corniceY,
-        z - 0.70,
+        cx - 4.80,
+        7.25,
+        z - 0.72,
 
-        cx + 4.05,
-        corniceY + 0.28,
-        z + 0.70
+        cx + 4.80,
+        7.48,
+        z + 0.72
 
     );
 
@@ -1102,20 +1082,20 @@ function addGrandArch(
         normal,
         elements,
 
-        cx - 3.80,
-        corniceY + 0.28,
+        cx - 4.58,
+        7.48,
         z - 0.58,
 
-        cx + 3.80,
-        corniceY + 0.48,
+        cx + 4.58,
+        7.68,
         z + 0.58
 
     );
 
 
-    // ========================================================
-    // ARCH KEYSTONE
-    // ========================================================
+    // --------------------------------------------------------
+    // KEYSTONE
+    // --------------------------------------------------------
 
     addBox(
 
@@ -1123,13 +1103,13 @@ function addGrandArch(
         normal,
         elements,
 
-        cx - 0.38,
-        springY + outerRadius - 0.20,
-        z - 0.68,
+        cx - 0.40,
+        7.05,
+        z - 0.55,
 
-        cx + 0.38,
-        springY + outerRadius + 0.28,
-        z + 0.68
+        cx + 0.40,
+        7.68,
+        z + 0.55
 
     );
 }
@@ -1147,9 +1127,7 @@ function addClassicalColumn(
     z
 ) {
 
-    // ========================================================
     // BASE
-    // ========================================================
 
     addBox(
 
@@ -1158,7 +1136,7 @@ function addClassicalColumn(
         elements,
 
         x - 0.72,
-        0.00,
+        0,
         z - 0.72,
 
         x + 0.72,
@@ -1185,9 +1163,7 @@ function addClassicalColumn(
     );
 
 
-    // ========================================================
     // SHAFT
-    // ========================================================
 
     addBox(
 
@@ -1206,9 +1182,7 @@ function addClassicalColumn(
     );
 
 
-    // ========================================================
-    // LOWER SHAFT BAND
-    // ========================================================
+    // LOWER BAND
 
     addBox(
 
@@ -1227,9 +1201,7 @@ function addClassicalColumn(
     );
 
 
-    // ========================================================
-    // UPPER SHAFT BAND
-    // ========================================================
+    // UPPER BAND
 
     addBox(
 
@@ -1248,9 +1220,7 @@ function addClassicalColumn(
     );
 
 
-    // ========================================================
     // CAPITAL
-    // ========================================================
 
     addBox(
 
@@ -1303,9 +1273,7 @@ function addClassicalColumn(
     );
 
 
-    // ========================================================
     // TOP ABACUS
-    // ========================================================
 
     addBox(
 
@@ -1345,70 +1313,52 @@ function addClassicalColumn(
 // ============================================================
 // WALL PANEL
 // ============================================================
-//
-// Decorative recessed panels between the paintings.
-// These make the walls feel architectural rather than flat.
-// ============================================================
 
 function addWallPanel(
     position,
     normal,
     elements,
-
-    x,
     z,
     side
 ) {
 
-    const panelWidth = 3.6;
-    const panelHeight = 4.6;
-
+    const panelWidth = 3.8;
     const bottom = 1.0;
-
-    const top =
-        bottom + panelHeight;
-
+    const top = 5.7;
 
     const depth = 0.08;
 
 
     if (side === 'left') {
 
-        const wallX = 0;
-
-
-        // Outer frame
-
         addBox(
 
             position,
             normal,
             elements,
 
-            wallX - depth,
+            -depth,
             bottom,
             z - panelWidth / 2,
 
-            wallX + 0.12,
+            0.14,
             top,
             z + panelWidth / 2
 
         );
 
 
-        // Inner decorative panel
-
         addBox(
 
             position,
             normal,
             elements,
 
-            wallX - depth - 0.04,
+            -depth - 0.04,
             bottom + 0.18,
             z - panelWidth / 2 + 0.18,
 
-            wallX + 0.16,
+            0.18,
             top - 0.18,
             z + panelWidth / 2 - 0.18
 
@@ -1416,20 +1366,17 @@ function addWallPanel(
 
     } else {
 
-        const wallX = WIDTH;
-
-
         addBox(
 
             position,
             normal,
             elements,
 
-            wallX - 0.12,
+            WIDTH - 0.14,
             bottom,
             z - panelWidth / 2,
 
-            wallX + depth,
+            WIDTH + depth,
             top,
             z + panelWidth / 2
 
@@ -1442,11 +1389,11 @@ function addWallPanel(
             normal,
             elements,
 
-            wallX - 0.16,
+            WIDTH - 0.18,
             bottom + 0.18,
             z - panelWidth / 2 + 0.18,
 
-            wallX + depth + 0.04,
+            WIDTH + depth + 0.04,
             top - 0.18,
             z + panelWidth / 2 - 0.18
 
@@ -1458,9 +1405,6 @@ function addWallPanel(
 // ============================================================
 // CEILING COFFER
 // ============================================================
-//
-// Creates recessed-looking ceiling sections.
-// ============================================================
 
 function addCeilingCoffer(
     position,
@@ -1469,14 +1413,12 @@ function addCeilingCoffer(
     z
 ) {
 
-    const margin = 0.7;
+    const margin = 0.65;
 
-    const innerWidth = 5.0;
-
-    const depth = 0.18;
+    const depth = 0.16;
 
 
-    // Left recessed border
+    // LEFT BORDER
 
     addBox(
 
@@ -1486,16 +1428,16 @@ function addCeilingCoffer(
 
         margin,
         HEIGHT - depth,
-        z - 1.7,
+        z - 1.65,
 
         margin + 0.22,
         HEIGHT,
-        z + 1.7
+        z + 1.65
 
     );
 
 
-    // Right recessed border
+    // RIGHT BORDER
 
     addBox(
 
@@ -1505,16 +1447,16 @@ function addCeilingCoffer(
 
         WIDTH - margin - 0.22,
         HEIGHT - depth,
-        z - 1.7,
+        z - 1.65,
 
         WIDTH - margin,
         HEIGHT,
-        z + 1.7
+        z + 1.65
 
     );
 
 
-    // Front border
+    // FRONT BORDER
 
     addBox(
 
@@ -1524,16 +1466,16 @@ function addCeilingCoffer(
 
         margin,
         HEIGHT - depth,
-        z - 1.7,
+        z - 1.65,
 
         WIDTH - margin,
         HEIGHT,
-        z - 1.48
+        z - 1.43
 
     );
 
 
-    // Back border
+    // BACK BORDER
 
     addBox(
 
@@ -1543,16 +1485,16 @@ function addCeilingCoffer(
 
         margin,
         HEIGHT - depth,
-        z + 1.48,
+        z + 1.43,
 
         WIDTH - margin,
         HEIGHT,
-        z + 1.7
+        z + 1.65
 
     );
 
 
-    // Inner recessed ceiling
+    // RECESSED PANEL
 
     elements.push(
 
@@ -1564,25 +1506,25 @@ function addCeilingCoffer(
             [
                 margin + 0.22,
                 HEIGHT - depth,
-                z - 1.48
+                z - 1.43
             ],
 
             [
                 WIDTH - margin - 0.22,
                 HEIGHT - depth,
-                z - 1.48
+                z - 1.43
             ],
 
             [
                 margin + 0.22,
                 HEIGHT - depth,
-                z + 1.48
+                z + 1.43
             ],
 
             [
                 WIDTH - margin - 0.22,
                 HEIGHT - depth,
-                z + 1.48
+                z + 1.43
             ],
 
             [0, -1, 0]
@@ -1697,7 +1639,7 @@ module.exports = function () {
 
 
     // ========================================================
-    // ENTRANCE WALL
+    // ENTRANCE
     // ========================================================
 
     addBox(
@@ -1718,7 +1660,7 @@ module.exports = function () {
 
 
     // ========================================================
-    // MASTERPIECE END WALL
+    // END WALL
     // ========================================================
 
     addBox(
@@ -1734,6 +1676,27 @@ module.exports = function () {
         WIDTH + WALL,
         HEIGHT,
         LENGTH + WALL
+
+    );
+
+
+    // ========================================================
+    // GRAND ARCHWAY
+    // ========================================================
+    //
+    // Moved from z = 8 to z = 12.
+    //
+    // This gives the viewer enough distance to see the
+    // arch as a complete architectural portal.
+    // ========================================================
+
+    addGrandArch(
+
+        position,
+        normal,
+        elements,
+
+        12
 
     );
 
@@ -1770,15 +1733,14 @@ module.exports = function () {
 
 
     // ========================================================
-    // WALL DECORATION
+    // WALL PANELS
     // ========================================================
 
     addWallPanel(
         position,
         normal,
         elements,
-        1.8,
-        5.0,
+        5,
         'left'
     );
 
@@ -1787,48 +1749,7 @@ module.exports = function () {
         position,
         normal,
         elements,
-        1.8,
-        14.0,
-        'left'
-    );
-
-
-    addWallPanel(
-        position,
-        normal,
-        elements,
-        1.8,
-        25.0,
-        'left'
-    );
-
-
-    addWallPanel(
-        position,
-        normal,
-        elements,
-        1.8,
-        36.0,
-        'left'
-    );
-
-
-    addWallPanel(
-        position,
-        normal,
-        elements,
-        1.8,
-        45.0,
-        'left'
-    );
-
-
-    addWallPanel(
-        position,
-        normal,
-        elements,
-        WIDTH - 1.8,
-        5.0,
+        9,
         'right'
     );
 
@@ -1837,8 +1758,16 @@ module.exports = function () {
         position,
         normal,
         elements,
-        WIDTH - 1.8,
-        15.0,
+        22,
+        'left'
+    );
+
+
+    addWallPanel(
+        position,
+        normal,
+        elements,
+        25,
         'right'
     );
 
@@ -1847,8 +1776,16 @@ module.exports = function () {
         position,
         normal,
         elements,
-        WIDTH - 1.8,
-        26.0,
+        33,
+        'left'
+    );
+
+
+    addWallPanel(
+        position,
+        normal,
+        elements,
+        36,
         'right'
     );
 
@@ -1857,9 +1794,8 @@ module.exports = function () {
         position,
         normal,
         elements,
-        WIDTH - 1.8,
-        37.0,
-        'right'
+        43,
+        'left'
     );
 
 
@@ -1867,8 +1803,7 @@ module.exports = function () {
         position,
         normal,
         elements,
-        WIDTH - 1.8,
-        45.0,
+        44,
         'right'
     );
 
@@ -1878,24 +1813,30 @@ module.exports = function () {
     // ========================================================
 
     const cofferPositions = [
+
         4,
-        10,
-        16,
-        22,
-        28,
+        9,
+        14,
+        19,
+        24,
+        29,
         34,
-        40,
-        46
+        39,
+        44
+
     ];
 
 
-    for (const z of cofferPositions) {
+    for (
+        const z of cofferPositions
+    ) {
 
         addCeilingCoffer(
 
             position,
             normal,
             elements,
+
             z
 
         );
@@ -1903,39 +1844,12 @@ module.exports = function () {
 
 
     // ========================================================
-    // GRAND RENAISSANCE ARCHWAY
-    // ========================================================
-
-    addGrandArch(
-
-        position,
-        normal,
-        elements,
-
-        8.0
-
-    );
-
-
-    // ========================================================
     // PAINTING POSITIONS
-    // ========================================================
-    //
-    // FIRST POSITION:
-    // CENTRAL MASTERPIECE
-    //
-    // Remaining positions:
-    // SIDE WALLS
-    //
-    // The painting system uses these wall segments to
-    // determine orientation and placement.
     // ========================================================
 
     const placements = [
 
-        // ----------------------------------------------------
         // CENTRAL MASTERPIECE
-        // ----------------------------------------------------
 
         [
             [WIDTH, LENGTH - 0.35],
@@ -1943,50 +1857,50 @@ module.exports = function () {
         ],
 
 
-        // ----------------------------------------------------
         // LEFT WALL
-        // ----------------------------------------------------
 
         [
-            [0, 4],
-            [0, 14]
+            [0, 3],
+            [0, 10]
         ],
 
 
-        // ----------------------------------------------------
         // RIGHT WALL
-        // ----------------------------------------------------
 
         [
             [WIDTH, 15],
-            [WIDTH, 25]
+            [WIDTH, 22]
         ],
 
 
-        // ----------------------------------------------------
         // LEFT WALL
-        // ----------------------------------------------------
 
         [
-            [0, 27],
-            [0, 37]
+            [0, 24],
+            [0, 31]
         ],
 
 
-        // ----------------------------------------------------
         // RIGHT WALL
-        // ----------------------------------------------------
 
         [
-            [WIDTH, 38],
-            [WIDTH, 47]
+            [WIDTH, 33],
+            [WIDTH, 40]
+        ],
+
+
+        // LEFT WALL
+
+        [
+            [0, 41],
+            [0, 46]
         ]
 
     ];
 
 
     // ========================================================
-    // COLLISION GRID
+    // GRID
     // ========================================================
 
     const grid =
@@ -2045,11 +1959,9 @@ module.exports = function () {
                     bestDist
                 ) {
 
-                    bestDist =
-                        d;
+                    bestDist = d;
 
-                    best =
-                        i;
+                    best = i;
                 }
 
             }
@@ -2061,16 +1973,14 @@ module.exports = function () {
 
 
     // ========================================================
-    // RETURN GALLERY DATA
+    // RETURN MAP
     // ========================================================
 
     return {
 
         placements,
 
-
         getAreaIndex,
-
 
         getGridSegments:
             (x, z) =>
@@ -2079,7 +1989,6 @@ module.exports = function () {
                     z
                 ),
 
-
         getGridParts:
             (x, z) =>
                 grid.get(
@@ -2087,12 +1996,9 @@ module.exports = function () {
                     z
                 ),
 
-
         position,
 
-
         normal,
-
 
         elements
 
