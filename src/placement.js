@@ -90,8 +90,7 @@ module.exports = (
     const loadPainting = (p) => {
 
         /*
-         * IMPORTANT:
-         * Each image gets its own fixed placement.
+         * Each image gets a fixed position from map.js.
          */
 
         const seg =
@@ -293,10 +292,20 @@ module.exports = (
         );
 
 
+        /*
+         * IMPORTANT:
+         * Use POSITIVE angle.
+         *
+         * This makes:
+         * - left-wall paintings face the gallery
+         * - right-wall paintings face the gallery
+         * - end-wall masterpiece face back toward the viewer
+         */
+
         mat4.rotateY(
             model,
             model,
-            -angle
+            angle
         );
 
 
@@ -328,10 +337,14 @@ module.exports = (
         );
 
 
+        /*
+         * Title uses the same corrected orientation.
+         */
+
         mat4.rotateY(
             textmodel,
             textmodel,
-            -angle
+            angle
         );
 
 
@@ -517,6 +530,10 @@ module.exports = (
                 );
         },
 
+
+        // ----------------------------------------------------
+        // PAINTINGS TO RENDER
+        // ----------------------------------------------------
 
         batch: () =>
             shownBatch
