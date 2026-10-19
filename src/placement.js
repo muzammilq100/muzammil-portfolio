@@ -9,9 +9,7 @@ const mat4 = require('gl-mat4');
 // ============================================================
 
 const renderDist = 30;
-
 const loadDist = 24;
-
 const unloadDist = 45;
 
 const fovxMargin =
@@ -37,7 +35,7 @@ const culling = (
     ppos,
     pangle,
     fovx,
-    {vseg, angle}
+    { vseg, angle }
 ) => {
 
     const sx1 =
@@ -48,7 +46,6 @@ const culling = (
         vseg[0][1] -
         ppos[2];
 
-
     const sx2 =
         vseg[1][0] -
         ppos[0];
@@ -56,7 +53,6 @@ const culling = (
     const sy2 =
         vseg[1][1] -
         ppos[2];
-
 
     const angles = [
 
@@ -75,9 +71,7 @@ const culling = (
     ];
 
 
-    for (
-        let a of angles
-    ) {
+    for (let a of angles) {
 
         const nx =
             Math.sin(a);
@@ -119,7 +113,6 @@ module.exports = (
 
     let shownBatch = [];
 
-
     let fetching = true;
 
 
@@ -136,7 +129,6 @@ module.exports = (
 
 
         if (!seg) {
-
             return;
         }
 
@@ -182,38 +174,77 @@ module.exports = (
         // PAINTING SIZE
         // ====================================================
         //
-        // Larger than the original.
+        // Much larger than the previous version.
         //
-        // This is especially important on mobile.
+        // Side paintings:
+        //   strong gallery presence
+        //
+        // Central painting:
+        //   noticeably larger
+        //   intended to dominate the final wall
+        //
         // ====================================================
 
-        let globalScale =
-            6.2 /
-            (2.8 + p.aspect);
+        const isMasterpiece =
+            batch.length === 0;
 
 
-        // Horizontal clamp
+        let globalScale;
+
+
+        if (isMasterpiece) {
+
+            // LARGE CENTRAL MASTERPIECE
+
+            globalScale =
+                3.35;
+
+        } else {
+
+            // LARGE SIDE PAINTINGS
+
+            globalScale =
+                2.65;
+        }
+
+
+        // ----------------------------------------------------
+        // RESPECT IMAGE ASPECT RATIO
+        // ----------------------------------------------------
 
         globalScale =
             Math.min(
                 globalScale,
                 segLen /
                 p.aspect /
-                1.7
+                (
+                    isMasterpiece
+                        ? 1.15
+                        : 1.35
+                )
             );
 
 
-        // Vertical clamp
+        // ----------------------------------------------------
+        // MAXIMUM HEIGHT
+        // ----------------------------------------------------
 
         globalScale =
             Math.min(
                 globalScale,
-                2.35
+                isMasterpiece
+                    ? 3.25
+                    : 2.75
             );
 
 
         // ====================================================
         // PAINTING POSITION
+        // ====================================================
+        //
+        // Raise paintings slightly so they feel like
+        // professionally hung museum works.
+        //
         // ====================================================
 
         const pos = [
@@ -223,7 +254,11 @@ module.exports = (
                 seg[1][0]
             ) / 2,
 
-            2.65 -
+            (
+                isMasterpiece
+                    ? 3.75
+                    : 3.45
+            ) -
             globalScale,
 
             (
@@ -360,7 +395,6 @@ module.exports = (
             norm[0] *
             d2;
 
-
         pos[2] -=
             dir[1] *
             d1 +
@@ -396,7 +430,7 @@ module.exports = (
 
 
         // ====================================================
-        // TEXT MODEL
+        // TITLE MODEL
         // ====================================================
 
         const textmodel = [];
@@ -408,8 +442,14 @@ module.exports = (
 
             [
                 pos[0],
-                1.8 -
+
+                (
+                    isMasterpiece
+                        ? 1.55
+                        : 1.45
+                ) -
                 globalScale,
+
                 pos[2]
             ]
 
@@ -513,10 +553,7 @@ module.exports = (
                 );
 
 
-            if (
-                index === -1
-            ) {
-
+            if (index === -1) {
                 return;
             }
 
@@ -619,9 +656,7 @@ module.exports = (
             }
 
 
-            if (
-                !fetching
-            ) {
+            if (!fetching) {
 
                 texture.fetch(
 
@@ -651,9 +686,7 @@ module.exports = (
                 "low";
 
 
-            if (
-                dynamicResTimer
-            ) {
+            if (dynamicResTimer) {
 
                 clearTimeout(
                     dynamicResTimer
