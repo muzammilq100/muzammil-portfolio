@@ -1,14 +1,13 @@
 'use strict';
 
 /*
- * RENAISSANCE GALLERY
- * -------------------
+ * RENAISSANCE GALLERY MATERIALS
+ * -----------------------------
  * Warm ivory limestone
- * Polished black / cream marble
- * Stronger architectural lighting
- * Subtle marble variation
- * Specular highlights
- * Cinematic museum atmosphere
+ * Elegant black / cream marble
+ * Warm museum illumination
+ * Polished floor highlights
+ * Cinematic Renaissance atmosphere
  */
 
 module.exports = (regl, data, useReflexion) => {
@@ -27,43 +26,53 @@ module.exports = (regl, data, useReflexion) => {
         void main() {
 
             // =================================================
-            // BASE MATERIALS
+            // MATERIAL PALETTE
             // =================================================
 
-            vec3 limestoneDark =
-                vec3(
-                    0.62,
-                    0.56,
-                    0.46
-                );
-
+            // Warm ivory limestone
             vec3 limestone =
                 vec3(
-                    0.86,
-                    0.81,
-                    0.70
+                    0.91,
+                    0.87,
+                    0.78
                 );
 
             vec3 limestoneLight =
                 vec3(
-                    0.98,
-                    0.94,
-                    0.84
+                    0.985,
+                    0.955,
+                    0.885
                 );
 
+            // Slightly deeper stone for architectural depth
+            vec3 limestoneShadow =
+                vec3(
+                    0.76,
+                    0.71,
+                    0.62
+                );
 
+            // Marble
             vec3 marbleCream =
                 vec3(
-                    0.86,
-                    0.83,
-                    0.75
+                    0.91,
+                    0.895,
+                    0.83
                 );
 
             vec3 marbleBlack =
                 vec3(
-                    0.025,
-                    0.022,
-                    0.020
+                    0.035,
+                    0.032,
+                    0.029
+                );
+
+            // Ceiling stone
+            vec3 ceilingMaterial =
+                vec3(
+                    0.84,
+                    0.80,
+                    0.71
                 );
 
 
@@ -71,7 +80,10 @@ module.exports = (regl, data, useReflexion) => {
             // FLOOR CHECKERBOARD
             // =================================================
 
-            float tileSize = 1.05;
+            // Smaller tiles than before.
+            // This prevents the floor from dominating the phone
+            // screen and makes it feel more like marble flooring.
+            float tileSize = 0.72;
 
             float tileX =
                 floor(v_pos.x / tileSize);
@@ -95,20 +107,20 @@ module.exports = (regl, data, useReflexion) => {
 
 
             // =================================================
-            // MARBLE VEINING
+            // SUBTLE MARBLE VARIATION
             // =================================================
 
             float vein =
                 sin(
-                    v_pos.x * 5.0 +
-                    v_pos.z * 2.7 +
-                    sin(v_pos.z * 3.0)
+                    v_pos.x * 6.0 +
+                    v_pos.z * 2.2 +
+                    sin(v_pos.z * 1.7)
                 );
 
             vein =
                 smoothstep(
-                    0.78,
-                    0.96,
+                    0.84,
+                    0.98,
                     abs(vein)
                 );
 
@@ -116,8 +128,8 @@ module.exports = (regl, data, useReflexion) => {
             floorMaterial =
                 mix(
                     floorMaterial,
-                    floorMaterial * 1.16,
-                    vein * 0.18
+                    floorMaterial * 1.10,
+                    vein * 0.12
                 );
 
 
@@ -143,8 +155,8 @@ module.exports = (regl, data, useReflexion) => {
             // =================================================
 
             float stoneNoise =
-                sin(v_pos.x * 1.7) *
-                sin(v_pos.z * 0.8) *
+                sin(v_pos.x * 1.35) *
+                sin(v_pos.z * 0.55) *
                 0.5 +
                 0.5;
 
@@ -153,19 +165,24 @@ module.exports = (regl, data, useReflexion) => {
                 mix(
                     limestone,
                     limestoneLight,
-                    stoneNoise * 0.16
+                    stoneNoise * 0.13
                 );
 
 
-            // =================================================
-            // CEILING MATERIAL
-            // =================================================
+            // Give recessed / shaded areas a little more depth.
+            float architecturalShade =
+                1.0 -
+                smoothstep(
+                    0.0,
+                    1.2,
+                    abs(v_normal.y)
+                );
 
-            vec3 ceilingMaterial =
-                vec3(
-                    0.78,
-                    0.73,
-                    0.64
+            wallMaterial =
+                mix(
+                    wallMaterial,
+                    limestoneShadow,
+                    architecturalShade * 0.08
                 );
 
 
@@ -194,40 +211,42 @@ module.exports = (regl, data, useReflexion) => {
 
 
             // =================================================
-            // WARM KEY LIGHT
+            // WARM MUSEUM KEY LIGHT
             // =================================================
 
             vec3 lightDirection =
                 normalize(
                     vec3(
-                        -0.35,
-                        0.90,
-                        -0.45
+                        -0.32,
+                        0.92,
+                        -0.40
                     )
                 );
+
+
+            vec3 normal =
+                normalize(v_normal);
 
 
             float diffuse =
                 max(
                     dot(
-                        normalize(v_normal),
+                        normal,
                         lightDirection
                     ),
                     0.0
                 );
 
 
-            // =================================================
-            // AMBIENT LIGHT
-            // =================================================
-
+            // Bright enough to make the ivory architecture
+            // readable on a phone screen.
             float light =
-                0.62 +
-                diffuse * 0.42;
+                0.76 +
+                diffuse * 0.34;
 
 
             // =================================================
-            // FLOOR / LOWER WALL LIGHT
+            // LOWER WALL / FLOOR AMBIENT LIGHT
             // =================================================
 
             float lowerGlow =
@@ -240,7 +259,7 @@ module.exports = (regl, data, useReflexion) => {
 
 
             light +=
-                lowerGlow * 0.06;
+                lowerGlow * 0.045;
 
 
             // =================================================
@@ -250,14 +269,14 @@ module.exports = (regl, data, useReflexion) => {
             float galleryLight =
                 1.0 -
                 smoothstep(
-                    8.0,
-                    42.0,
-                    abs(v_pos.z - 30.0)
+                    7.0,
+                    35.0,
+                    abs(v_pos.z - 29.0)
                 );
 
 
             light +=
-                galleryLight * 0.12;
+                galleryLight * 0.09;
 
 
             // =================================================
@@ -267,18 +286,18 @@ module.exports = (regl, data, useReflexion) => {
             float endLight =
                 1.0 -
                 smoothstep(
-                    3.0,
-                    18.0,
+                    2.0,
+                    16.0,
                     abs(v_pos.z - 46.0)
                 );
 
 
             light +=
-                endLight * 0.20;
+                endLight * 0.18;
 
 
             // =================================================
-            // SPECULAR HIGHLIGHT
+            // POLISHED MARBLE SPECULAR
             // =================================================
 
             vec3 viewDirection =
@@ -303,13 +322,13 @@ module.exports = (regl, data, useReflexion) => {
                         ),
                         0.0
                     ),
-                    42.0
+                    55.0
                 );
 
 
-            // Only strongly visible on polished floor
+            // Stronger polish on the marble floor.
             specular *=
-                isFloor * 0.42;
+                isFloor * 0.62;
 
 
             light +=
@@ -317,25 +336,25 @@ module.exports = (regl, data, useReflexion) => {
 
 
             // =================================================
-            // FRESNEL SHEEN
+            // FLOOR EDGE / GRAZING HIGHLIGHT
             // =================================================
 
-            float fresnel =
+            float grazing =
                 pow(
                     1.0 -
                     max(
                         dot(
                             normalize(v_viewnormal),
-                            normalize(-v_relativepos)
+                            viewDirection
                         ),
                         0.0
                     ),
-                    4.0
+                    3.5
                 );
 
 
-            fresnel *=
-                isFloor * 0.12;
+            grazing *=
+                isFloor * 0.10;
 
 
             // =================================================
@@ -348,19 +367,20 @@ module.exports = (regl, data, useReflexion) => {
 
             finalColour +=
                 vec3(
-                    0.055,
-                    0.035,
-                    0.018
-                ) * fresnel;
+                    0.045,
+                    0.032,
+                    0.020
+                ) *
+                grazing;
 
 
             // =================================================
-            // WARM CINEMATIC TONING
+            // WARM CINEMATIC BALANCE
             // =================================================
 
-            finalColour.r *= 1.045;
+            finalColour.r *= 1.025;
             finalColour.g *= 1.010;
-            finalColour.b *= 0.930;
+            finalColour.b *= 0.965;
 
 
             // =================================================
@@ -375,29 +395,29 @@ module.exports = (regl, data, useReflexion) => {
 
             float atmosphere =
                 smoothstep(
-                    58.0,
-                    7.0,
+                    60.0,
+                    8.0,
                     distanceFromCamera
                 );
 
 
             finalColour =
                 mix(
-                    finalColour * 0.78,
+                    finalColour * 0.86,
                     finalColour,
                     atmosphere
                 );
 
 
             // =================================================
-            // OUTPUT
+            // REFLECTION ALPHA
             // =================================================
 
             float alpha =
                 ${
                     useReflexion
-                        ? "0.98 + smoothstep(150.0, 0.0, distanceFromCamera) - v_normal.y"
-                        : "1.0"
+                        ? 'clamp(0.96 + smoothstep(150.0, 0.0, distanceFromCamera) - v_normal.y, 0.0, 1.0)'
+                        : '1.0'
                 };
 
 
@@ -408,6 +428,10 @@ module.exports = (regl, data, useReflexion) => {
                 );
         }`,
 
+
+        // =====================================================
+        // VERTEX SHADER
+        // =====================================================
 
         vert: `
         precision highp float;
@@ -471,6 +495,10 @@ module.exports = (regl, data, useReflexion) => {
         }`,
 
 
+        // =====================================================
+        // ATTRIBUTES
+        // =====================================================
+
         attributes: {
 
             position:
@@ -481,6 +509,10 @@ module.exports = (regl, data, useReflexion) => {
 
         },
 
+
+        // =====================================================
+        // REFLECTION BLENDING
+        // =====================================================
 
         blend:
             useReflexion
@@ -494,6 +526,10 @@ module.exports = (regl, data, useReflexion) => {
                 }
                 : {},
 
+
+        // =====================================================
+        // GEOMETRY
+        // =====================================================
 
         elements:
             new Uint32Array(
