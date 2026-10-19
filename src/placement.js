@@ -15,6 +15,60 @@ let dynamicRes = 'high';
 let dynamicResTimer;
 
 
+// ============================================================
+// PAINTING CULLING
+// ============================================================
+
+const culling = (
+    ppos,
+    pangle,
+    fovx,
+    { vseg, angle }
+) => {
+
+    const sx1 =
+        vseg[0][0] - ppos[0];
+
+    const sy1 =
+        vseg[0][1] - ppos[2];
+
+    const sx2 =
+        vseg[1][0] - ppos[0];
+
+    const sy2 =
+        vseg[1][1] - ppos[2];
+
+
+    const angles = [
+        angle,
+        pangle - fovx / 2 - fovxMargin + Math.PI / 2,
+        pangle + fovx / 2 + fovxMargin - Math.PI / 2
+    ];
+
+
+    for (const a of angles) {
+
+        const nx = Math.sin(a);
+        const ny = -Math.cos(a);
+
+
+        if (
+            nx * sx1 + ny * sy1 < 0 &&
+            nx * sx2 + ny * sy2 < 0
+        ) {
+            return false;
+        }
+    }
+
+
+    return true;
+};
+
+
+// ============================================================
+// MAIN
+// ============================================================
+
 module.exports = (
     regl,
     {
@@ -25,74 +79,61 @@ module.exports = (
 
     let batch = [];
     let shownBatch = [];
+
     let fetching = true;
 
 
     // ========================================================
-    // LOAD ONE PAINTING
+    // LOAD PAINTING
     // ========================================================
 
     const loadPainting = (p) => {
 
         /*
          * IMPORTANT:
-         * Use the image_id to decide where the painting goes.
-         * This prevents asynchronous image loading from
-         * putting paintings on the wrong walls.
+         * Each image gets its own fixed placement.
          */
 
-        const seg = placements[p.image_id];
+        const seg =
+            placements[p.image_id];
+
 
         if (!seg) {
             return;
         }
 
 
-        const x1 = seg[0][0];
-        const z1 = seg[0][1];
+        // ----------------------------------------------------
+        // WALL DIRECTION
+        // ----------------------------------------------------
 
-        const x2 = seg[1][0];
-        const z2 = seg[1][1];
-
-
-        const dx = x2 - x1;
-        const dz = z2 - z1;
-
-        const segLen = Math.hypot(dx, dz);
+        const dir = [
+            seg[1][0] - seg[0][0],
+            seg[1][1] - seg[0][1]
+        ];
 
 
-        // ====================================================
-        // DETERMINE WALL TYPE
-        // ====================================================
+        // Wall normal
 
-        const isEndWall =
-            Math.abs(z1 - z2) < 0.01;
-
-        const isLeftWall =
-            !isEndWall &&
-            Math.abs(x1) < 0.01;
-
-        const isRightWall =
-            !isEndWall &&
-            Math.abs(x1 - 14) < 0.01;
+        const norm = [
+            seg[1][1] - seg[0][1],
+            seg[0][0] - seg[1][0]
+        ];
 
 
-        // ====================================================
-        // MASTERPIECE
-        // ====================================================
+        const segLen =
+            Math.hypot(
+                dir[0],
+                dir[1]
+            );
 
-        const isMasterpiece =
-            p.image_id === 0;
 
-
-        // ====================================================
+        // ----------------------------------------------------
         // PAINTING SIZE
-        // ====================================================
+        // ----------------------------------------------------
 
         let globalScale =
-            isMasterpiece
-                ? 3.0
-                : 2.25;
+            4.0 / (3 + p.aspect);
 
 
         globalScale =
@@ -100,16 +141,14 @@ module.exports = (
                 globalScale,
                 segLen /
                 p.aspect /
-                1.25
+                2.2
             );
 
 
         globalScale =
             Math.min(
                 globalScale,
-                isMasterpiece
-                    ? 3.0
-                    : 2.4
+                2.5
             );
 
 
@@ -118,108 +157,134 @@ module.exports = (
             p.aspect;
 
 
-        // ====================================================
+        // ----------------------------------------------------
         // POSITION
-        // ====================================================
+        // ----------------------------------------------------
 
-        let pos;
+        const pos = [
 
+            (seg[0][0] + seg[1][0]) / 2,
 
-        if (isEndWall) {
+            3.0 - globalScale,
 
-            // CENTRAL MASTERPIECE
+            (seg[0][1] + seg[1][1]) / 2
 
-            pos = [
-                7,
-                3.6 - globalScale,
-                47.65
-            ];
-
-        } else if (isLeftWall) {
-
-            // LEFT WALL
-            // Keep painting INSIDE the gallery.
-
-            pos = [
-                0.22,
-                3.35 - globalScale,
-                (z1 + z2) / 2
-            ];
-
-        } else if (isRightWall) {
-
-            // RIGHT WALL
-            // Keep painting INSIDE the gallery.
-
-            pos = [
-                13.78,
-                3.35 - globalScale,
-                (z1 + z2) / 2
-            ];
-
-        } else {
-
-            return;
-        }
-
-
-        // ====================================================
-        // ROTATION
-        // ====================================================
-
-        let angle;
-
-        if (isEndWall) {
-
-            // Face toward the viewer coming down the corridor.
-
-            angle = Math.PI;
-
-        } else if (isLeftWall) {
-
-            // Face toward the centre of the gallery.
-
-            angle = Math.PI / 2;
-
-        } else {
-
-            // Right wall.
-
-            angle = -Math.PI / 2;
-        }
-
-
-        // ====================================================
-        // MODEL SCALE
-        // ====================================================
-
-        let scale = [
-            0.1,
-            2 * globalScale,
-            2 * width
         ];
 
 
-        if (isLeftWall || isRightWall) {
+        // ----------------------------------------------------
+        // WALL ANGLE
+        // ----------------------------------------------------
 
-            scale = [
-                2 * width,
-                2 * globalScale,
-                0.1
-            ];
-        }
+        const angle =
+            Math.atan2(
+                dir[1],
+                dir[0]
+            );
 
 
-        // ====================================================
-        // PAINTING MODEL
-        // ====================================================
+        // ----------------------------------------------------
+        // DETERMINE WALL ORIENTATION
+        // ----------------------------------------------------
+
+        const horiz =
+            Math.abs(angle % 3) < 1
+                ? 1
+                : 0;
+
+
+        const vert =
+            1 - horiz;
+
+
+        // ----------------------------------------------------
+        // MODEL SCALE
+        // ----------------------------------------------------
+
+        const scale = [
+
+            2 * width * horiz +
+            0.1 * vert,
+
+            2 * globalScale,
+
+            2 * width * vert +
+            0.1 * horiz
+
+        ];
+
+
+        // ----------------------------------------------------
+        // TEXT
+        // ----------------------------------------------------
+
+        const text =
+            p.textGen(width);
+
+
+        // ----------------------------------------------------
+        // VISIBLE SEGMENT
+        // ----------------------------------------------------
+
+        const d1 =
+            width / segLen;
+
+
+        const d2 =
+            0.005 /
+            Math.hypot(
+                norm[0],
+                norm[1]
+            );
+
+
+        const vseg = [
+
+            [
+                pos[0] -
+                dir[0] * d1 * 2,
+
+                pos[2] -
+                dir[1] * d1
+            ],
+
+            [
+                pos[0] +
+                dir[0] * d1 * 2,
+
+                pos[2] +
+                dir[1] * d1
+            ]
+
+        ];
+
+
+        // ----------------------------------------------------
+        // MOVE PAINTING SLIGHTLY OFF WALL
+        // ----------------------------------------------------
+
+        pos[0] -=
+            dir[0] * d1 +
+            norm[0] * d2;
+
+
+        pos[2] -=
+            dir[1] * d1 +
+            norm[1] * d2;
+
+
+        // ----------------------------------------------------
+        // MODEL
+        // ----------------------------------------------------
 
         const model = [];
+
 
         mat4.fromTranslation(
             model,
             pos
         );
+
 
         mat4.scale(
             model,
@@ -227,31 +292,34 @@ module.exports = (
             scale
         );
 
+
         mat4.rotateY(
             model,
             model,
-            angle
+            -angle
         );
 
 
-        // ====================================================
-        // TITLE
-        // ====================================================
-
-        const text =
-            p.textGen(width);
-
+        // ----------------------------------------------------
+        // TITLE MODEL
+        // ----------------------------------------------------
 
         const textmodel = [];
 
+
         mat4.fromTranslation(
             textmodel,
+
             [
                 pos[0],
-                pos[1] - 0.35,
+
+                2.25 -
+                globalScale,
+
                 pos[2]
             ]
         );
+
 
         mat4.scale(
             textmodel,
@@ -259,41 +327,28 @@ module.exports = (
             [2, 2, 2]
         );
 
+
         mat4.rotateY(
             textmodel,
             textmodel,
-            angle
+            -angle
         );
 
 
-        // ====================================================
-        // CULLING SEGMENT
-        // ====================================================
-
-        const vseg = [
-            [
-                pos[0] - dx * 0.15,
-                pos[2] - dz * 0.15
-            ],
-            [
-                pos[0] + dx * 0.15,
-                pos[2] + dz * 0.15
-            ]
-        ];
-
-
-        // ====================================================
+        // ----------------------------------------------------
         // STORE
-        // ====================================================
+        // ----------------------------------------------------
 
         batch.push({
 
             ...p,
 
             vseg,
+
             angle,
 
             model,
+
             textmodel,
 
             text,
@@ -301,17 +356,21 @@ module.exports = (
             width,
 
             textGen: null
+
         });
     };
 
 
     // ========================================================
-    // LOAD ALL PAINTINGS
+    // FETCH FIRST PAINTINGS
     // ========================================================
 
     texture.fetch(
+
         regl,
+
         20,
+
         dynamicRes,
 
         loadPainting,
@@ -319,11 +378,12 @@ module.exports = (
         () => {
             fetching = false;
         }
+
     );
 
 
     // ========================================================
-    // RETURN API
+    // UPDATE
     // ========================================================
 
     return {
@@ -348,16 +408,19 @@ module.exports = (
 
 
             // ------------------------------------------------
-            // SHOW ALL NEARBY PAINTINGS
+            // SHOW NEARBY PAINTINGS
             // ------------------------------------------------
 
             shownBatch =
                 batch.slice(
+
                     Math.max(
                         0,
                         index - renderDist
                     ),
+
                     index + renderDist
+
                 );
 
 
@@ -379,19 +442,24 @@ module.exports = (
 
 
             // ------------------------------------------------
-            // DO NOT HIDE PAINTINGS YET
+            // ORIENTATION CULLING
             // ------------------------------------------------
-            //
-            // We deliberately keep all nearby paintings
-            // visible while we establish the gallery.
-            //
-            // Once everything is positioned correctly,
-            // we'll add intelligent mobile culling back.
-            // ------------------------------------------------
+
+            shownBatch =
+                shownBatch.filter(
+                    t =>
+                        t.tex &&
+                        culling(
+                            pos,
+                            angle,
+                            fovX,
+                            t
+                        )
+                );
 
 
             // ------------------------------------------------
-            // FETCH MORE IF REQUIRED
+            // FETCH MORE
             // ------------------------------------------------
 
             if (
@@ -402,8 +470,11 @@ module.exports = (
                 if (!fetching) {
 
                     texture.fetch(
+
                         regl,
+
                         10,
+
                         dynamicRes,
 
                         loadPainting,
@@ -411,6 +482,7 @@ module.exports = (
                         () => {
                             fetching = false;
                         }
+
                     );
 
                     fetching = true;
@@ -419,10 +491,11 @@ module.exports = (
 
 
             // ------------------------------------------------
-            // TEMPORARY LOWER RESOLUTION WHILE MOVING
+            // DYNAMIC RESOLUTION
             // ------------------------------------------------
 
             dynamicRes = 'low';
+
 
             if (dynamicResTimer) {
 
@@ -431,11 +504,15 @@ module.exports = (
                 );
             }
 
+
             dynamicResTimer =
                 setTimeout(
                     () => {
+
                         dynamicRes = 'high';
+
                     },
+
                     dynamicResPeriod
                 );
         },
@@ -443,5 +520,6 @@ module.exports = (
 
         batch: () =>
             shownBatch
+
     };
 };
