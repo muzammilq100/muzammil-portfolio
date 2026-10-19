@@ -20,8 +20,8 @@ jobs:
         run: npm ci
       - name: Build
         run: npm run build
-- name: Prepare website
-  run: mv build.html index.html
+      - name: Prepare website
+        run: mv build.html index.html
       - name: Remove build files from gitignore
         run: |
           sed -i '/build.html/d' .gitignore
