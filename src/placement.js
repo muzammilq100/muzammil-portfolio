@@ -27,33 +27,39 @@ const LABEL_X_RIGHT = 13.644;
 const LABEL_Z_END = 47.644;
 
 const PAINTING_DEPTH = 0.12;
-const SIDE_CENTRE_Y = 3.35;
-const END_CENTRE_Y = 4.0;
+
+// Every painting is centred at the same height as the masterpiece,
+// so the whole gallery shares one eye line.
+const CENTRE_Y = 4.0;
+
+// Every painting uses the SAME size rule as the masterpiece:
+// as tall as 5.6 m, or as wide as 7 m, whichever limit it hits first.
+const MAX_HEIGHT = 5.6;
+const MAX_WIDTH = 7.0;
 
 // ------------------------------------------------------------
 // WHERE EACH ARTWORK GOES
 // ------------------------------------------------------------
 // z is the CENTRE of the painting along the wall.
 // The order matches api/local.js: index 0 = Artwork I, etc.
+//
+// Columns stand at z = 18, 29 and 40.
+//   Artwork I   landscape, right wall, centred between the
+//               columns at z 29 and 40 (z = 34.5)
+//   Artwork II  portrait, right wall, z = 44.2
+//   Artwork III portrait, left wall,  z = 44.2
+// II and III share the same z, so they face each other across
+// the gallery. The masterpiece closes the end wall.
 // ------------------------------------------------------------
 const layouts = [
-    { side: 'right', z: 33.5 },  // Artwork I
-    { side: 'right', z: 37.2 },  // Artwork II
-    { side: 'left',  z: 44.0 },  // Artwork III
+    { side: 'right', z: 34.5 },  // Artwork I (landscape)
+    { side: 'right', z: 44.2 },  // Artwork II (yellow dress)
+    { side: 'left',  z: 44.2 },  // Artwork III (red chair)
     { side: 'end',   z: END_Z }  // Masterpiece (centred at x = 7)
 ];
 
-function getDimensions(aspect, index) {
-    if (index === 3) {
-        const maxHeight = 5.6;
-        const maxWidth = 7.0;
-        const height = Math.min(maxHeight, maxWidth / aspect);
-        return { width: height * aspect, height };
-    }
-
-    const maxWidth = 3.05;
-    const maxHeight = 3.75;
-    const height = Math.min(maxHeight, maxWidth / aspect);
+function getDimensions(aspect) {
+    const height = Math.min(MAX_HEIGHT, MAX_WIDTH / aspect);
     return { width: height * aspect, height };
 }
 
@@ -80,8 +86,7 @@ function getDimensions(aspect, index) {
 function makeModel(width, height, index) {
     const layout = layouts[index];
     const model = [];
-    const centreY = index === 3 ? END_CENTRE_Y : SIDE_CENTRE_Y;
-    const y = centreY - height / 2;
+    const y = CENTRE_Y - height / 2;
 
     if (layout.side === 'left') {
         mat4.fromTranslation(model, [LEFT_X, y, layout.z + width / 2]);
@@ -103,8 +108,7 @@ function makeModel(width, height, index) {
 function makeTextModel(width, height, index) {
     const layout = layouts[index];
     const model = [];
-    const centreY = index === 3 ? END_CENTRE_Y : SIDE_CENTRE_Y;
-    const y = centreY - height / 2 - 0.45;
+    const y = CENTRE_Y - height / 2 - 0.45;
 
     if (layout.side === 'left') {
         mat4.fromTranslation(model, [LABEL_X_LEFT, y, layout.z + width / 2]);
@@ -129,7 +133,7 @@ module.exports = (regl) => {
         const index = p.image_id;
         if (!layouts[index]) return;
 
-        const { width, height } = getDimensions(p.aspect, index);
+        const { width, height } = getDimensions(p.aspect);
 
         batch.push({
             ...p,
