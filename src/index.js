@@ -8,7 +8,8 @@ const mapVal = (value, min1, max1, min2, max2) => min2 + (value - min1) * (max2 
 var fovX = () => mapVal(window.innerWidth / window.innerHeight, 16/9, 9/16, 1.7, Math.PI / 3);
 
 if (navigator.userAgent.match(/(iPad)|(iPhone)|(iPod)|(android)|(webOS)/i)) {
-	useReflexion = false;
+	// Floor reflections stay ON for phones too (the floor is meant to be glossy).
+	// If it ever feels laggy, set useReflexion = false; here.
 	// Account for the searchbar
 	fovX = () => mapVal(window.innerWidth / window.innerHeight, 16/9, 9/16, 1.5, Math.PI / 3);
 }
