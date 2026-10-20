@@ -4,128 +4,446 @@ const mat4 = require('gl-mat4');
 const vec3 = require('gl-vec3');
 const lock = require('pointer-lock');
 
+// const footstep = require('./footstep')();
+
+
+/* -----------------------------------------------------------
+ * CAMERA / MOVEMENT SETTINGS
+ * --------------------------------------------------------- */
+
 const mouseSensibility = 0.002;
+
 const touchSensibility = 0.008;
+
 const rotationFilter = 0.95;
 
 const limitAngle = Math.PI / 4;
+
 const slowAngle = Math.PI / 6;
 
+const durationToClick = 300;
+
+const distToClick = 20;
+
+
+/*
+ * Calm museum walking speed.
+ */
+
 const walkSpeed = 2.4;
+
 const runSpeed = 2.4;
 
 const walkStepLen = 1000;
+
 const runStepLen = 5;
 
+
+/*
+ * Fixed eye-level camera.
+ */
+
 const height = 2;
+
+const stepHeight = 0.03;
+
 const distToWalls = 0.5;
+
+const viewingDist = 3;
+
+const paintingSnapDist = 1.3;
+
+const yLimitTouch = 5;
+
+const touchDistLimit = 40;
+
+const rayStep = 4;
 
 const tpDuration = 1;
 
-const sdLine = (p, a, b, tmp1, tmp2) => {
-	const pa = vec3.sub(tmp1, p, a);
-	const ba = vec3.sub(tmp2, b, a);
 
-	const h = Math.max(
-		Math.min(
-			vec3.dot(pa, ba) / vec3.dot(ba, ba),
-			1
-		),
-		0
-	);
+/* -----------------------------------------------------------
+ * GEOMETRY HELPERS
+ * --------------------------------------------------------- */
+
+const sdLine = (
+	p,
+	a,
+	b,
+	tmp1,
+	tmp2
+) => {
+
+	const pa =
+		vec3.sub(
+			tmp1,
+			p,
+			a
+		);
+
+	const ba =
+		vec3.sub(
+			tmp2,
+			b,
+			a
+		);
+
+	const h =
+		Math.max(
+			Math.min(
+				vec3.dot(pa, ba) /
+				vec3.dot(ba, ba),
+				1
+			),
+			0
+		);
 
 	return vec3.dist(
 		pa,
-		vec3.scale(ba, ba, h)
+		vec3.scale(
+			ba,
+			ba,
+			h
+		)
 	);
+
 };
 
-const lerp = (x, a, b) =>
+
+const planeProject = (
+	org,
+	dir,
+	plane
+) => {
+
+	const dist =
+		-(
+			vec3.dot(
+				org,
+				plane
+			) -
+			plane[3]
+		) /
+		vec3.dot(
+			dir,
+			plane
+		);
+
+	let intersection =
+		vec3.scale(
+			[],
+			dir,
+			dist
+		);
+
+	vec3.add(
+		intersection,
+		intersection,
+		org
+	);
+
+	return {
+		dist,
+		intersection
+	};
+
+};
+
+
+const wallProject = (
+	org,
+	dir,
+	a,
+	b
+) => {
+
+	/*
+	 * Calculate vertical plane through A and B.
+	 */
+
+	const vx =
+		a[0] - b[0];
+
+	const vz =
+		a[1] - b[1];
+
+	const nx =
+		-vz;
+
+	const nz =
+		vx;
+
+	const wAB =
+		a[0] * nx +
+		a[1] * nz;
+
+
+	/*
+	 * Project to plane.
+	 */
+
+	let {
+		dist,
+		intersection: i
+	} =
+		planeProject(
+			org,
+			dir,
+			[
+				nx,
+				0,
+				nz,
+				wAB
+			]
+		);
+
+
+	/*
+	 * Verify that intersection lies
+	 * between A and B.
+	 */
+
+	const wA =
+		a[0] * vx +
+		a[1] * vz;
+
+	const wB =
+		b[0] * vx +
+		b[1] * vz;
+
+	const wI =
+		i[0] * vx +
+		i[2] * vz;
+
+	if (
+		(wI > wA) +
+		(wI > wB) !==
+		1
+	) {
+
+		dist = Infinity;
+
+	}
+
+
+	return {
+		a,
+		b,
+		dist,
+		intersection: i
+	};
+
+};
+
+
+const lerp = (
+	x,
+	a,
+	b
+) =>
 	(1 - x) * a + x * b;
+
 
 const easeInOutQuad = x =>
 	x < 0.5
 		? 2 * x * x
-		: 1 - Math.pow(-2 * x + 2, 2) / 2;
+		: 1 -
+			Math.pow(
+				-2 * x + 2,
+				2
+			) / 2;
 
 
-module.exports = function ({ getGridSegments, getGridParts }, fovY) {
+/* -----------------------------------------------------------
+ * FPS CONTROLLER
+ * --------------------------------------------------------- */
 
-	var mouse = [0, Math.PI * 3 / 4];
-	var fmouse = [0, Math.PI * 3 / 4];
+module.exports = function (
+	{
+		getGridSegments,
+		getGridParts
+	},
+	fovY
+) {
 
-	var dir = [0, 0, 0];
 
-	var pos = [2, height, 2];
+	/* -------------------------------------------------------
+	 * CAMERA STATE
+	 * ----------------------------------------------------- */
 
-	var forward = [0, 0, 0];
-	var up = [0, 1, 0];
+	var mouse = [
+		0,
+		Math.PI * 3 / 4
+	];
 
-	var force = [0, 0, 0];
+	var fmouse = [
+		0,
+		Math.PI * 3 / 4
+	];
+
+	var dir = [
+		0,
+		0,
+		0
+	];
+
+	var pos = [
+		2,
+		height,
+		2
+	];
+
+	var forward = [
+		0.707,
+		0,
+		0.707
+	];
+
+	var up = [
+		0,
+		1,
+		0
+	];
+
+	var force = [
+		0,
+		0,
+		0
+	];
 
 	var walkTime = 0.5;
 
-	var view = mat4.identity([]);
-	var proj = mat4.identity([]);
+	var view =
+		mat4.identity([]);
+
+	var proj =
+		mat4.identity([]);
 
 	var run = false;
 
-	var startPos = [0, 0, 0];
-	var endPos = [0, 0, 0];
+	var startPos = [
+		0,
+		0,
+		0
+	];
+
+	var endPos = [
+		0,
+		0,
+		0
+	];
 
 	var tpProgress = 1;
 
 	var paused = false;
 
 
-	/* =========================================================
-	   CAMERA
-	   ========================================================= */
+	/* -------------------------------------------------------
+	 * CAMERA ORIENTATION
+	 *
+	 * Museum mode:
+	 *
+	 * - no looking up
+	 * - no looking down
+	 * - horizontal rotation only
+	 * ----------------------------------------------------- */
 
-	const orientCamera = (dx, dy, sensibility) => {
+	const orientCamera = (
+		dx,
+		dy,
+		sensibility
+	) => {
 
-		dx = Math.max(Math.min(dx, 100), -100);
-		dy = Math.max(Math.min(dy, 100), -100);
+		dx =
+			Math.max(
+				Math.min(dx, 100),
+				-100
+			);
+
+		dy =
+			Math.max(
+				Math.min(dy, 100),
+				-100
+			);
+
+		let smooth = 1;
+
+		if (
+			Math.abs(mouse[0]) >
+				slowAngle &&
+			Math.sign(mouse[0]) ===
+				Math.sign(dy)
+		) {
+
+			smooth =
+				(
+					limitAngle -
+					Math.abs(mouse[0])
+				) /
+				(
+					limitAngle -
+					slowAngle
+				);
+
+		}
+
 
 		/*
-		 * Museum mode:
-		 * - Eye level remains fixed.
-		 * - No looking up/down.
-		 * - Horizontal rotation only.
+		 * Horizontal rotation only.
+		 *
+		 * mouse[0] is ALWAYS zero.
 		 */
 
 		mouse[0] = 0;
 
-		mouse[1] += dx * sensibility;
+		mouse[1] +=
+			dx * sensibility;
+
 	};
 
 
-	/* =========================================================
-	   DESKTOP MOUSE / POINTER LOCK
-	   ========================================================= */
+	/* -------------------------------------------------------
+	 * DESKTOP MOUSE / POINTER LOCK
+	 * ----------------------------------------------------- */
 
-	let pointer = lock(document.body);
+	let pointer =
+		lock(document.body);
 
-	pointer.on('attain', (movements) => {
+	pointer.on(
+		'attain',
+		(movements) => {
 
-		movements.on('data', (move) => {
+			movements.on(
+				'data',
+				(move) => {
 
-			orientCamera(
-				move.dx,
-				move.dy,
-				mouseSensibility
+					orientCamera(
+						move.dx,
+						move.dy,
+						mouseSensibility
+					);
+
+				}
 			);
 
-		});
+		}
+	);
 
-	});
 
-
-	/* =========================================================
-	   MOBILE CONTROLS
-	   ========================================================= */
+	/* -------------------------------------------------------
+	 * MOBILE CONTROLS
+	 *
+	 * LEFT:
+	 *   joystick = walk
+	 *
+	 * RIGHT:
+	 *   swipe horizontally = look
+	 *
+	 * No vertical camera movement.
+	 * ----------------------------------------------------- */
 
 	let moveTouchId = null;
+
 	let lookTouchId = null;
 
 	let lookLastX = 0;
@@ -138,37 +456,56 @@ module.exports = function ({ getGridSegments, getGridParts }, fovY) {
 	const joystickRadius = 58;
 
 
-	/*
-	 * Create mobile UI
-	 */
+	/* -------------------------------------------------------
+	 * MOBILE CONTROL DOM
+	 * ----------------------------------------------------- */
 
-	const mobileControls = document.createElement('div');
+	const mobileControls =
+		document.createElement('div');
 
-	mobileControls.id = 'museum-mobile-controls';
+	mobileControls.id =
+		'museum-mobile-controls';
 
 	mobileControls.innerHTML = `
-		<div id="museum-joystick">
-			<div id="museum-joystick-knob"></div>
+
+		<div
+			id="museum-joystick"
+			aria-label="Move"
+		>
+
+			<div
+				id="museum-joystick-knob"
+			></div>
+
 		</div>
 
-		<div id="museum-look-hint">
+		<div
+			id="museum-look-hint"
+		>
 			SWIPE TO LOOK
 		</div>
+
 	`;
 
-	document.body.appendChild(mobileControls);
+	document.body.appendChild(
+		mobileControls
+	);
 
 
 	const joystick =
-		mobileControls.querySelector('#museum-joystick');
+		mobileControls.querySelector(
+			'#museum-joystick'
+		);
 
 	const knob =
-		mobileControls.querySelector('#museum-joystick-knob');
+		mobileControls.querySelector(
+			'#museum-joystick-knob'
+		);
 
 
-	/* =========================================================
-	   JOYSTICK
-	   ========================================================= */
+	/* -------------------------------------------------------
+	 * RESET JOYSTICK
+	 * ----------------------------------------------------- */
 
 	const resetJoystick = () => {
 
@@ -176,31 +513,49 @@ module.exports = function ({ getGridSegments, getGridParts }, fovY) {
 			'translate(-50%, -50%)';
 
 		dir[0] = 0;
+
 		dir[2] = 0;
 
 	};
 
 
-	const updateJoystick = (touch) => {
+	/* -------------------------------------------------------
+	 * UPDATE JOYSTICK
+	 * ----------------------------------------------------- */
+
+	const updateJoystick = (
+		touch
+	) => {
 
 		let dx =
-			touch.clientX - joystickCenter.x;
+			touch.clientX -
+			joystickCenter.x;
 
 		let dy =
-			touch.clientY - joystickCenter.y;
-
+			touch.clientY -
+			joystickCenter.y;
 
 		const length =
-			Math.hypot(dx, dy);
+			Math.hypot(
+				dx,
+				dy
+			);
 
 
-		if (length > joystickRadius) {
+		if (
+			length >
+			joystickRadius
+		) {
 
 			dx =
-				dx / length * joystickRadius;
+				dx /
+				length *
+				joystickRadius;
 
 			dy =
-				dy / length * joystickRadius;
+				dy /
+				length *
+				joystickRadius;
 
 		}
 
@@ -215,9 +570,13 @@ module.exports = function ({ getGridSegments, getGridParts }, fovY) {
 		const deadZone = 10;
 
 
-		if (length < deadZone) {
+		if (
+			length <
+			deadZone
+		) {
 
 			dir[0] = 0;
+
 			dir[2] = 0;
 
 			return;
@@ -226,27 +585,44 @@ module.exports = function ({ getGridSegments, getGridParts }, fovY) {
 
 
 		/*
-		 * Joystick:
-		 *
-		 * UP    = forward
-		 * DOWN  = backward
-		 * LEFT  = left
-		 * RIGHT = right
+		 * Screen-up = forward.
+		 * Screen-down = backward.
 		 */
 
-		dir[0] = dx / joystickRadius;
+		const nx =
+			dx /
+			joystickRadius;
 
-		dir[2] = dy / joystickRadius;
+		const ny =
+			dy /
+			joystickRadius;
+
+
+		dir[0] = nx;
+
+		dir[2] = ny;
 
 	};
 
 
-	const touchById = (touches, id) => {
+	/* -------------------------------------------------------
+	 * FIND TOUCH BY ID
+	 * ----------------------------------------------------- */
 
-		for (let i = 0; i < touches.length; i++) {
+	const touchById = (
+		touches,
+		id
+	) => {
+
+		for (
+			let i = 0;
+			i < touches.length;
+			i++
+		) {
 
 			if (
-				touches[i].identifier === id
+				touches[i].identifier ===
+				id
 			) {
 
 				return touches[i];
@@ -260,36 +636,57 @@ module.exports = function ({ getGridSegments, getGridParts }, fovY) {
 	};
 
 
-	/* =========================================================
-	   TOUCH START
-	   ========================================================= */
+	/* -------------------------------------------------------
+	 * TOUCH START
+	 *
+	 * IMPORTANT:
+	 *
+	 * The painting plaque is explicitly excluded.
+	 * This prevents the joystick system from stealing
+	 * the tap.
+	 * ----------------------------------------------------- */
 
-	const handleTouchStart = (e) => {
-
-		/*
-		 * Don't interfere with buttons,
-		 * painting plaque or story overlay.
-		 */
+	const handleTouchStart = (
+		e
+	) => {
 
 		if (
 			e.target &&
-			e.target.closest &&
-			e.target.closest(
-				'button, .story-overlay, .story-card, #museum-plaque'
-			)
+			e.target.closest
 		) {
 
-			return;
+			const interactive =
+				e.target.closest(
+					[
+						'button',
+						'.painting-plaque',
+						'.story-overlay',
+						'.story-card'
+					].join(', ')
+				);
+
+
+			if (interactive) {
+
+				return;
+
+			}
 
 		}
 
 
 		if (e.cancelable) {
+
 			e.preventDefault();
+
 		}
 
 
-		if (paused) return;
+		if (paused) {
+
+			return;
+
+		}
 
 
 		for (
@@ -302,10 +699,9 @@ module.exports = function ({ getGridSegments, getGridParts }, fovY) {
 				e.changedTouches[i];
 
 
-			/*
-			 * LEFT HALF
-			 * = movement
-			 */
+			/* ---------------------------------------------
+			 * LEFT HALF = MOVEMENT
+			 * ------------------------------------------- */
 
 			if (
 				moveTouchId === null &&
@@ -330,15 +726,16 @@ module.exports = function ({ getGridSegments, getGridParts }, fovY) {
 					rect.height / 2;
 
 
-				updateJoystick(touch);
+				updateJoystick(
+					touch
+				);
 
 			}
 
 
-			/*
-			 * RIGHT HALF
-			 * = look
-			 */
+			/* ---------------------------------------------
+			 * RIGHT HALF = LOOK
+			 * ------------------------------------------- */
 
 			else if (
 				lookTouchId === null &&
@@ -359,23 +756,27 @@ module.exports = function ({ getGridSegments, getGridParts }, fovY) {
 	};
 
 
-	/* =========================================================
-	   TOUCH MOVE
-	   ========================================================= */
+	/* -------------------------------------------------------
+	 * TOUCH MOVE
+	 * ----------------------------------------------------- */
 
-	const handleTouchMove = (e) => {
+	const handleTouchMove = (
+		e
+	) => {
 
 		if (e.cancelable) {
+
 			e.preventDefault();
+
 		}
 
 
-		if (paused) return;
+		if (paused) {
 
+			return;
 
-		/*
-		 * Movement joystick
-		 */
+		}
+
 
 		const moveTouch =
 			moveTouchId === null
@@ -388,15 +789,12 @@ module.exports = function ({ getGridSegments, getGridParts }, fovY) {
 
 		if (moveTouch) {
 
-			updateJoystick(moveTouch);
+			updateJoystick(
+				moveTouch
+			);
 
 		}
 
-
-		/*
-		 * Right-side swipe
-		 * controls horizontal rotation.
-		 */
 
 		const lookTouch =
 			lookTouchId === null
@@ -429,14 +827,18 @@ module.exports = function ({ getGridSegments, getGridParts }, fovY) {
 	};
 
 
-	/* =========================================================
-	   TOUCH END
-	   ========================================================= */
+	/* -------------------------------------------------------
+	 * TOUCH END
+	 * ----------------------------------------------------- */
 
-	const handleTouchEnd = (e) => {
+	const handleTouchEnd = (
+		e
+	) => {
 
 		if (e.cancelable) {
+
 			e.preventDefault();
+
 		}
 
 
@@ -455,7 +857,8 @@ module.exports = function ({ getGridSegments, getGridParts }, fovY) {
 				moveTouchId
 			) {
 
-				moveTouchId = null;
+				moveTouchId =
+					null;
 
 				resetJoystick();
 
@@ -467,7 +870,8 @@ module.exports = function ({ getGridSegments, getGridParts }, fovY) {
 				lookTouchId
 			) {
 
-				lookTouchId = null;
+				lookTouchId =
+					null;
 
 			}
 
@@ -476,41 +880,49 @@ module.exports = function ({ getGridSegments, getGridParts }, fovY) {
 	};
 
 
+	/* -------------------------------------------------------
+	 * REGISTER TOUCH EVENTS
+	 * ----------------------------------------------------- */
+
 	document.addEventListener(
 		'touchstart',
 		handleTouchStart,
-		{ passive: false }
+		{
+			passive: false
+		}
 	);
-
 
 	document.addEventListener(
 		'touchmove',
 		handleTouchMove,
-		{ passive: false }
+		{
+			passive: false
+		}
 	);
-
 
 	document.addEventListener(
 		'touchend',
 		handleTouchEnd,
-		{ passive: false }
+		{
+			passive: false
+		}
 	);
-
 
 	document.addEventListener(
 		'touchcancel',
 		handleTouchEnd,
-		{ passive: false }
+		{
+			passive: false
+		}
 	);
 
 
-	/* =========================================================
-	   MOBILE UI STYLE
-	   ========================================================= */
+	/* -------------------------------------------------------
+	 * MOBILE UI STYLE
+	 * ----------------------------------------------------- */
 
 	const mobileStyle =
 		document.createElement('style');
-
 
 	mobileStyle.textContent = `
 
@@ -529,7 +941,6 @@ module.exports = function ({ getGridSegments, getGridParts }, fovY) {
 			touch-action: none;
 
 			user-select: none;
-
 		}
 
 
@@ -561,7 +972,6 @@ module.exports = function ({ getGridSegments, getGridParts }, fovY) {
 			pointer-events: auto;
 
 			touch-action: none;
-
 		}
 
 
@@ -587,6 +997,7 @@ module.exports = function ({ getGridSegments, getGridParts }, fovY) {
 				rgba(191,145,54,.38);
 
 			box-shadow:
+
 				0 3px 14px
 				rgba(0,0,0,.3),
 
@@ -594,8 +1005,7 @@ module.exports = function ({ getGridSegments, getGridParts }, fovY) {
 				rgba(255,235,180,.12);
 
 			transform:
-				translate(-50%, -50%);
-
+				translate(-50%,-50%);
 		}
 
 
@@ -611,19 +1021,20 @@ module.exports = function ({ getGridSegments, getGridParts }, fovY) {
 				rgba(245,232,205,.32);
 
 			font:
-				10px Georgia, serif;
+				10px
+				Georgia,
+				serif;
 
-			letter-spacing:
-				.16em;
+			letter-spacing: .16em;
 
 			pointer-events: none;
-
 		}
 
 
 		@media
 		(max-width: 900px)
-		and (pointer: coarse) {
+		and
+		(pointer: coarse) {
 
 			#museum-mobile-controls {
 
@@ -635,18 +1046,21 @@ module.exports = function ({ getGridSegments, getGridParts }, fovY) {
 
 	`;
 
+	document.head.appendChild(
+		mobileStyle
+	);
 
-	document.head.appendChild(mobileStyle);
 
-
-	/* =========================================================
-	   KEYBOARD CONTROLS
-	   ========================================================= */
+	/* -------------------------------------------------------
+	 * KEYBOARD INPUT
+	 * ----------------------------------------------------- */
 
 	var keys = {};
 
 
-	const handleKey = (e) => {
+	const handleKey = (
+		e
+	) => {
 
 		if (
 			e.defaultPrevented ||
@@ -712,16 +1126,15 @@ module.exports = function ({ getGridSegments, getGridParts }, fovY) {
 		handleKey
 	);
 
-
 	window.addEventListener(
 		'keyup',
 		handleKey
 	);
 
 
-	/* =========================================================
-	   FIRST PERSON
-	   ========================================================= */
+	/* -------------------------------------------------------
+	 * RETURN FPS CONTROLLER
+	 * ----------------------------------------------------- */
 
 	var lastTime = 0;
 
@@ -737,13 +1150,19 @@ module.exports = function ({ getGridSegments, getGridParts }, fovY) {
 		up,
 
 
+		/* ---------------------------------------------
+		 * Pause while reading artwork
+		 * ------------------------------------------- */
+
 		setPaused: (value) => {
 
-			paused = !!value;
+			paused =
+				!!value;
 
 			if (paused) {
 
 				dir[0] = 0;
+
 				dir[2] = 0;
 
 				resetJoystick();
@@ -753,47 +1172,71 @@ module.exports = function ({ getGridSegments, getGridParts }, fovY) {
 		},
 
 
-		view: () => view,
+		/* ---------------------------------------------
+		 * View matrix
+		 * ------------------------------------------- */
 
+		view: () =>
+			view,
+
+
+		/* ---------------------------------------------
+		 * Projection matrix
+		 * ------------------------------------------- */
 
 		proj: () => {
 
 			mat4.perspective(
 				proj,
-
 				fovY(),
-
 				window.innerWidth /
 					window.innerHeight,
-
 				0.1,
-
 				100
 			);
-
 
 			return proj;
 
 		},
 
 
-		tick: ({ time }) => {
+		/* ---------------------------------------------
+		 * MAIN TICK
+		 * ------------------------------------------- */
+
+		tick: ({
+			time
+		}) => {
+
+
+			/* -----------------------------------------
+			 * Delta time
+			 * --------------------------------------- */
 
 			const dt =
-				time - lastTime;
+				time -
+				lastTime;
 
-			lastTime = time;
+			lastTime =
+				time;
 
 
-			let tmp1 =
-				[0, 0, 0];
+			/* -----------------------------------------
+			 * Temporary vectors
+			 * --------------------------------------- */
+
+			let tmp1 = [
+				0,
+				0,
+				0
+			];
 
 			let tmp2 = [];
 
 
-			/*
-			 * Horizontal movement direction.
-			 */
+			/* -----------------------------------------
+			 * Forward direction
+			 * --------------------------------------- */
 
 			vec3.set(
 				forward,
@@ -810,6 +1253,11 @@ module.exports = function ({ getGridSegments, getGridParts }, fovY) {
 				0
 			);
 
+
+			/*
+			 * Rotate movement according to
+			 * horizontal camera direction.
+			 */
 
 			vec3.rotateY(
 				force,
@@ -828,22 +1276,22 @@ module.exports = function ({ getGridSegments, getGridParts }, fovY) {
 
 
 			/*
-			 * No vertical camera movement.
+			 * Vertical camera rotation is
+			 * deliberately disabled.
 			 */
 
 			vec3.rotateX(
 				forward,
 				forward,
 				tmp1,
-				0
+				-mouse[0]
 			);
-
 
 			vec3.rotateX(
 				up,
 				up,
 				tmp1,
-				0
+				-mouse[0]
 			);
 
 
@@ -853,9 +1301,9 @@ module.exports = function ({ getGridSegments, getGridParts }, fovY) {
 			);
 
 
-			/*
-			 * Movement
-			 */
+			/* -----------------------------------------
+			 * MOVEMENT
+			 * --------------------------------------- */
 
 			const speed =
 				run
@@ -870,12 +1318,23 @@ module.exports = function ({ getGridSegments, getGridParts }, fovY) {
 			);
 
 
-			pos[1] = height;
+			/*
+			 * Maintain eye-level height.
+			 */
 
+			pos[1] =
+				height;
+
+
+			/*
+			 * Stop movement while story
+			 * overlay is open.
+			 */
 
 			if (paused) {
 
 				dir[0] = 0;
+
 				dir[2] = 0;
 
 			}
@@ -889,9 +1348,9 @@ module.exports = function ({ getGridSegments, getGridParts }, fovY) {
 				);
 
 
-			/*
-			 * Wall collision.
-			 */
+			/* -----------------------------------------
+			 * WALL COLLISION
+			 * --------------------------------------- */
 
 			const collisions =
 				getGridSegments(
@@ -900,28 +1359,56 @@ module.exports = function ({ getGridSegments, getGridParts }, fovY) {
 				)
 
 				.map(
-					([[ax, ay], [bx, by]]) => [
-						[ax, height, ay],
-						[bx, height, by]
-					]
+					([
+						[
+							ax,
+							ay
+						],
+						[
+							bx,
+							by
+						]
+					]) =>
+						[
+							[
+								ax,
+								height,
+								ay
+							],
+							[
+								bx,
+								height,
+								by
+							]
+						]
 				)
 
 				.filter(
-					([a, b]) =>
+					([
+						a,
+						b
+					]) =>
 						sdLine(
 							newPos,
 							a,
 							b,
 							tmp1,
 							tmp2
-						) < distToWalls
+						) <
+						distToWalls
 				);
 
 
-			if (collisions.length !== 0) {
+			if (
+				collisions.length !==
+				0
+			) {
 
 				for (
-					let [a, b]
+					let [
+						a,
+						b
+					]
 					of collisions
 				) {
 
@@ -974,12 +1461,54 @@ module.exports = function ({ getGridSegments, getGridParts }, fovY) {
 			}
 
 
-			/*
-			 * Walking animation timing.
-			 */
+			/* -----------------------------------------
+			 * WALK ANIMATION
+			 *
+			 * Camera remains at fixed eye height.
+			 * --------------------------------------- */
 
 			const d =
-				vec3.len(force);
+				vec3.len(
+					force
+				);
+
+
+			if (
+				d === 0 &&
+				walkTime !== 0.25
+			) {
+
+				walkTime =
+					(
+						Math.abs(
+							(
+								walkTime +
+								0.5
+							) %
+							1 -
+							0.5
+						) -
+						0.25
+					) *
+						0.8 +
+					0.25;
+
+
+				if (
+					(
+						walkTime +
+						0.01
+					) %
+						0.25 <
+					0.02
+				) {
+
+					walkTime =
+						0.25;
+
+				}
+
+			}
 
 
 			const lastWalkTime =
@@ -988,12 +1517,19 @@ module.exports = function ({ getGridSegments, getGridParts }, fovY) {
 
 			walkTime +=
 				d /
-				(run
-					? runStepLen
-					: walkStepLen);
+				(
+					run
+						? runStepLen
+						: walkStepLen
+				);
 
 
-			pos[1] = height;
+			/*
+			 * Absolute eye-level camera.
+			 */
+
+			pos[1] =
+				height;
 
 
 			vec3.add(
@@ -1003,14 +1539,18 @@ module.exports = function ({ getGridSegments, getGridParts }, fovY) {
 			);
 
 
-			/*
-			 * Teleport transition.
-			 */
+			/* -----------------------------------------
+			 * TELEPORTATION
+			 * --------------------------------------- */
 
-			if (tpProgress < 1) {
+			if (
+				tpProgress <
+				1
+			) {
 
 				tpProgress +=
-					dt / tpDuration;
+					dt /
+					tpDuration;
 
 
 				tpProgress =
@@ -1028,15 +1568,12 @@ module.exports = function ({ getGridSegments, getGridParts }, fovY) {
 
 				vec3.set(
 					pos,
-
 					lerp(
 						t,
 						startPos[0],
 						endPos[0]
 					),
-
 					pos[1],
-
 					lerp(
 						t,
 						startPos[2],
@@ -1047,26 +1584,32 @@ module.exports = function ({ getGridSegments, getGridParts }, fovY) {
 			}
 
 
+			/* -----------------------------------------
+			 * CAMERA ROTATION FILTER
+			 * --------------------------------------- */
+
 			/*
-			 * Smooth horizontal camera rotation.
+			 * Vertical rotation is always zero.
 			 */
 
-			fmouse[0] = 0;
+			fmouse[0] =
+				0;
 
 
 			fmouse[1] =
 				rotationFilter *
-				mouse[1] +
-
+					mouse[1] +
 				(1 - rotationFilter) *
-				fmouse[1];
+					fmouse[1];
 
 
-			/*
-			 * Camera matrix.
-			 */
+			/* -----------------------------------------
+			 * VIEW MATRIX
+			 * --------------------------------------- */
 
-			mat4.identity(view);
+			mat4.identity(
+				view
+			);
 
 
 			mat4.rotateX(
@@ -1092,6 +1635,33 @@ module.exports = function ({ getGridSegments, getGridParts }, fovY) {
 					-1
 				)
 			);
+
+
+			/* -----------------------------------------
+			 * FOOTSTEPS DISABLED FOR QUIET MUSEUM MODE
+			 * --------------------------------------- */
+
+			/*
+			if (walkTime > 0.5)
+				footstep.update(
+					pos,
+					force,
+					up
+				);
+
+			if (
+				lastWalkTime % 1 <= 0.5 &&
+				walkTime % 1 > 0.5
+			)
+				footstep.step(
+					[
+						pos[0],
+						0,
+						pos[2]
+					],
+					run
+				);
+			*/
 
 		}
 
