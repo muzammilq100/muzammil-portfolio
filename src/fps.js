@@ -4,29 +4,23 @@ const mat4 = require('gl-mat4');
 const vec3 = require('gl-vec3');
 const lock = require('pointer-lock');
 
-// ------------------------------------------------------------
-// MUSEUM MOVEMENT SETTINGS
-// ------------------------------------------------------------
-
-// Slow, deliberate gallery walking speed.
-const walkSpeed = 2.4;
-
-// No sprinting in museum mode.
-const runSpeed = 2.4;
-
 const mouseSensibility = 0.002;
 const touchSensibility = 0.008;
 const rotationFilter = 0.95;
 
-// Camera remains exactly at eye level.
-const height = 2;
+const limitAngle = Math.PI / 4;
+const slowAngle = Math.PI / 6;
 
-// Collision distance from walls.
+const walkSpeed = 2.4;
+const runSpeed = 2.4;
+
+const walkStepLen = 1000;
+const runStepLen = 5;
+
+const height = 2;
 const distToWalls = 0.5;
 
-// Very subtle/no visible head bob.
-const walkStepLen = 1000;
-const runStepLen = 1000;
+const tpDuration = 1;
 
 const sdLine = (p, a, b, tmp1, tmp2) => {
 	const pa = vec3.sub(tmp1, p, a);
@@ -46,11 +40,16 @@ const sdLine = (p, a, b, tmp1, tmp2) => {
 	);
 };
 
-module.exports = function ({getGridSegments, getGridParts}, fovY) {
+const lerp = (x, a, b) =>
+	(1 - x) * a + x * b;
 
-	// ----------------------------------------------------------
-	// CAMERA
-	// ----------------------------------------------------------
+const easeInOutQuad = x =>
+	x < 0.5
+		? 2 * x * x
+		: 1 - Math.pow(-2 * x + 2, 2) / 2;
+
+
+module.exports = function ({ getGridSegments, getGridParts }, fovY) {
 
 	var mouse = [0, Math.PI * 3 / 4];
 	var fmouse = [0, Math.PI * 3 / 4];
@@ -59,7 +58,7 @@ module.exports = function ({getGridSegments, getGridParts}, fovY) {
 
 	var pos = [2, height, 2];
 
-	var forward = [0.707, 0, 0.707];
+	var forward = [0, 0, 0];
 	var up = [0, 1, 0];
 
 	var force = [0, 0, 0];
@@ -71,40 +70,39 @@ module.exports = function ({getGridSegments, getGridParts}, fovY) {
 
 	var run = false;
 
+	var startPos = [0, 0, 0];
+	var endPos = [0, 0, 0];
+
+	var tpProgress = 1;
+
 	var paused = false;
 
-	// ----------------------------------------------------------
-	// CAMERA ROTATION
-	// ----------------------------------------------------------
-	// IMPORTANT:
-	// Vertical mouse movement is deliberately ignored.
-	//
-	// The visitor can rotate:
-	//
-	//             LEFT <---- 90° ----> RIGHT
-	//
-	// but cannot look toward the ceiling or floor.
-	// ----------------------------------------------------------
+
+	/* =========================================================
+	   CAMERA
+	   ========================================================= */
 
 	const orientCamera = (dx, dy, sensibility) => {
 
-		dx = Math.max(
-			Math.min(dx, 100),
-			-100
-		);
+		dx = Math.max(Math.min(dx, 100), -100);
+		dy = Math.max(Math.min(dy, 100), -100);
 
-		// Vertical movement is intentionally ignored.
-		dy = 0;
+		/*
+		 * Museum mode:
+		 * - Eye level remains fixed.
+		 * - No looking up/down.
+		 * - Horizontal rotation only.
+		 */
 
 		mouse[0] = 0;
 
-		// Horizontal rotation only.
 		mouse[1] += dx * sensibility;
 	};
 
-	// ----------------------------------------------------------
-	// MOUSE / POINTER LOCK
-	// ----------------------------------------------------------
+
+	/* =========================================================
+	   DESKTOP MOUSE / POINTER LOCK
+	   ========================================================= */
 
 	let pointer = lock(document.body);
 
@@ -114,7 +112,7 @@ module.exports = function ({getGridSegments, getGridParts}, fovY) {
 
 			orientCamera(
 				move.dx,
-				0,
+				move.dy,
 				mouseSensibility
 			);
 
@@ -122,107 +120,580 @@ module.exports = function ({getGridSegments, getGridParts}, fovY) {
 
 	});
 
-	// ----------------------------------------------------------
-	// TOUCH
-	// ----------------------------------------------------------
 
-	let lastTouch = false;
+	/* =========================================================
+	   MOBILE CONTROLS
+	   ========================================================= */
 
-	const handleTouch = (e) => {
+	let moveTouchId = null;
+	let lookTouchId = null;
 
-		e.preventDefault();
+	let lookLastX = 0;
 
-		if(pointer) {
-			pointer.destroy();
-			pointer = false;
+	let joystickCenter = {
+		x: 0,
+		y: 0
+	};
+
+	const joystickRadius = 58;
+
+
+	/*
+	 * Create mobile UI
+	 */
+
+	const mobileControls = document.createElement('div');
+
+	mobileControls.id = 'museum-mobile-controls';
+
+	mobileControls.innerHTML = `
+		<div id="museum-joystick">
+			<div id="museum-joystick-knob"></div>
+		</div>
+
+		<div id="museum-look-hint">
+			SWIPE TO LOOK
+		</div>
+	`;
+
+	document.body.appendChild(mobileControls);
+
+
+	const joystick =
+		mobileControls.querySelector('#museum-joystick');
+
+	const knob =
+		mobileControls.querySelector('#museum-joystick-knob');
+
+
+	/* =========================================================
+	   JOYSTICK
+	   ========================================================= */
+
+	const resetJoystick = () => {
+
+		knob.style.transform =
+			'translate(-50%, -50%)';
+
+		dir[0] = 0;
+		dir[2] = 0;
+
+	};
+
+
+	const updateJoystick = (touch) => {
+
+		let dx =
+			touch.clientX - joystickCenter.x;
+
+		let dy =
+			touch.clientY - joystickCenter.y;
+
+
+		const length =
+			Math.hypot(dx, dy);
+
+
+		if (length > joystickRadius) {
+
+			dx =
+				dx / length * joystickRadius;
+
+			dy =
+				dy / length * joystickRadius;
+
 		}
 
-		if(e.type === 'touchstart') {
 
-			lastTouch = e.touches[0];
+		knob.style.transform =
+			`translate(
+				calc(-50% + ${dx}px),
+				calc(-50% + ${dy}px)
+			)`;
 
-		} else if(
-			e.type === 'touchmove' &&
-			lastTouch
+
+		const deadZone = 10;
+
+
+		if (length < deadZone) {
+
+			dir[0] = 0;
+			dir[2] = 0;
+
+			return;
+
+		}
+
+
+		/*
+		 * Joystick:
+		 *
+		 * UP    = forward
+		 * DOWN  = backward
+		 * LEFT  = left
+		 * RIGHT = right
+		 */
+
+		dir[0] = dx / joystickRadius;
+
+		dir[2] = dy / joystickRadius;
+
+	};
+
+
+	const touchById = (touches, id) => {
+
+		for (let i = 0; i < touches.length; i++) {
+
+			if (
+				touches[i].identifier === id
+			) {
+
+				return touches[i];
+
+			}
+
+		}
+
+		return null;
+
+	};
+
+
+	/* =========================================================
+	   TOUCH START
+	   ========================================================= */
+
+	const handleTouchStart = (e) => {
+
+		/*
+		 * Don't interfere with buttons,
+		 * painting plaque or story overlay.
+		 */
+
+		if (
+			e.target &&
+			e.target.closest &&
+			e.target.closest(
+				'button, .story-overlay, .story-card, #museum-plaque'
+			)
 		) {
 
+			return;
+
+		}
+
+
+		if (e.cancelable) {
+			e.preventDefault();
+		}
+
+
+		if (paused) return;
+
+
+		for (
+			let i = 0;
+			i < e.changedTouches.length;
+			i++
+		) {
+
+			const touch =
+				e.changedTouches[i];
+
+
+			/*
+			 * LEFT HALF
+			 * = movement
+			 */
+
+			if (
+				moveTouchId === null &&
+				touch.clientX <
+					window.innerWidth * 0.48
+			) {
+
+				moveTouchId =
+					touch.identifier;
+
+
+				const rect =
+					joystick.getBoundingClientRect();
+
+
+				joystickCenter.x =
+					rect.left +
+					rect.width / 2;
+
+				joystickCenter.y =
+					rect.top +
+					rect.height / 2;
+
+
+				updateJoystick(touch);
+
+			}
+
+
+			/*
+			 * RIGHT HALF
+			 * = look
+			 */
+
+			else if (
+				lookTouchId === null &&
+				touch.clientX >=
+					window.innerWidth * 0.48
+			) {
+
+				lookTouchId =
+					touch.identifier;
+
+				lookLastX =
+					touch.clientX;
+
+			}
+
+		}
+
+	};
+
+
+	/* =========================================================
+	   TOUCH MOVE
+	   ========================================================= */
+
+	const handleTouchMove = (e) => {
+
+		if (e.cancelable) {
+			e.preventDefault();
+		}
+
+
+		if (paused) return;
+
+
+		/*
+		 * Movement joystick
+		 */
+
+		const moveTouch =
+			moveTouchId === null
+				? null
+				: touchById(
+					e.touches,
+					moveTouchId
+				);
+
+
+		if (moveTouch) {
+
+			updateJoystick(moveTouch);
+
+		}
+
+
+		/*
+		 * Right-side swipe
+		 * controls horizontal rotation.
+		 */
+
+		const lookTouch =
+			lookTouchId === null
+				? null
+				: touchById(
+					e.touches,
+					lookTouchId
+				);
+
+
+		if (lookTouch) {
+
+			const dx =
+				lookTouch.clientX -
+				lookLastX;
+
+
+			lookLastX =
+				lookTouch.clientX;
+
+
 			orientCamera(
-				e.touches[0].pageX - lastTouch.pageX,
+				dx,
 				0,
 				touchSensibility
 			);
 
-			lastTouch = e.touches[0];
-
-		} else if(e.type === 'touchend') {
-
-			lastTouch = false;
-
 		}
+
 	};
 
-	window.addEventListener(
+
+	/* =========================================================
+	   TOUCH END
+	   ========================================================= */
+
+	const handleTouchEnd = (e) => {
+
+		if (e.cancelable) {
+			e.preventDefault();
+		}
+
+
+		for (
+			let i = 0;
+			i < e.changedTouches.length;
+			i++
+		) {
+
+			const touch =
+				e.changedTouches[i];
+
+
+			if (
+				touch.identifier ===
+				moveTouchId
+			) {
+
+				moveTouchId = null;
+
+				resetJoystick();
+
+			}
+
+
+			if (
+				touch.identifier ===
+				lookTouchId
+			) {
+
+				lookTouchId = null;
+
+			}
+
+		}
+
+	};
+
+
+	document.addEventListener(
 		'touchstart',
-		handleTouch,
-		{passive:false}
+		handleTouchStart,
+		{ passive: false }
 	);
 
-	window.addEventListener(
+
+	document.addEventListener(
 		'touchmove',
-		handleTouch,
-		{passive:false}
+		handleTouchMove,
+		{ passive: false }
 	);
 
-	window.addEventListener(
+
+	document.addEventListener(
 		'touchend',
-		handleTouch,
-		{passive:false}
+		handleTouchEnd,
+		{ passive: false }
 	);
 
-	// ----------------------------------------------------------
-	// KEYBOARD
-	// ----------------------------------------------------------
+
+	document.addEventListener(
+		'touchcancel',
+		handleTouchEnd,
+		{ passive: false }
+	);
+
+
+	/* =========================================================
+	   MOBILE UI STYLE
+	   ========================================================= */
+
+	const mobileStyle =
+		document.createElement('style');
+
+
+	mobileStyle.textContent = `
+
+		#museum-mobile-controls {
+
+			display: none;
+
+			position: fixed;
+
+			inset: 0;
+
+			z-index: 15;
+
+			pointer-events: none;
+
+			touch-action: none;
+
+			user-select: none;
+
+		}
+
+
+		#museum-joystick {
+
+			position: absolute;
+
+			left: 24px;
+
+			bottom: 28px;
+
+			width: 116px;
+
+			height: 116px;
+
+			border-radius: 50%;
+
+			border:
+				1px solid
+				rgba(226,195,128,.42);
+
+			background:
+				rgba(20,15,10,.22);
+
+			box-shadow:
+				inset 0 0 22px
+				rgba(255,220,140,.06);
+
+			pointer-events: auto;
+
+			touch-action: none;
+
+		}
+
+
+		#museum-joystick-knob {
+
+			position: absolute;
+
+			left: 50%;
+
+			top: 50%;
+
+			width: 48px;
+
+			height: 48px;
+
+			border-radius: 50%;
+
+			border:
+				1px solid
+				rgba(244,215,135,.55);
+
+			background:
+				rgba(191,145,54,.38);
+
+			box-shadow:
+				0 3px 14px
+				rgba(0,0,0,.3),
+
+				inset 0 0 12px
+				rgba(255,235,180,.12);
+
+			transform:
+				translate(-50%, -50%);
+
+		}
+
+
+		#museum-look-hint {
+
+			position: absolute;
+
+			right: 18px;
+
+			bottom: 34px;
+
+			color:
+				rgba(245,232,205,.32);
+
+			font:
+				10px Georgia, serif;
+
+			letter-spacing:
+				.16em;
+
+			pointer-events: none;
+
+		}
+
+
+		@media
+		(max-width: 900px)
+		and (pointer: coarse) {
+
+			#museum-mobile-controls {
+
+				display: block;
+
+			}
+
+		}
+
+	`;
+
+
+	document.head.appendChild(mobileStyle);
+
+
+	/* =========================================================
+	   KEYBOARD CONTROLS
+	   ========================================================= */
 
 	var keys = {};
 
+
 	const handleKey = (e) => {
 
-		if(
+		if (
 			e.defaultPrevented ||
 			e.ctrlKey ||
 			e.altKey ||
 			e.metaKey
-		) return;
+		) {
 
-		keys[e.code] = e.type === 'keydown';
+			return;
 
-		// Museum mode:
-		// no sprinting regardless of Shift.
+		}
+
+
+		keys[e.code] =
+			e.type === 'keydown';
+
+
 		run = false;
+
 
 		const left =
 			keys['KeyA'] ||
 			keys['ArrowLeft']
-			? 1
-			: 0;
+				? 1
+				: 0;
+
 
 		const right =
 			keys['KeyD'] ||
 			keys['ArrowRight']
-			? 1
-			: 0;
+				? 1
+				: 0;
+
 
 		const up =
 			keys['KeyW'] ||
 			keys['ArrowUp']
-			? 1
-			: 0;
+				? 1
+				: 0;
+
 
 		const down =
 			keys['KeyS'] ||
 			keys['ArrowDown']
-			? 1
-			: 0;
+				? 1
+				: 0;
+
 
 		dir = [
 			right - left,
@@ -230,74 +701,99 @@ module.exports = function ({getGridSegments, getGridParts}, fovY) {
 			down - up
 		];
 
+
 		e.preventDefault();
+
 	};
+
 
 	window.addEventListener(
 		'keydown',
 		handleKey
 	);
 
+
 	window.addEventListener(
 		'keyup',
 		handleKey
 	);
 
-	// ----------------------------------------------------------
-	// FIRST PERSON CAMERA
-	// ----------------------------------------------------------
+
+	/* =========================================================
+	   FIRST PERSON
+	   ========================================================= */
 
 	var lastTime = 0;
+
 
 	return {
 
 		pos,
+
 		fmouse,
+
 		forward,
+
 		up,
 
-		// Used by the museum reading overlay.
+
 		setPaused: (value) => {
 
 			paused = !!value;
 
-			if(paused) {
-				dir = [0, 0, 0];
+			if (paused) {
+
+				dir[0] = 0;
+				dir[2] = 0;
+
+				resetJoystick();
+
 			}
 
 		},
 
+
 		view: () => view,
+
 
 		proj: () => {
 
 			mat4.perspective(
 				proj,
+
 				fovY(),
+
 				window.innerWidth /
 					window.innerHeight,
+
 				0.1,
+
 				100
 			);
 
+
 			return proj;
+
 		},
 
-		tick: ({time}) => {
 
-			// --------------------------------------------------
-			// TIME
-			// --------------------------------------------------
+		tick: ({ time }) => {
 
-			const dt = time - lastTime;
+			const dt =
+				time - lastTime;
+
 			lastTime = time;
 
-			// --------------------------------------------------
-			// FORCE / CAMERA DIRECTION
-			// --------------------------------------------------
 
-			let tmp1 = [0, 0, 0];
+			let tmp1 =
+				[0, 0, 0];
+
 			let tmp2 = [];
+
+
+			/*
+			 * Horizontal movement direction.
+			 */
 
 			vec3.set(
 				forward,
@@ -305,6 +801,7 @@ module.exports = function ({getGridSegments, getGridParts}, fovY) {
 				0,
 				0
 			);
+
 
 			vec3.set(
 				up,
@@ -313,13 +810,6 @@ module.exports = function ({getGridSegments, getGridParts}, fovY) {
 				0
 			);
 
-			// Horizontal rotation only.
-			vec3.rotateY(
-				forward,
-				forward,
-				tmp1,
-				-mouse[1]
-			);
 
 			vec3.rotateY(
 				force,
@@ -328,41 +818,50 @@ module.exports = function ({getGridSegments, getGridParts}, fovY) {
 				-mouse[1]
 			);
 
-			// Absolutely no vertical camera rotation.
-			forward[1] = 0;
-			up[0] = 0;
-			up[1] = 1;
-			up[2] = 0;
 
-			vec3.normalize(
+			vec3.rotateY(
 				forward,
-				forward
+				forward,
+				tmp1,
+				-mouse[1]
 			);
+
+
+			/*
+			 * No vertical camera movement.
+			 */
+
+			vec3.rotateX(
+				forward,
+				forward,
+				tmp1,
+				0
+			);
+
+
+			vec3.rotateX(
+				up,
+				up,
+				tmp1,
+				0
+			);
+
 
 			vec3.normalize(
 				force,
 				force
 			);
 
-			// --------------------------------------------------
-			// MOVEMENT
-			// --------------------------------------------------
 
-			if(paused) {
-
-				vec3.set(
-					force,
-					0,
-					0,
-					0
-				);
-
-			}
+			/*
+			 * Movement
+			 */
 
 			const speed =
 				run
 					? runSpeed
 					: walkSpeed;
+
 
 			vec3.scale(
 				force,
@@ -370,8 +869,17 @@ module.exports = function ({getGridSegments, getGridParts}, fovY) {
 				speed * dt
 			);
 
-			// Maintain fixed eye level.
+
 			pos[1] = height;
+
+
+			if (paused) {
+
+				dir[0] = 0;
+				dir[2] = 0;
+
+			}
+
 
 			const newPos =
 				vec3.add(
@@ -380,21 +888,24 @@ module.exports = function ({getGridSegments, getGridParts}, fovY) {
 					force
 				);
 
-			// --------------------------------------------------
-			// WALL COLLISION
-			// --------------------------------------------------
+
+			/*
+			 * Wall collision.
+			 */
 
 			const collisions =
 				getGridSegments(
 					newPos[0],
 					newPos[2]
 				)
+
 				.map(
 					([[ax, ay], [bx, by]]) => [
 						[ax, height, ay],
 						[bx, height, by]
 					]
 				)
+
 				.filter(
 					([a, b]) =>
 						sdLine(
@@ -406,9 +917,10 @@ module.exports = function ({getGridSegments, getGridParts}, fovY) {
 						) < distToWalls
 				);
 
-			if(collisions.length !== 0) {
 
-				for(
+			if (collisions.length !== 0) {
+
+				for (
 					let [a, b]
 					of collisions
 				) {
@@ -423,20 +935,26 @@ module.exports = function ({getGridSegments, getGridParts}, fovY) {
 							tmp2
 						);
 
+
 					const delta =
-						vec3.sub(
-							tmp1,
-							b,
-							a
-						).reverse();
+						vec3
+							.sub(
+								tmp1,
+								b,
+								a
+							)
+							.reverse();
+
 
 					delta[0] =
 						-delta[0];
+
 
 					vec3.normalize(
 						delta,
 						delta
 					);
+
 
 					vec3.scale(
 						delta,
@@ -444,26 +962,39 @@ module.exports = function ({getGridSegments, getGridParts}, fovY) {
 						distance
 					);
 
+
 					vec3.add(
 						force,
 						force,
 						delta
 					);
+
 				}
+
 			}
 
-			// --------------------------------------------------
-			// MOVEMENT / NO HEAD BOB
-			// --------------------------------------------------
+
+			/*
+			 * Walking animation timing.
+			 */
 
 			const d =
 				vec3.len(force);
 
-			// Keep walking animation essentially stationary.
-			// This removes the game-like bouncing sensation.
-			walkTime = 0.25;
+
+			const lastWalkTime =
+				walkTime;
+
+
+			walkTime +=
+				d /
+				(run
+					? runStepLen
+					: walkStepLen);
+
 
 			pos[1] = height;
+
 
 			vec3.add(
 				pos,
@@ -471,30 +1002,86 @@ module.exports = function ({getGridSegments, getGridParts}, fovY) {
 				force
 			);
 
-			// --------------------------------------------------
-			// FILTER HORIZONTAL ROTATION
-			// --------------------------------------------------
+
+			/*
+			 * Teleport transition.
+			 */
+
+			if (tpProgress < 1) {
+
+				tpProgress +=
+					dt / tpDuration;
+
+
+				tpProgress =
+					Math.min(
+						tpProgress,
+						1
+					);
+
+
+				const t =
+					easeInOutQuad(
+						tpProgress
+					);
+
+
+				vec3.set(
+					pos,
+
+					lerp(
+						t,
+						startPos[0],
+						endPos[0]
+					),
+
+					pos[1],
+
+					lerp(
+						t,
+						startPos[2],
+						endPos[2]
+					)
+				);
+
+			}
+
+
+			/*
+			 * Smooth horizontal camera rotation.
+			 */
 
 			fmouse[0] = 0;
 
+
 			fmouse[1] =
-				rotationFilter * mouse[1] +
+				rotationFilter *
+				mouse[1] +
+
 				(1 - rotationFilter) *
 				fmouse[1];
 
-			// --------------------------------------------------
-			// VIEW MATRIX
-			// --------------------------------------------------
+
+			/*
+			 * Camera matrix.
+			 */
 
 			mat4.identity(view);
 
-			// No X rotation.
-			// Therefore the visitor can NEVER look up/down.
+
+			mat4.rotateX(
+				view,
+				view,
+				fmouse[0]
+			);
+
+
 			mat4.rotateY(
 				view,
 				view,
 				fmouse[1]
 			);
+
 
 			mat4.translate(
 				view,
@@ -505,6 +1092,9 @@ module.exports = function ({getGridSegments, getGridParts}, fovY) {
 					-1
 				)
 			);
+
 		}
+
 	};
+
 };
