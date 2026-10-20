@@ -28,13 +28,10 @@ module.exports = (
 
 
     // ========================================================
-    // LOAD THE MASTERPIECE
+    // LOAD MASTERPIECE
     // ========================================================
 
     const loadPainting = (p) => {
-
-        // We currently have ONLY ONE image.
-        // local.js returns the 2544 painting as image 0.
 
         const seg = placements[0];
 
@@ -43,16 +40,9 @@ module.exports = (
         }
 
 
-        // ----------------------------------------------------
+        // ====================================================
         // END WALL
-        // ----------------------------------------------------
-
-        /*
-         * map.js already defines the end-wall placement.
-         *
-         * We use that existing position instead of changing
-         * the architecture.
-         */
+        // ====================================================
 
         const x1 = seg[0][0];
         const z1 = seg[0][1];
@@ -68,15 +58,9 @@ module.exports = (
             (z1 + z2) / 2;
 
 
-        // ----------------------------------------------------
+        // ====================================================
         // MASTERPIECE SIZE
-        // ----------------------------------------------------
-
-        /*
-         * Larger than the original gallery paintings.
-         *
-         * We will fine-tune this after seeing it on the phone.
-         */
+        // ====================================================
 
         const globalScale = 3.0;
 
@@ -85,15 +69,22 @@ module.exports = (
             p.aspect;
 
 
-        // ----------------------------------------------------
+        // ====================================================
         // POSITION
-        // ----------------------------------------------------
+        // ====================================================
 
         /*
-         * Painting geometry uses its lower-left corner as
-         * the model origin.
+         * The end wall is at Z = 47.65.
          *
-         * This centres the complete painting on the end wall.
+         * The painting geometry faces +Z by default.
+         *
+         * We rotate it 180 degrees around Y so that the
+         * painting faces the viewer approaching from the
+         * gallery corridor.
+         *
+         * We also move it slightly toward the corridor so
+         * that it sits just in front of the wall instead
+         * of being buried inside it.
          */
 
         const pos = [
@@ -102,14 +93,14 @@ module.exports = (
 
             3.0 - globalScale,
 
-            centerZ - 0.015
+            centerZ + 0.08
 
         ];
 
 
-        // ----------------------------------------------------
+        // ====================================================
         // SCALE
-        // ----------------------------------------------------
+        // ====================================================
 
         const scale = [
 
@@ -122,9 +113,9 @@ module.exports = (
         ];
 
 
-        // ----------------------------------------------------
+        // ====================================================
         // MODEL
-        // ----------------------------------------------------
+        // ====================================================
 
         const model = [];
 
@@ -142,22 +133,21 @@ module.exports = (
         );
 
 
-        /*
-         * The existing end wall runs across the gallery.
-         *
-         * Rotation 0 keeps the painting parallel to that wall.
-         */
+        // ====================================================
+        // IMPORTANT:
+        // FACE THE VIEWER
+        // ====================================================
 
         mat4.rotateY(
             model,
             model,
-            0
+            Math.PI
         );
 
 
-        // ----------------------------------------------------
+        // ====================================================
         // TITLE
-        // ----------------------------------------------------
+        // ====================================================
 
         const text =
             p.textGen(width);
@@ -175,7 +165,7 @@ module.exports = (
 
                 0.25,
 
-                centerZ - 0.02
+                centerZ + 0.06
 
             ]
 
@@ -192,13 +182,13 @@ module.exports = (
         mat4.rotateY(
             textmodel,
             textmodel,
-            0
+            Math.PI
         );
 
 
-        // ----------------------------------------------------
+        // ====================================================
         // STORE
-        // ----------------------------------------------------
+        // ====================================================
 
         batch.push({
 
@@ -214,7 +204,7 @@ module.exports = (
 
             width,
 
-            angle: 0,
+            angle: Math.PI,
 
             textGen: null
 
@@ -259,21 +249,19 @@ module.exports = (
         ) => {
 
             /*
-             * IMPORTANT:
+             * No artwork culling.
              *
-             * There is deliberately NO artwork culling.
-             *
-             * The masterpiece remains available while we
-             * approach it.
+             * The masterpiece stays available while the
+             * viewer approaches it.
              */
 
             shownBatch =
                 batch;
 
 
-            // ------------------------------------------------
+            // =================================================
             // LOAD TEXTURE
-            // ------------------------------------------------
+            // =================================================
 
             shownBatch.forEach(
 
@@ -290,9 +278,9 @@ module.exports = (
             );
 
 
-            // ------------------------------------------------
+            // =================================================
             // DYNAMIC RESOLUTION
-            // ------------------------------------------------
+            // =================================================
 
             dynamicRes = 'low';
 
@@ -322,9 +310,9 @@ module.exports = (
         },
 
 
-        // ----------------------------------------------------
+        // ====================================================
         // DRAW
-        // ----------------------------------------------------
+        // ====================================================
 
         batch: () =>
             shownBatch
