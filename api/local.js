@@ -3,19 +3,19 @@
 const images = [
     {
         file: 'IMG_20250717_102753.jpg',
-        title: 'Artwork I'
+        title: 'Love me like I am Already Dead'
     },
     {
         file: 'lv_0_20260703041118.jpg',
-        title: 'Artwork II'
+        title: 'The Hardest Gift I Gave'
     },
     {
         file: 'lv_0_20260707024023.jpg',
-        title: 'Artwork III'
+        title: 'A Private Eulogy'
     },
     {
         file: 'lv_0_20260914002544.jpg',
-        title: 'Masterpiece'
+        title: 'The Guardians I Built to Defend'
     }
 ];
 
