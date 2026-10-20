@@ -34,6 +34,9 @@ const CENTRE_Y = 4.0;
 
 // Every painting uses the SAME size rule as the masterpiece:
 // as tall as 5.6 m, or as wide as 7 m, whichever limit it hits first.
+// Width of the gilded frame around every painting (metres).
+const FRAME_W = 0.26;
+
 const MAX_HEIGHT = 5.6;
 const MAX_WIDTH = 7.0;
 
@@ -103,12 +106,32 @@ function makeModel(width, height, index) {
     return model;
 }
 
+// The frame uses the same placement but NO scale: its mesh is built in
+// real metres and sized by the painting's width and height in the shader.
+function makeFrameModel(width, height, index) {
+    const layout = layouts[index];
+    const model = [];
+    const y = CENTRE_Y - height / 2;
+
+    if (layout.side === 'left') {
+        mat4.fromTranslation(model, [LEFT_X, y, layout.z + width / 2]);
+        mat4.rotateY(model, model, Math.PI / 2);
+    } else if (layout.side === 'right') {
+        mat4.fromTranslation(model, [RIGHT_X, y, layout.z - width / 2]);
+        mat4.rotateY(model, model, -Math.PI / 2);
+    } else {
+        mat4.fromTranslation(model, [7.0 + width / 2, y, END_Z]);
+        mat4.rotateY(model, model, Math.PI);
+    }
+    return model;
+}
+
 // Small caption sitting just under each painting, starting at the
 // painting's left edge.
 function makeTextModel(width, height, index) {
     const layout = layouts[index];
     const model = [];
-    const y = CENTRE_Y - height / 2 - 0.45;
+    const y = CENTRE_Y - height / 2 - FRAME_W - 0.38;
 
     if (layout.side === 'left') {
         mat4.fromTranslation(model, [LABEL_X_LEFT, y, layout.z + width / 2]);
@@ -138,6 +161,8 @@ module.exports = (regl) => {
         batch.push({
             ...p,
             model: makeModel(width, height, index),
+            framemodel: makeFrameModel(width, height, index),
+            framesize: [width, height],
             textmodel: makeTextModel(width, height, index),
             text: p.textGen(width),
             width,
