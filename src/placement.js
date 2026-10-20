@@ -8,307 +8,143 @@ const dynamicResPeriod = 3000;
 let dynamicRes = 'high';
 let dynamicResTimer;
 
+// Exact wall-panel centres from map.js.
+// The fourth artwork is the central masterpiece on the end wall.
+const layouts = [
+    { side: 'left', z: 5 },
+    { side: 'right', z: 9 },
+    { side: 'left', z: 22 },
+    { side: 'end', z: 47.65 }
+];
 
-// ============================================================
-// SINGLE MASTERPIECE
-// ============================================================
-
-module.exports = (
-    regl,
-    {
-        placements,
-        getAreaIndex
+function getDimensions(aspect, index) {
+    if (index === 3) {
+        const maxHeight = 5.6;
+        const maxWidth = 7.0;
+        const height = Math.min(maxHeight, maxWidth / aspect);
+        return { width: height * aspect, height };
     }
-) => {
 
+    const maxWidth = 3.05;
+    const maxHeight = 3.75;
+    const height = Math.min(maxHeight, maxWidth / aspect);
+    return { width: height * aspect, height };
+}
+
+function makeModel(width, height, index) {
+    const layout = layouts[index];
+    const model = [];
+    const y = (index === 3 ? 4.0 : 3.35) - height / 2;
+    const depth = 0.12;
+
+    if (layout.side === 'left') {
+        mat4.fromTranslation(model, [
+            0.27,
+            y,
+            layout.z - width / 2
+        ]);
+        mat4.scale(model, model, [width, height, depth]);
+        mat4.rotateY(model, model, Math.PI / 2);
+    } else if (layout.side === 'right') {
+        mat4.fromTranslation(model, [
+            13.73,
+            y,
+            layout.z + width / 2
+        ]);
+        mat4.scale(model, model, [width, height, depth]);
+        mat4.rotateY(model, model, -Math.PI / 2);
+    } else {
+        mat4.fromTranslation(model, [
+            7.0 + width / 2,
+            y,
+            47.65
+        ]);
+        mat4.scale(model, model, [width, height, depth]);
+        mat4.rotateY(model, model, Math.PI);
+    }
+
+    return model;
+}
+
+function makeTextModel(index) {
+    const layout = layouts[index];
+    const textmodel = [];
+    const labelWidth = 2.0;
+    const y = 0.35;
+
+    if (layout.side === 'left') {
+        mat4.fromTranslation(textmodel, [
+            0.145,
+            y,
+            layout.z - labelWidth / 2
+        ]);
+        mat4.scale(textmodel, textmodel, [2, 2, 2]);
+        mat4.rotateY(textmodel, textmodel, Math.PI / 2);
+    } else if (layout.side === 'right') {
+        mat4.fromTranslation(textmodel, [
+            13.855,
+            y,
+            layout.z + labelWidth / 2
+        ]);
+        mat4.scale(textmodel, textmodel, [2, 2, 2]);
+        mat4.rotateY(textmodel, textmodel, -Math.PI / 2);
+    } else {
+        mat4.fromTranslation(textmodel, [
+            8.0,
+            y,
+            47.65
+        ]);
+        mat4.scale(textmodel, textmodel, [2, 2, 2]);
+        mat4.rotateY(textmodel, textmodel, Math.PI);
+    }
+
+    return textmodel;
+}
+
+module.exports = (regl) => {
     let batch = [];
     let shownBatch = [];
 
-
-    // ========================================================
-    // LOAD MASTERPIECE
-    // ========================================================
-
     const loadPainting = (p) => {
+        const index = p.image_id;
+        if (!layouts[index]) return;
 
-        const seg =
-            placements[0];
-
-
-        if (!seg) {
-            return;
-        }
-
-
-        // ====================================================
-        // END WALL CENTRE
-        // ====================================================
-
-        const x1 =
-            seg[0][0];
-
-        const z1 =
-            seg[0][1];
-
-
-        const x2 =
-            seg[1][0];
-
-        const z2 =
-            seg[1][1];
-
-
-        const centerX =
-            (x1 + x2) / 2;
-
-
-        const centerZ =
-            (z1 + z2) / 2;
-
-
-        // ====================================================
-        // MASTERPIECE SIZE
-        // ====================================================
-
-        const globalScale =
-            3.0;
-
-
-        const width =
-            globalScale *
-            p.aspect;
-
-
-        // ====================================================
-        // MODEL
-        // ====================================================
-
-        const model = [];
-
-
-        /*
-         * The painting's local origin is its LOWER-LEFT
-         * corner.
-         *
-         * After a 180 degree rotation, the artwork extends
-         * toward negative X.
-         *
-         * Therefore the translation must compensate for that
-         * rotation so the finished artwork is centred on the
-         * gallery wall.
-         */
-
-
-        const pos = [
-
-            centerX + width,
-
-            3.0 - globalScale,
-
-            centerZ + 0.10
-
-        ];
-
-
-        const scale = [
-
-            2 * width,
-
-            2 * globalScale,
-
-            0.12
-
-        ];
-
-
-        mat4.fromTranslation(
-            model,
-            pos
-        );
-
-
-        mat4.scale(
-            model,
-            model,
-            scale
-        );
-
-
-        // ====================================================
-        // FACE THE VIEWER
-        // ====================================================
-
-        mat4.rotateY(
-            model,
-            model,
-            Math.PI
-        );
-
-
-        // ====================================================
-        // TITLE
-        // ====================================================
-
-        const text =
-            p.textGen(width);
-
-
-        const textmodel = [];
-
-
-        mat4.fromTranslation(
-            textmodel,
-
-            [
-
-                centerX + width,
-
-                0.25,
-
-                centerZ + 0.06
-
-            ]
-
-        );
-
-
-        mat4.scale(
-            textmodel,
-            textmodel,
-            [2, 2, 2]
-        );
-
-
-        mat4.rotateY(
-            textmodel,
-            textmodel,
-            Math.PI
-        );
-
-
-        // ====================================================
-        // STORE
-        // ====================================================
+        const { width, height } = getDimensions(p.aspect, index);
 
         batch.push({
-
             ...p,
-
-            image_id: 0,
-
-            model,
-
-            textmodel,
-
-            text,
-
+            model: makeModel(width, height, index),
+            textmodel: makeTextModel(index),
+            text: p.textGen(width),
             width,
-
-            angle:
-                Math.PI,
-
+            height,
+            angle: layouts[index].side === 'left'
+                ? Math.PI / 2
+                : layouts[index].side === 'right'
+                    ? -Math.PI / 2
+                    : Math.PI,
             textGen: null
-
         });
-
     };
 
-
-    // ========================================================
-    // FETCH MASTERPIECE
-    // ========================================================
-
-    texture.fetch(
-
-        regl,
-
-        1,
-
-        dynamicRes,
-
-        loadPainting,
-
-        () => {}
-
-    );
-
-
-    // ========================================================
-    // UPDATE
-    // ========================================================
+    texture.fetch(regl, 4, dynamicRes, loadPainting, () => {});
 
     return {
+        update: () => {
+            shownBatch = batch;
 
-        update: (
-            pos,
-            angle,
-            fovX
-        ) => {
+            shownBatch.forEach((painting) => {
+                texture.load(regl, painting, dynamicRes);
+            });
 
-            shownBatch =
-                batch;
+            dynamicRes = 'low';
 
-
-            shownBatch.forEach(
-                painting => {
-
-                    texture.load(
-
-                        regl,
-
-                        painting,
-
-                        dynamicRes
-
-                    );
-
-                }
-            );
-
-
-            // =================================================
-            // DYNAMIC RESOLUTION
-            // =================================================
-
-            dynamicRes =
-                'low';
-
-
-            if (
-                dynamicResTimer
-            ) {
-
-                clearTimeout(
-                    dynamicResTimer
-                );
-
-            }
-
-
-            dynamicResTimer =
-                setTimeout(
-
-                    () => {
-
-                        dynamicRes =
-                            'high';
-
-                    },
-
-                    dynamicResPeriod
-
-                );
-
+            if (dynamicResTimer) clearTimeout(dynamicResTimer);
+            dynamicResTimer = setTimeout(() => {
+                dynamicRes = 'high';
+            }, dynamicResPeriod);
         },
 
-
-        // ====================================================
-        // DRAW
-        // ====================================================
-
-        batch: () =>
-            shownBatch
-
+        batch: () => shownBatch
     };
-
 };
