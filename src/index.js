@@ -1,6 +1,6 @@
 'use strict';
 
-var useReflexion = false;
+var useReflexion = true;
 var showStats = false;
 
 // Handle different screen ratios
