@@ -4,11 +4,9 @@ const mat4 = require('gl-mat4');
 const vec3 = require('gl-vec3');
 const lock = require('pointer-lock');
 
-// const footstep = require('./footstep')();
-
 
 /* -----------------------------------------------------------
- * CAMERA / MOVEMENT SETTINGS
+ * SETTINGS
  * --------------------------------------------------------- */
 
 const mouseSensibility = 0.002;
@@ -17,31 +15,11 @@ const touchSensibility = 0.008;
 
 const rotationFilter = 0.95;
 
-const limitAngle = Math.PI / 4;
+const limitAngle =
+	Math.PI / 4;
 
-const slowAngle = Math.PI / 6;
-
-const durationToClick = 300;
-
-const distToClick = 20;
-
-
-/*
- * Calm museum walking speed.
- */
-
-const walkSpeed = 2.4;
-
-const runSpeed = 2.4;
-
-const walkStepLen = 1000;
-
-const runStepLen = 5;
-
-
-/*
- * Fixed eye-level camera.
- */
+const slowAngle =
+	Math.PI / 6;
 
 const height = 2;
 
@@ -60,6 +38,19 @@ const touchDistLimit = 40;
 const rayStep = 4;
 
 const tpDuration = 1;
+
+
+/*
+ * Calm museum walking speed.
+ */
+
+const walkSpeed = 2.4;
+
+const runSpeed = 2.4;
+
+const walkStepLen = 1000;
+
+const runStepLen = 5;
 
 
 /* -----------------------------------------------------------
@@ -91,8 +82,14 @@ const sdLine = (
 	const h =
 		Math.max(
 			Math.min(
-				vec3.dot(pa, ba) /
-				vec3.dot(ba, ba),
+				vec3.dot(
+					pa,
+					ba
+				) /
+				vec3.dot(
+					ba,
+					ba
+				),
 				1
 			),
 			0
@@ -106,7 +103,6 @@ const sdLine = (
 			h
 		)
 	);
-
 };
 
 
@@ -146,7 +142,6 @@ const planeProject = (
 		dist,
 		intersection
 	};
-
 };
 
 
@@ -157,15 +152,13 @@ const wallProject = (
 	b
 ) => {
 
-	/*
-	 * Calculate vertical plane through A and B.
-	 */
-
 	const vx =
-		a[0] - b[0];
+		a[0] -
+		b[0];
 
 	const vz =
-		a[1] - b[1];
+		a[1] -
+		b[1];
 
 	const nx =
 		-vz;
@@ -177,10 +170,6 @@ const wallProject = (
 		a[0] * nx +
 		a[1] * nz;
 
-
-	/*
-	 * Project to plane.
-	 */
 
 	let {
 		dist,
@@ -198,11 +187,6 @@ const wallProject = (
 		);
 
 
-	/*
-	 * Verify that intersection lies
-	 * between A and B.
-	 */
-
 	const wA =
 		a[0] * vx +
 		a[1] * vz;
@@ -215,14 +199,13 @@ const wallProject = (
 		i[0] * vx +
 		i[2] * vz;
 
+
 	if (
 		(wI > wA) +
-		(wI > wB) !==
-		1
+		(wI > wB) !== 1
 	) {
 
 		dist = Infinity;
-
 	}
 
 
@@ -232,7 +215,6 @@ const wallProject = (
 		dist,
 		intersection: i
 	};
-
 };
 
 
@@ -241,24 +223,29 @@ const lerp = (
 	a,
 	b
 ) =>
-	(1 - x) * a + x * b;
+	(1 - x) * a +
+	x * b;
 
 
 const easeInOutQuad = x =>
 	x < 0.5
-		? 2 * x * x
-		: 1 -
-			Math.pow(
-				-2 * x + 2,
-				2
-			) / 2;
+		?
+		2 * x * x
+		:
+		1 -
+		Math.pow(
+			-2 * x + 2,
+			2
+		) / 2;
 
 
-/* -----------------------------------------------------------
+/* ===========================================================
  * FPS CONTROLLER
- * --------------------------------------------------------- */
+ * ===========================================================
+ */
 
-module.exports = function (
+module.exports =
+function (
 	{
 		getGridSegments,
 		getGridParts
@@ -311,7 +298,8 @@ module.exports = function (
 		0
 	];
 
-	var walkTime = 0.5;
+	var walkTime =
+		0.5;
 
 	var view =
 		mat4.identity([]);
@@ -319,7 +307,8 @@ module.exports = function (
 	var proj =
 		mat4.identity([]);
 
-	var run = false;
+	var run =
+		false;
 
 	var startPos = [
 		0,
@@ -333,19 +322,17 @@ module.exports = function (
 		0
 	];
 
-	var tpProgress = 1;
+	var tpProgress =
+		1;
 
-	var paused = false;
+	var paused =
+		false;
 
 
 	/* -------------------------------------------------------
-	 * CAMERA ORIENTATION
+	 * CAMERA ROTATION
 	 *
-	 * Museum mode:
-	 *
-	 * - no looking up
-	 * - no looking down
-	 * - horizontal rotation only
+	 * Vertical camera rotation is deliberately disabled.
 	 * ----------------------------------------------------- */
 
 	const orientCamera = (
@@ -356,58 +343,44 @@ module.exports = function (
 
 		dx =
 			Math.max(
-				Math.min(dx, 100),
+				Math.min(
+					dx,
+					100
+				),
 				-100
 			);
 
 		dy =
 			Math.max(
-				Math.min(dy, 100),
+				Math.min(
+					dy,
+					100
+				),
 				-100
 			);
 
-		let smooth = 1;
-
-		if (
-			Math.abs(mouse[0]) >
-				slowAngle &&
-			Math.sign(mouse[0]) ===
-				Math.sign(dy)
-		) {
-
-			smooth =
-				(
-					limitAngle -
-					Math.abs(mouse[0])
-				) /
-				(
-					limitAngle -
-					slowAngle
-				);
-
-		}
-
 
 		/*
-		 * Horizontal rotation only.
+		 * Eye-level museum camera.
 		 *
-		 * mouse[0] is ALWAYS zero.
+		 * We intentionally ignore dy.
 		 */
 
 		mouse[0] = 0;
 
 		mouse[1] +=
-			dx * sensibility;
-
+			dx *
+			sensibility;
 	};
 
 
 	/* -------------------------------------------------------
-	 * DESKTOP MOUSE / POINTER LOCK
+	 * MOUSE / POINTER LOCK
 	 * ----------------------------------------------------- */
 
 	let pointer =
 		lock(document.body);
+
 
 	pointer.on(
 		'attain',
@@ -422,46 +395,53 @@ module.exports = function (
 						move.dy,
 						mouseSensibility
 					);
-
 				}
 			);
-
 		}
 	);
 
 
-	/* -------------------------------------------------------
+	/* =======================================================
 	 * MOBILE CONTROLS
+	 * =======================================================
 	 *
-	 * LEFT:
-	 *   joystick = walk
+	 * Left thumb:
+	 *     walk
 	 *
-	 * RIGHT:
-	 *   swipe horizontally = look
+	 * Right thumb:
+	 *     horizontal look
 	 *
-	 * No vertical camera movement.
-	 * ----------------------------------------------------- */
+	 * Vertical look:
+	 *     disabled
+	 * =======================================================
+	 */
 
-	let moveTouchId = null;
+	let moveTouchId =
+		null;
 
-	let lookTouchId = null;
+	let lookTouchId =
+		null;
 
-	let lookLastX = 0;
+	let lookLastX =
+		0;
 
 	let joystickCenter = {
 		x: 0,
 		y: 0
 	};
 
-	const joystickRadius = 58;
+	const joystickRadius =
+		58;
 
 
 	/* -------------------------------------------------------
-	 * MOBILE CONTROL DOM
+	 * MOBILE CONTROL UI
 	 * ----------------------------------------------------- */
 
 	const mobileControls =
-		document.createElement('div');
+		document.createElement(
+			'div'
+		);
 
 	mobileControls.id =
 		'museum-mobile-controls';
@@ -472,11 +452,9 @@ module.exports = function (
 			id="museum-joystick"
 			aria-label="Move"
 		>
-
 			<div
 				id="museum-joystick-knob"
 			></div>
-
 		</div>
 
 		<div
@@ -484,7 +462,6 @@ module.exports = function (
 		>
 			SWIPE TO LOOK
 		</div>
-
 	`;
 
 	document.body.appendChild(
@@ -497,6 +474,7 @@ module.exports = function (
 			'#museum-joystick'
 		);
 
+
 	const knob =
 		mobileControls.querySelector(
 			'#museum-joystick-knob'
@@ -504,7 +482,7 @@ module.exports = function (
 
 
 	/* -------------------------------------------------------
-	 * RESET JOYSTICK
+	 * JOYSTICK RESET
 	 * ----------------------------------------------------- */
 
 	const resetJoystick = () => {
@@ -515,12 +493,11 @@ module.exports = function (
 		dir[0] = 0;
 
 		dir[2] = 0;
-
 	};
 
 
 	/* -------------------------------------------------------
-	 * UPDATE JOYSTICK
+	 * JOYSTICK UPDATE
 	 * ----------------------------------------------------- */
 
 	const updateJoystick = (
@@ -534,6 +511,7 @@ module.exports = function (
 		let dy =
 			touch.clientY -
 			joystickCenter.y;
+
 
 		const length =
 			Math.hypot(
@@ -556,7 +534,6 @@ module.exports = function (
 				dy /
 				length *
 				joystickRadius;
-
 		}
 
 
@@ -567,7 +544,8 @@ module.exports = function (
 			)`;
 
 
-		const deadZone = 10;
+		const deadZone =
+			10;
 
 
 		if (
@@ -580,14 +558,8 @@ module.exports = function (
 			dir[2] = 0;
 
 			return;
-
 		}
 
-
-		/*
-		 * Screen-up = forward.
-		 * Screen-down = backward.
-		 */
 
 		const nx =
 			dx /
@@ -598,10 +570,11 @@ module.exports = function (
 			joystickRadius;
 
 
-		dir[0] = nx;
+		dir[0] =
+			nx;
 
-		dir[2] = ny;
-
+		dir[2] =
+			ny;
 	};
 
 
@@ -626,72 +599,87 @@ module.exports = function (
 			) {
 
 				return touches[i];
-
 			}
-
 		}
 
 		return null;
-
 	};
+
+
+	/* =======================================================
+	 * IMPORTANT:
+	 *
+	 * DO NOT LET THE MOVEMENT SYSTEM STEAL UI TOUCHES.
+	 *
+	 * This is what fixes the plaque tap problem.
+	 * =======================================================
+	 */
+
+	const isMuseumUiTarget =
+		(target) => {
+
+			return !!(
+				target &&
+				target.closest &&
+				target.closest(
+					'.painting-plaque, ' +
+					'.story-overlay, ' +
+					'.story-card, ' +
+					'.story-close, ' +
+					'button'
+				)
+			);
+		};
 
 
 	/* -------------------------------------------------------
 	 * TOUCH START
-	 *
-	 * IMPORTANT:
-	 *
-	 * The painting plaque is explicitly excluded.
-	 * This prevents the joystick system from stealing
-	 * the tap.
 	 * ----------------------------------------------------- */
 
 	const handleTouchStart = (
 		e
 	) => {
 
+		/*
+		 * IMPORTANT:
+		 *
+		 * If the user touches the plaque,
+		 * story panel or another button,
+		 * leave the event completely alone.
+		 *
+		 * Do NOT preventDefault().
+		 */
+
 		if (
-			e.target &&
-			e.target.closest
+			isMuseumUiTarget(
+				e.target
+			)
 		) {
 
-			const interactive =
-				e.target.closest(
-					[
-						'button',
-						'.painting-plaque',
-						'.story-overlay',
-						'.story-card'
-					].join(', ')
-				);
-
-
-			if (interactive) {
-
-				return;
-
-			}
-
+			return;
 		}
 
 
-		if (e.cancelable) {
+		if (
+			e.cancelable
+		) {
 
 			e.preventDefault();
-
 		}
 
 
-		if (paused) {
+		if (
+			paused
+		) {
 
 			return;
-
 		}
 
 
 		for (
 			let i = 0;
-			i < e.changedTouches.length;
+			i <
+			e.changedTouches.length;
 			i++
 		) {
 
@@ -699,14 +687,15 @@ module.exports = function (
 				e.changedTouches[i];
 
 
-			/* ---------------------------------------------
-			 * LEFT HALF = MOVEMENT
-			 * ------------------------------------------- */
+			/*
+			 * LEFT SIDE:
+			 * movement
+			 */
 
 			if (
 				moveTouchId === null &&
 				touch.clientX <
-					window.innerWidth * 0.48
+				window.innerWidth * 0.48
 			) {
 
 				moveTouchId =
@@ -730,17 +719,18 @@ module.exports = function (
 					touch
 				);
 
+
 			}
 
-
-			/* ---------------------------------------------
-			 * RIGHT HALF = LOOK
-			 * ------------------------------------------- */
+			/*
+			 * RIGHT SIDE:
+			 * horizontal look
+			 */
 
 			else if (
 				lookTouchId === null &&
 				touch.clientX >=
-					window.innerWidth * 0.48
+				window.innerWidth * 0.48
 			) {
 
 				lookTouchId =
@@ -748,11 +738,8 @@ module.exports = function (
 
 				lookLastX =
 					touch.clientX;
-
 			}
-
 		}
-
 	};
 
 
@@ -764,48 +751,71 @@ module.exports = function (
 		e
 	) => {
 
-		if (e.cancelable) {
+		/*
+		 * UI owns its own touch movement.
+		 */
 
-			e.preventDefault();
+		if (
+			isMuseumUiTarget(
+				e.target
+			)
+		) {
 
+			return;
 		}
 
 
-		if (paused) {
+		if (
+			e.cancelable
+		) {
+
+			e.preventDefault();
+		}
+
+
+		if (
+			paused
+		) {
 
 			return;
-
 		}
 
 
 		const moveTouch =
 			moveTouchId === null
-				? null
-				: touchById(
+				?
+				null
+				:
+				touchById(
 					e.touches,
 					moveTouchId
 				);
 
 
-		if (moveTouch) {
+		if (
+			moveTouch
+		) {
 
 			updateJoystick(
 				moveTouch
 			);
-
 		}
 
 
 		const lookTouch =
 			lookTouchId === null
-				? null
-				: touchById(
+				?
+				null
+				:
+				touchById(
 					e.touches,
 					lookTouchId
 				);
 
 
-		if (lookTouch) {
+		if (
+			lookTouch
+		) {
 
 			const dx =
 				lookTouch.clientX -
@@ -821,9 +831,7 @@ module.exports = function (
 				0,
 				touchSensibility
 			);
-
 		}
-
 	};
 
 
@@ -835,16 +843,38 @@ module.exports = function (
 		e
 	) => {
 
-		if (e.cancelable) {
+		/*
+		 * IMPORTANT:
+		 *
+		 * If a plaque tap is ending,
+		 * do NOT preventDefault().
+		 *
+		 * Otherwise the browser can suppress
+		 * the click/pointer activation.
+		 */
+
+		if (
+			isMuseumUiTarget(
+				e.target
+			)
+		) {
+
+			return;
+		}
+
+
+		if (
+			e.cancelable
+		) {
 
 			e.preventDefault();
-
 		}
 
 
 		for (
 			let i = 0;
-			i < e.changedTouches.length;
+			i <
+			e.changedTouches.length;
 			i++
 		) {
 
@@ -861,7 +891,6 @@ module.exports = function (
 					null;
 
 				resetJoystick();
-
 			}
 
 
@@ -872,11 +901,8 @@ module.exports = function (
 
 				lookTouchId =
 					null;
-
 			}
-
 		}
-
 	};
 
 
@@ -892,6 +918,7 @@ module.exports = function (
 		}
 	);
 
+
 	document.addEventListener(
 		'touchmove',
 		handleTouchMove,
@@ -900,6 +927,7 @@ module.exports = function (
 		}
 	);
 
+
 	document.addEventListener(
 		'touchend',
 		handleTouchEnd,
@@ -907,6 +935,7 @@ module.exports = function (
 			passive: false
 		}
 	);
+
 
 	document.addEventListener(
 		'touchcancel',
@@ -917,12 +946,16 @@ module.exports = function (
 	);
 
 
-	/* -------------------------------------------------------
-	 * MOBILE UI STYLE
-	 * ----------------------------------------------------- */
+	/* =======================================================
+	 * MOBILE CSS
+	 * =======================================================
+	 */
 
 	const mobileStyle =
-		document.createElement('style');
+		document.createElement(
+			'style'
+		);
+
 
 	mobileStyle.textContent = `
 
@@ -941,6 +974,7 @@ module.exports = function (
 			touch-action: none;
 
 			user-select: none;
+
 		}
 
 
@@ -960,18 +994,35 @@ module.exports = function (
 
 			border:
 				1px solid
-				rgba(226,195,128,.42);
+				rgba(
+					226,
+					195,
+					128,
+					.42
+				);
 
 			background:
-				rgba(20,15,10,.22);
+				rgba(
+					20,
+					15,
+					10,
+					.22
+				);
 
 			box-shadow:
 				inset 0 0 22px
-				rgba(255,220,140,.06);
+				rgba(
+					255,
+					220,
+					140,
+					.06
+				);
 
-			pointer-events: auto;
+			pointer-events:
+				auto;
 
-			touch-action: none;
+			touch-action:
+				none;
 		}
 
 
@@ -991,21 +1042,43 @@ module.exports = function (
 
 			border:
 				1px solid
-				rgba(244,215,135,.55);
+				rgba(
+					244,
+					215,
+					135,
+					.55
+				);
 
 			background:
-				rgba(191,145,54,.38);
+				rgba(
+					191,
+					145,
+					54,
+					.38
+				);
 
 			box-shadow:
-
 				0 3px 14px
-				rgba(0,0,0,.3),
+				rgba(
+					0,
+					0,
+					0,
+					.3
+				),
 
 				inset 0 0 12px
-				rgba(255,235,180,.12);
+				rgba(
+					255,
+					235,
+					180,
+					.12
+				);
 
 			transform:
-				translate(-50%,-50%);
+				translate(
+					-50%,
+					-50%
+				);
 		}
 
 
@@ -1018,16 +1091,23 @@ module.exports = function (
 			bottom: 34px;
 
 			color:
-				rgba(245,232,205,.32);
+				rgba(
+					245,
+					232,
+					205,
+					.32
+				);
 
 			font:
 				10px
 				Georgia,
 				serif;
 
-			letter-spacing: .16em;
+			letter-spacing:
+				.16em;
 
-			pointer-events: none;
+			pointer-events:
+				none;
 		}
 
 
@@ -1038,12 +1118,10 @@ module.exports = function (
 
 			#museum-mobile-controls {
 
-				display: block;
-
+				display:
+					block;
 			}
-
 		}
-
 	`;
 
 	document.head.appendChild(
@@ -1051,9 +1129,10 @@ module.exports = function (
 	);
 
 
-	/* -------------------------------------------------------
+	/* =======================================================
 	 * KEYBOARD INPUT
-	 * ----------------------------------------------------- */
+	 * =======================================================
+	 */
 
 	var keys = {};
 
@@ -1070,43 +1149,52 @@ module.exports = function (
 		) {
 
 			return;
-
 		}
 
 
 		keys[e.code] =
-			e.type === 'keydown';
+			e.type ===
+			'keydown';
 
 
-		run = false;
+		run =
+			false;
 
 
 		const left =
 			keys['KeyA'] ||
 			keys['ArrowLeft']
-				? 1
-				: 0;
+				?
+				1
+				:
+				0;
 
 
 		const right =
 			keys['KeyD'] ||
 			keys['ArrowRight']
-				? 1
-				: 0;
+				?
+				1
+				:
+				0;
 
 
 		const up =
 			keys['KeyW'] ||
 			keys['ArrowUp']
-				? 1
-				: 0;
+				?
+				1
+				:
+				0;
 
 
 		const down =
 			keys['KeyS'] ||
 			keys['ArrowDown']
-				? 1
-				: 0;
+				?
+				1
+				:
+				0;
 
 
 		dir = [
@@ -1117,7 +1205,6 @@ module.exports = function (
 
 
 		e.preventDefault();
-
 	};
 
 
@@ -1126,17 +1213,20 @@ module.exports = function (
 		handleKey
 	);
 
+
 	window.addEventListener(
 		'keyup',
 		handleKey
 	);
 
 
-	/* -------------------------------------------------------
-	 * RETURN FPS CONTROLLER
-	 * ----------------------------------------------------- */
+	/* =======================================================
+	 * FIRST PERSON LOOP
+	 * =======================================================
+	 */
 
-	var lastTime = 0;
+	var lastTime =
+		0;
 
 
 	return {
@@ -1150,521 +1240,458 @@ module.exports = function (
 		up,
 
 
-		/* ---------------------------------------------
-		 * Pause while reading artwork
-		 * ------------------------------------------- */
+		setPaused:
+			(value) => {
 
-		setPaused: (value) => {
+				paused =
+					!!value;
 
-			paused =
-				!!value;
+				/*
+				 * Stop walking immediately.
+				 */
 
-			if (paused) {
+				if (paused) {
 
-				dir[0] = 0;
+					dir[0] = 0;
 
-				dir[2] = 0;
+					dir[2] = 0;
 
-				resetJoystick();
-
-			}
-
-		},
-
-
-		/* ---------------------------------------------
-		 * View matrix
-		 * ------------------------------------------- */
-
-		view: () =>
-			view,
+					resetJoystick();
+				}
+			},
 
 
-		/* ---------------------------------------------
-		 * Projection matrix
-		 * ------------------------------------------- */
+		view:
+			() => view,
 
-		proj: () => {
 
-			mat4.perspective(
-				proj,
-				fovY(),
-				window.innerWidth /
+		proj:
+			() => {
+
+				mat4.perspective(
+					proj,
+					fovY(),
+					window.innerWidth /
 					window.innerHeight,
-				0.1,
-				100
-			);
+					0.1,
+					100
+				);
 
-			return proj;
-
-		},
-
-
-		/* ---------------------------------------------
-		 * MAIN TICK
-		 * ------------------------------------------- */
-
-		tick: ({
-			time
-		}) => {
+				return proj;
+			},
 
 
-			/* -----------------------------------------
-			 * Delta time
-			 * --------------------------------------- */
+		tick:
+			({ time }) => {
 
-			const dt =
-				time -
-				lastTime;
+				/* ------------------------------------------------
+				 * DELTA TIME
+				 * ---------------------------------------------- */
 
-			lastTime =
-				time;
+				const dt =
+					time -
+					lastTime;
 
-
-			/* -----------------------------------------
-			 * Temporary vectors
-			 * --------------------------------------- */
-
-			let tmp1 = [
-				0,
-				0,
-				0
-			];
-
-			let tmp2 = [];
+				lastTime =
+					time;
 
 
-			/* -----------------------------------------
-			 * Forward direction
-			 * --------------------------------------- */
+				/* ------------------------------------------------
+				 * TEMP ARRAYS
+				 * ---------------------------------------------- */
 
-			vec3.set(
-				forward,
-				1,
-				0,
-				0
-			);
+				let tmp1 =
+					[0, 0, 0];
+
+				let tmp2 = [];
 
 
-			vec3.set(
-				up,
-				0,
-				1,
-				0
-			);
+				/* ------------------------------------------------
+				 * FORWARD / UP
+				 * ---------------------------------------------- */
+
+				vec3.set(
+					forward,
+					1,
+					0,
+					0
+				);
 
 
-			/*
-			 * Rotate movement according to
-			 * horizontal camera direction.
-			 */
-
-			vec3.rotateY(
-				force,
-				dir,
-				tmp1,
-				-mouse[1]
-			);
+				vec3.set(
+					up,
+					0,
+					1,
+					0
+				);
 
 
-			vec3.rotateY(
-				forward,
-				forward,
-				tmp1,
-				-mouse[1]
-			);
+				vec3.rotateY(
+					force,
+					dir,
+					tmp1,
+					-mouse[1]
+				);
 
 
-			/*
-			 * Vertical camera rotation is
-			 * deliberately disabled.
-			 */
-
-			vec3.rotateX(
-				forward,
-				forward,
-				tmp1,
-				-mouse[0]
-			);
-
-			vec3.rotateX(
-				up,
-				up,
-				tmp1,
-				-mouse[0]
-			);
+				vec3.rotateY(
+					forward,
+					forward,
+					tmp1,
+					-mouse[1]
+				);
 
 
-			vec3.normalize(
-				force,
-				force
-			);
+				/*
+				 * Vertical camera rotation is disabled.
+				 */
+
+				vec3.rotateX(
+					forward,
+					forward,
+					tmp1,
+					0
+				);
 
 
-			/* -----------------------------------------
-			 * MOVEMENT
-			 * --------------------------------------- */
-
-			const speed =
-				run
-					? runSpeed
-					: walkSpeed;
+				vec3.rotateX(
+					up,
+					up,
+					tmp1,
+					0
+				);
 
 
-			vec3.scale(
-				force,
-				force,
-				speed * dt
-			);
-
-
-			/*
-			 * Maintain eye-level height.
-			 */
-
-			pos[1] =
-				height;
-
-
-			/*
-			 * Stop movement while story
-			 * overlay is open.
-			 */
-
-			if (paused) {
-
-				dir[0] = 0;
-
-				dir[2] = 0;
-
-			}
-
-
-			const newPos =
-				vec3.add(
-					[],
-					pos,
+				vec3.normalize(
+					force,
 					force
 				);
 
 
-			/* -----------------------------------------
-			 * WALL COLLISION
-			 * --------------------------------------- */
+				/* ------------------------------------------------
+				 * MOVEMENT
+				 * ---------------------------------------------- */
 
-			const collisions =
-				getGridSegments(
-					newPos[0],
-					newPos[2]
-				)
+				const speed =
+					run
+						?
+						runSpeed
+						:
+						walkSpeed;
 
-				.map(
-					([
-						[
-							ax,
-							ay
-						],
-						[
-							bx,
-							by
-						]
-					]) =>
-						[
+
+				vec3.scale(
+					force,
+					force,
+					speed * dt
+				);
+
+
+				pos[1] =
+					height;
+
+
+				if (paused) {
+
+					dir[0] = 0;
+
+					dir[2] = 0;
+
+					vec3.set(
+						force,
+						0,
+						0,
+						0
+					);
+				}
+
+
+				const newPos =
+					vec3.add(
+						[],
+						pos,
+						force
+					);
+
+
+				/* ------------------------------------------------
+				 * WALL COLLISION
+				 * ---------------------------------------------- */
+
+				const collisions =
+					getGridSegments(
+						newPos[0],
+						newPos[2]
+					)
+
+					.map(
+						([
+							[ax, ay],
+							[bx, by]
+						]) => [
+
 							[
 								ax,
 								height,
 								ay
 							],
+
 							[
 								bx,
 								height,
 								by
 							]
 						]
-				)
+					)
 
-				.filter(
-					([
-						a,
-						b
-					]) =>
-						sdLine(
-							newPos,
-							a,
-							b,
-							tmp1,
-							tmp2
-						) <
-						distToWalls
-				);
+					.filter(
+						([a, b]) =>
+							sdLine(
+								newPos,
+								a,
+								b,
+								tmp1,
+								tmp2
+							)
+							<
+							distToWalls
+					);
 
 
-			if (
-				collisions.length !==
-				0
-			) {
-
-				for (
-					let [
-						a,
-						b
-					]
-					of collisions
+				if (
+					collisions.length !== 0
 				) {
 
-					const distance =
-						distToWalls -
-						sdLine(
-							newPos,
-							a,
-							b,
-							tmp1,
-							tmp2
-						);
+					for (
+						let [a, b]
+						of collisions
+					) {
+
+						const distance =
+							distToWalls -
+							sdLine(
+								newPos,
+								a,
+								b,
+								tmp1,
+								tmp2
+							);
 
 
-					const delta =
-						vec3
-							.sub(
+						const delta =
+							vec3.sub(
 								tmp1,
 								b,
 								a
-							)
-							.reverse();
+							).reverse();
 
 
-					delta[0] =
-						-delta[0];
+						delta[0] =
+							-delta[0];
 
 
-					vec3.normalize(
-						delta,
-						delta
-					);
+						vec3.normalize(
+							delta,
+							delta
+						);
 
 
-					vec3.scale(
-						delta,
-						delta,
-						distance
-					);
+						vec3.scale(
+							delta,
+							delta,
+							distance
+						);
 
 
-					vec3.add(
-						force,
-						force,
-						delta
-					);
-
+						vec3.add(
+							force,
+							force,
+							delta
+						);
+					}
 				}
 
-			}
+
+				/* ------------------------------------------------
+				 * WALK ANIMATION
+				 * ---------------------------------------------- */
+
+				const d =
+					vec3.len(
+						force
+					);
 
 
-			/* -----------------------------------------
-			 * WALK ANIMATION
-			 *
-			 * Camera remains at fixed eye height.
-			 * --------------------------------------- */
+				if (
+					d === 0 &&
+					walkTime !== 0.25
+				) {
 
-			const d =
-				vec3.len(
+					walkTime =
+						(
+							Math.abs(
+								(
+									walkTime +
+									0.5
+								) %
+								1 -
+								0.5
+							)
+							-
+							0.25
+						)
+						*
+						0.8
+						+
+						0.25;
+
+
+					if (
+						(
+							walkTime +
+							0.01
+						)
+						%
+						0.25
+						<
+						0.02
+					) {
+
+						walkTime =
+							0.25;
+					}
+				}
+
+
+				const lastWalkTime =
+					walkTime;
+
+
+				walkTime +=
+					d /
+					(
+						run
+							?
+							runStepLen
+							:
+							walkStepLen
+					);
+
+
+				/*
+				 * Keep camera at exact eye height.
+				 */
+
+				pos[1] =
+					height;
+
+
+				vec3.add(
+					pos,
+					pos,
 					force
 				);
 
 
-			if (
-				d === 0 &&
-				walkTime !== 0.25
-			) {
-
-				walkTime =
-					(
-						Math.abs(
-							(
-								walkTime +
-								0.5
-							) %
-							1 -
-							0.5
-						) -
-						0.25
-					) *
-						0.8 +
-					0.25;
-
+				/* ------------------------------------------------
+				 * TELEPORTATION
+				 * ---------------------------------------------- */
 
 				if (
-					(
-						walkTime +
-						0.01
-					) %
-						0.25 <
-					0.02
+					tpProgress < 1
 				) {
 
-					walkTime =
-						0.25;
+					tpProgress +=
+						dt /
+						tpDuration;
 
+
+					tpProgress =
+						Math.min(
+							tpProgress,
+							1
+						);
+
+
+					const t =
+						easeInOutQuad(
+							tpProgress
+						);
+
+
+					vec3.set(
+						pos,
+
+						lerp(
+							t,
+							startPos[0],
+							endPos[0]
+						),
+
+						pos[1],
+
+						lerp(
+							t,
+							startPos[2],
+							endPos[2]
+						)
+					);
 				}
 
-			}
+
+				/* ------------------------------------------------
+				 * FILTER HORIZONTAL CAMERA MOVEMENT
+				 * -------------------------------------------------------------- */
+
+				fmouse[0] =
+					0;
 
 
-			const lastWalkTime =
-				walkTime;
-
-
-			walkTime +=
-				d /
-				(
-					run
-						? runStepLen
-						: walkStepLen
-				);
-
-
-			/*
-			 * Absolute eye-level camera.
-			 */
-
-			pos[1] =
-				height;
-
-
-			vec3.add(
-				pos,
-				pos,
-				force
-			);
-
-
-			/* -----------------------------------------
-			 * TELEPORTATION
-			 * --------------------------------------- */
-
-			if (
-				tpProgress <
-				1
-			) {
-
-				tpProgress +=
-					dt /
-					tpDuration;
-
-
-				tpProgress =
-					Math.min(
-						tpProgress,
-						1
-					);
-
-
-				const t =
-					easeInOutQuad(
-						tpProgress
-					);
-
-
-				vec3.set(
-					pos,
-					lerp(
-						t,
-						startPos[0],
-						endPos[0]
-					),
-					pos[1],
-					lerp(
-						t,
-						startPos[2],
-						endPos[2]
-					)
-				);
-
-			}
-
-
-			/* -----------------------------------------
-			 * CAMERA ROTATION FILTER
-			 * --------------------------------------- */
-
-			/*
-			 * Vertical rotation is always zero.
-			 */
-
-			fmouse[0] =
-				0;
-
-
-			fmouse[1] =
-				rotationFilter *
-					mouse[1] +
-				(1 - rotationFilter) *
+				fmouse[1] =
+					rotationFilter *
+					mouse[1]
+					+
+					(1 -
+						rotationFilter) *
 					fmouse[1];
 
 
-			/* -----------------------------------------
-			 * VIEW MATRIX
-			 * --------------------------------------- */
+				/* ------------------------------------------------
+				 * VIEW MATRIX
+				 * -------------------------------------------------------------- */
 
-			mat4.identity(
-				view
-			);
-
-
-			mat4.rotateX(
-				view,
-				view,
-				fmouse[0]
-			);
-
-
-			mat4.rotateY(
-				view,
-				view,
-				fmouse[1]
-			);
-
-
-			mat4.translate(
-				view,
-				view,
-				vec3.scale(
-					tmp1,
-					pos,
-					-1
-				)
-			);
-
-
-			/* -----------------------------------------
-			 * FOOTSTEPS DISABLED FOR QUIET MUSEUM MODE
-			 * --------------------------------------- */
-
-			/*
-			if (walkTime > 0.5)
-				footstep.update(
-					pos,
-					force,
-					up
+				mat4.identity(
+					view
 				);
 
-			if (
-				lastWalkTime % 1 <= 0.5 &&
-				walkTime % 1 > 0.5
-			)
-				footstep.step(
-					[
-						pos[0],
-						0,
-						pos[2]
-					],
-					run
+
+				mat4.rotateX(
+					view,
+					view,
+					0
 				);
-			*/
 
-		}
 
+				mat4.rotateY(
+					view,
+					view,
+					fmouse[1]
+				);
+
+
+				mat4.translate(
+					view,
+					view,
+					vec3.scale(
+						tmp1,
+						pos,
+						-1
+					)
+				);
+
+
+				return;
+			}
+		};
 	};
-
 };
