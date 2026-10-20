@@ -24,8 +24,6 @@ module.exports = (
     let batch = [];
     let shownBatch = [];
 
-    let fetching = true;
-
 
     // ========================================================
     // LOAD MASTERPIECE
@@ -33,7 +31,9 @@ module.exports = (
 
     const loadPainting = (p) => {
 
-        const seg = placements[0];
+        const seg =
+            placements[0];
+
 
         if (!seg) {
             return;
@@ -41,18 +41,26 @@ module.exports = (
 
 
         // ====================================================
-        // END WALL
+        // END WALL CENTRE
         // ====================================================
 
-        const x1 = seg[0][0];
-        const z1 = seg[0][1];
+        const x1 =
+            seg[0][0];
 
-        const x2 = seg[1][0];
-        const z2 = seg[1][1];
+        const z1 =
+            seg[0][1];
+
+
+        const x2 =
+            seg[1][0];
+
+        const z2 =
+            seg[1][1];
 
 
         const centerX =
             (x1 + x2) / 2;
+
 
         const centerZ =
             (z1 + z2) / 2;
@@ -62,7 +70,9 @@ module.exports = (
         // MASTERPIECE SIZE
         // ====================================================
 
-        const globalScale = 3.0;
+        const globalScale =
+            3.0;
+
 
         const width =
             globalScale *
@@ -70,37 +80,35 @@ module.exports = (
 
 
         // ====================================================
-        // POSITION
+        // MODEL
         // ====================================================
 
+        const model = [];
+
+
         /*
-         * The end wall is at Z = 47.65.
+         * The painting's local origin is its LOWER-LEFT
+         * corner.
          *
-         * The painting geometry faces +Z by default.
+         * After a 180 degree rotation, the artwork extends
+         * toward negative X.
          *
-         * We rotate it 180 degrees around Y so that the
-         * painting faces the viewer approaching from the
-         * gallery corridor.
-         *
-         * We also move it slightly toward the corridor so
-         * that it sits just in front of the wall instead
-         * of being buried inside it.
+         * Therefore the translation must compensate for that
+         * rotation so the finished artwork is centred on the
+         * gallery wall.
          */
+
 
         const pos = [
 
-            centerX - width,
+            centerX + width,
 
             3.0 - globalScale,
 
-            centerZ + 0.08
+            centerZ + 0.10
 
         ];
 
-
-        // ====================================================
-        // SCALE
-        // ====================================================
 
         const scale = [
 
@@ -111,13 +119,6 @@ module.exports = (
             0.12
 
         ];
-
-
-        // ====================================================
-        // MODEL
-        // ====================================================
-
-        const model = [];
 
 
         mat4.fromTranslation(
@@ -134,7 +135,6 @@ module.exports = (
 
 
         // ====================================================
-        // IMPORTANT:
         // FACE THE VIEWER
         // ====================================================
 
@@ -161,7 +161,7 @@ module.exports = (
 
             [
 
-                centerX - width,
+                centerX + width,
 
                 0.25,
 
@@ -204,7 +204,8 @@ module.exports = (
 
             width,
 
-            angle: Math.PI,
+            angle:
+                Math.PI,
 
             textGen: null
 
@@ -214,7 +215,7 @@ module.exports = (
 
 
     // ========================================================
-    // LOAD
+    // FETCH MASTERPIECE
     // ========================================================
 
     texture.fetch(
@@ -227,11 +228,7 @@ module.exports = (
 
         loadPainting,
 
-        () => {
-
-            fetching = false;
-
-        }
+        () => {}
 
     );
 
@@ -248,33 +245,24 @@ module.exports = (
             fovX
         ) => {
 
-            /*
-             * No artwork culling.
-             *
-             * The masterpiece stays available while the
-             * viewer approaches it.
-             */
-
             shownBatch =
                 batch;
 
 
-            // =================================================
-            // LOAD TEXTURE
-            // =================================================
-
             shownBatch.forEach(
-
                 painting => {
 
                     texture.load(
+
                         regl,
+
                         painting,
+
                         dynamicRes
+
                     );
 
                 }
-
             );
 
 
@@ -282,10 +270,13 @@ module.exports = (
             // DYNAMIC RESOLUTION
             // =================================================
 
-            dynamicRes = 'low';
+            dynamicRes =
+                'low';
 
 
-            if (dynamicResTimer) {
+            if (
+                dynamicResTimer
+            ) {
 
                 clearTimeout(
                     dynamicResTimer
@@ -299,7 +290,8 @@ module.exports = (
 
                     () => {
 
-                        dynamicRes = 'high';
+                        dynamicRes =
+                            'high';
 
                     },
 
