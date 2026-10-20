@@ -2,166 +2,129 @@
 
 /*
  * RENAISSANCE ART GALLERY
- *
- * Museum mode:
- *
- * - Eye-level camera
- * - No looking up/down
- * - Slow walking
- * - No sprint
- * - No head bob
- * - Gold artwork plaques
- * - Plaques appear only when close to artwork
- * - Visitor must face artwork
- * - Clicking plaque opens curatorial text
- * - Movement pauses while reading
+ * Museum-mode presentation:
+ * - eye-level camera only
+ * - horizontal looking only
+ * - calm walking experience
+ * - large readable gold plaque appears when close to artwork
+ * - tapping plaque opens the full artwork description
+ * - background remains visible but dimmed
  */
 
 var useReflexion = false;
 var showStats = false;
 
-const mapVal = (
-	value,
-	min1,
-	max1,
-	min2,
-	max2
-) =>
-	min2 +
-	(value - min1) *
-	(max2 - min2) /
-	(max1 - min1);
+const mapVal = (value, min1, max1, min2, max2) =>
+	min2 + (value - min1) * (max2 - min2) / (max1 - min1);
 
 var fovX = () =>
 	mapVal(
-		window.innerWidth /
-			window.innerHeight,
+		window.innerWidth / window.innerHeight,
 		16 / 9,
 		9 / 16,
 		1.7,
 		Math.PI / 3
 	);
 
-if(
+if (
 	navigator.userAgent.match(
 		/(iPad)|(iPhone)|(iPod)|(android)|(webOS)/i
 	)
 ) {
-
 	fovX = () =>
 		mapVal(
-			window.innerWidth /
-				window.innerHeight,
+			window.innerWidth / window.innerHeight,
 			16 / 9,
 			9 / 16,
 			1.5,
 			Math.PI / 3
 		);
-
 }
 
 var fovY = () =>
 	2 *
 	Math.atan(
-		Math.tan(
-			fovX() * 0.5
-		) *
-		window.innerHeight /
-		window.innerWidth
+		Math.tan(fovX() * 0.5) *
+			window.innerHeight /
+			window.innerWidth
 	);
 
 const Stats = require('stats.js');
 
 var stats = new Stats();
-
 stats.showPanel(0);
 
-if(showStats)
-	document.body.appendChild(
-		stats.dom
-	);
+if (showStats) {
+	document.body.appendChild(stats.dom);
+}
 
-let regl;
-let map;
-let drawMap;
-let placement;
-let drawPainting;
-let fps;
+let regl, map, drawMap, placement, drawPainting, fps;
 
 regl = require('regl')({
-
 	extensions: [
 		'OES_element_index_uint',
 		'OES_standard_derivatives'
 	],
-
 	optionalExtensions: [
 		'EXT_texture_filter_anisotropic'
 	],
-
 	attributes: {
 		alpha: false
 	}
-
 });
 
 map = require('./map')();
 
 const mesh = require('./mesh');
 
-drawMap =
-	mesh(
-		regl,
-		map,
-		useReflexion
-	);
+drawMap = mesh(
+	regl,
+	map,
+	useReflexion
+);
 
-placement =
-	require('./placement')(regl);
+placement = require('./placement')(regl);
 
-drawPainting =
-	require('./painting')(regl);
+drawPainting = require('./painting')(regl);
 
-fps =
-	require('./fps')(
-		map,
-		fovY
-	);
+fps = require('./fps')(
+	map,
+	fovY
+);
+
+
+/* -----------------------------------------------------------
+ * CAMERA / RENDER CONTEXT
+ * --------------------------------------------------------- */
 
 const context = regl({
-
 	cull: {
 		enable: true,
 		face: 'back'
 	},
-
 	uniforms: {
 		view: fps.view,
 		proj: fps.proj,
 		yScale: 1.0
 	}
-
 });
 
 const reflexion = regl({
-
 	cull: {
 		enable: true,
 		face: 'front'
 	},
-
 	uniforms: {
 		yScale: -1.0
 	}
-
 });
 
-/* ============================================================
- * MUSEUM INTERFACE
- * ========================================================== */
 
-const style =
-	document.createElement('style');
+/* -----------------------------------------------------------
+ * MUSEUM UI
+ * --------------------------------------------------------- */
+
+const style = document.createElement('style');
 
 style.textContent = `
 
@@ -180,17 +143,16 @@ style.textContent = `
 		height: 100vh;
 	}
 
-	/* --------------------------------------------------------
-	   SMALL MUSEUM INSTRUCTION
-	-------------------------------------------------------- */
+	/* -------------------------------------------------------
+	 * TOP INSTRUCTION
+	 * ----------------------------------------------------- */
 
 	.museum-hint {
 		position: fixed;
 		left: 50%;
 		top: 24px;
 
-		transform:
-			translateX(-50%);
+		transform: translateX(-50%);
 
 		z-index: 20;
 
@@ -198,20 +160,18 @@ style.textContent = `
 
 		padding: 9px 18px;
 
-		border:
-			1px solid
-			rgba(202,160,76,.35);
+		border: 1px solid rgba(202,160,76,.35);
 
 		border-radius: 2px;
 
-		background:
-			rgba(13,10,7,.48);
+		background: rgba(13,10,7,.48);
 
-		color:
-			rgba(246,232,199,.72);
+		color: rgba(246,232,199,.72);
 
 		font:
-			12px/1.4 Georgia, serif;
+			12px/1.4
+			Georgia,
+			serif;
 
 		letter-spacing: .14em;
 
@@ -227,32 +187,42 @@ style.textContent = `
 		opacity: 0;
 	}
 
-	/* --------------------------------------------------------
-	   GOLD PLAQUE
-	-------------------------------------------------------- */
+
+	/* -------------------------------------------------------
+	 * READING PLAQUE
+	 *
+	 * This is intentionally fixed at the bottom of the
+	 * screen rather than projected into 3D.
+	 *
+	 * That makes it reliable on phones and tablets.
+	 * ----------------------------------------------------- */
 
 	.painting-plaque {
 
 		position: fixed;
 
-		z-index: 30;
+		left: 50%;
+		bottom: 25px;
 
 		transform:
-			translate(-50%,-50%);
+			translateX(-50%)
+			translateY(15px);
 
-		min-width: 170px;
-		max-width: 260px;
+		z-index: 30;
 
-		padding:
-			10px 18px 11px;
+		width: min(520px, calc(100vw - 40px));
 
-		border:
-			1px solid #8f681d;
+		min-height: 58px;
 
-		border-radius: 2px;
+		padding: 12px 42px 13px;
+
+		box-sizing: border-box;
+
+		border: 1px solid #8f681d;
+
+		border-radius: 3px;
 
 		background:
-
 			linear-gradient(
 				180deg,
 				#f4d783 0%,
@@ -263,43 +233,34 @@ style.textContent = `
 			);
 
 		box-shadow:
-
-			0 3px 14px
-			rgba(0,0,0,.55),
-
-			inset 0 1px
-			rgba(255,248,210,.7),
-
-			inset 0 -2px
-			rgba(70,39,4,.55);
+			0 5px 22px rgba(0,0,0,.65),
+			inset 0 1px rgba(255,248,210,.8),
+			inset 0 -2px rgba(70,39,4,.55);
 
 		color: #211506;
 
 		cursor: pointer;
 
 		font:
-			600 13px/1.25
-			Georgia, serif;
+			600 14px/1.25
+			Georgia,
+			serif;
 
-		letter-spacing: .055em;
+		letter-spacing: .07em;
 
 		text-align: center;
 
 		text-shadow:
-			0 1px
-			rgba(255,240,180,.45);
+			0 1px rgba(255,240,180,.45);
 
 		opacity: 0;
 
 		pointer-events: none;
 
 		transition:
-
-			opacity .28s ease,
-
-			transform .28s ease,
-
-			filter .28s ease;
+			opacity .3s ease,
+			transform .3s ease,
+			filter .25s ease;
 	}
 
 	.painting-plaque.visible {
@@ -309,7 +270,7 @@ style.textContent = `
 		pointer-events: auto;
 
 		transform:
-			translate(-50%,-50%)
+			translateX(-50%)
 			translateY(0);
 	}
 
@@ -318,8 +279,17 @@ style.textContent = `
 		filter: brightness(1.12);
 
 		transform:
-			translate(-50%,-50%)
+			translateX(-50%)
 			translateY(-2px);
+	}
+
+	.painting-plaque:active {
+
+		filter: brightness(.96);
+
+		transform:
+			translateX(-50%)
+			translateY(1px);
 	}
 
 	.painting-plaque::before,
@@ -331,8 +301,8 @@ style.textContent = `
 
 		top: 50%;
 
-		width: 5px;
-		height: 5px;
+		width: 6px;
+		height: 6px;
 
 		margin-top: -3px;
 
@@ -341,21 +311,21 @@ style.textContent = `
 		background: #5e3c0b;
 
 		box-shadow:
-			inset 0 1px
-			rgba(255,224,130,.5);
+			inset 0 1px rgba(255,224,130,.5);
 	}
 
 	.painting-plaque::before {
-		left: 6px;
+		left: 12px;
 	}
 
 	.painting-plaque::after {
-		right: 6px;
+		right: 12px;
 	}
 
-	/* --------------------------------------------------------
-	   STORY OVERLAY
-	-------------------------------------------------------- */
+
+	/* -------------------------------------------------------
+	 * STORY OVERLAY
+	 * ----------------------------------------------------- */
 
 	.story-overlay {
 
@@ -372,17 +342,14 @@ style.textContent = `
 		justify-content: center;
 
 		padding:
-			clamp(
-				20px,
-				5vw,
-				70px
-			);
+			clamp(20px, 5vw, 70px);
+
+		box-sizing: border-box;
 
 		background:
-			rgba(5,4,3,.58);
+			rgba(5,4,3,.62);
 
-		backdrop-filter:
-			blur(2px);
+		backdrop-filter: blur(2px);
 
 		opacity: 0;
 
@@ -407,31 +374,24 @@ style.textContent = `
 			opacity .38s ease;
 	}
 
-	/* --------------------------------------------------------
-	   STORY CARD
-	-------------------------------------------------------- */
+
+	/* -------------------------------------------------------
+	 * STORY CARD
+	 * ----------------------------------------------------- */
 
 	.story-card {
 
 		position: relative;
 
-		width:
-			min(
-				760px,
-				88vw
-			);
+		width: min(760px, 88vw);
 
 		max-height: 82vh;
 
-		overflow: auto;
+		overflow-y: auto;
 
 		padding:
 			42px
-			clamp(
-				25px,
-				5vw,
-				58px
-			)
+			clamp(25px, 5vw, 58px)
 			46px;
 
 		box-sizing: border-box;
@@ -444,7 +404,7 @@ style.textContent = `
 
 			linear-gradient(
 				rgba(20,15,10,.80),
-				rgba(10,8,6,.88)
+				rgba(10,8,6,.91)
 			),
 
 			radial-gradient(
@@ -468,20 +428,19 @@ style.textContent = `
 			scale(.97);
 
 		transition:
-			transform
-			.48s
-			cubic-bezier(
-				.2,.8,.2,1
-			);
+			transform .48s
+			cubic-bezier(.2,.8,.2,1);
 	}
 
-	.story-overlay.open
-	.story-card {
+	.story-overlay.open .story-card {
 
 		transform:
 			translateY(0)
 			scale(1);
 	}
+
+
+	/* Decorative line */
 
 	.story-card::before {
 
@@ -497,7 +456,6 @@ style.textContent = `
 		height: 1px;
 
 		background:
-
 			linear-gradient(
 				90deg,
 				transparent,
@@ -506,35 +464,34 @@ style.textContent = `
 			);
 	}
 
-	/* --------------------------------------------------------
-	   TITLE
-	-------------------------------------------------------- */
+
+	/* -------------------------------------------------------
+	 * TITLE
+	 * ----------------------------------------------------- */
 
 	.story-title {
 
 		margin:
-			0 35px
-			25px 0;
+			0
+			35px
+			25px
+			0;
 
 		color: #e0b65c;
 
 		font:
 			normal
-			clamp(
-				25px,
-				3.2vw,
-				39px
-			)
-			/1.12
+			clamp(25px, 3.2vw, 39px)/1.12
 			Georgia,
 			serif;
 
 		letter-spacing: .025em;
 	}
 
-	/* --------------------------------------------------------
-	   DESCRIPTION
-	-------------------------------------------------------- */
+
+	/* -------------------------------------------------------
+	 * STORY BODY
+	 * ----------------------------------------------------- */
 
 	.story-body {
 
@@ -544,27 +501,18 @@ style.textContent = `
 
 		font:
 			normal
-			clamp(
-				15px,
-				1.5vw,
-				18px
-			)
-			/1.72
+			clamp(15px, 1.5vw, 18px)/1.72
 			Georgia,
 			serif;
 
 		color:
-			rgba(
-				240,
-				232,
-				216,
-				.91
-			);
+			rgba(240,232,216,.91);
 	}
 
-	/* --------------------------------------------------------
-	   CLOSE BUTTON
-	-------------------------------------------------------- */
+
+	/* -------------------------------------------------------
+	 * CLOSE BUTTON
+	 * ----------------------------------------------------- */
 
 	.story-close {
 
@@ -608,11 +556,12 @@ style.textContent = `
 			rotate(90deg);
 	}
 
-	/* --------------------------------------------------------
-	   MOBILE
-	-------------------------------------------------------- */
 
-	@media (max-width:600px) {
+	/* -------------------------------------------------------
+	 * MOBILE
+	 * ----------------------------------------------------- */
+
+	@media (max-width: 600px) {
 
 		.museum-hint {
 
@@ -621,23 +570,61 @@ style.textContent = `
 			font-size: 10px;
 
 			padding:
-				7px 11px;
+				7px
+				11px;
+
+			max-width:
+				calc(100vw - 30px);
+
+			text-align: center;
 		}
 
 		.painting-plaque {
 
-			min-width: 145px;
-			max-width: 190px;
+			bottom: 22px;
 
-			font-size: 11px;
+			width:
+				calc(100vw - 30px);
+
+			min-height: 58px;
+
+			padding:
+				12px 38px;
+
+			font-size: 13px;
+		}
+
+		.story-overlay {
+
+			padding:
+				14px;
 		}
 
 		.story-card {
 
-			max-height: 86vh;
+			width: 94vw;
+
+			max-height: 88vh;
 
 			padding:
-				36px 22px 32px;
+				38px
+				21px
+				30px;
+		}
+
+		.story-title {
+
+			font-size: 26px;
+
+			margin-bottom:
+				22px;
+		}
+
+		.story-body {
+
+			font-size: 15px;
+
+			line-height: 1.65;
 		}
 	}
 
@@ -645,30 +632,28 @@ style.textContent = `
 
 document.head.appendChild(style);
 
-/* ============================================================
- * HINT
- * ========================================================== */
 
-const hint =
-	document.createElement('div');
+/* -----------------------------------------------------------
+ * TOP HINT
+ * --------------------------------------------------------- */
 
-hint.className =
-	'museum-hint';
+const hint = document.createElement('div');
+
+hint.className = 'museum-hint';
 
 hint.textContent =
 	'Walk through the gallery  ·  Approach a painting  ·  Read its plaque';
 
 document.body.appendChild(hint);
 
-/* ============================================================
- * GOLD PLAQUE
- * ========================================================== */
 
-const plaque =
-	document.createElement('button');
+/* -----------------------------------------------------------
+ * GOLD READING PLAQUE
+ * --------------------------------------------------------- */
 
-plaque.className =
-	'painting-plaque';
+const plaque = document.createElement('button');
+
+plaque.className = 'painting-plaque';
 
 plaque.type = 'button';
 
@@ -679,15 +664,14 @@ plaque.setAttribute(
 
 document.body.appendChild(plaque);
 
-/* ============================================================
+
+/* -----------------------------------------------------------
  * STORY OVERLAY
- * ========================================================== */
+ * --------------------------------------------------------- */
 
-const overlay =
-	document.createElement('div');
+const overlay = document.createElement('div');
 
-overlay.className =
-	'story-overlay';
+overlay.className = 'story-overlay';
 
 overlay.innerHTML = `
 
@@ -720,36 +704,34 @@ overlay.innerHTML = `
 
 `;
 
-document.body.appendChild(
-	overlay
-);
+document.body.appendChild(overlay);
 
 const storyTitle =
-	overlay.querySelector(
-		'#story-title'
-	);
+	overlay.querySelector('#story-title');
 
 const storyBody =
-	overlay.querySelector(
-		'#story-body'
-	);
+	overlay.querySelector('#story-body');
 
 const closeStory =
-	overlay.querySelector(
-		'.story-close'
-	);
+	overlay.querySelector('.story-close');
+
+
+/* -----------------------------------------------------------
+ * STATE
+ * --------------------------------------------------------- */
 
 let activePainting = null;
+
 let currentPlaque = null;
 
-/* ============================================================
+
+/* -----------------------------------------------------------
  * OPEN STORY
- * ========================================================== */
+ * --------------------------------------------------------- */
 
 function openStory(painting) {
 
-	activePainting =
-		painting;
+	activePainting = painting;
 
 	storyTitle.textContent =
 		painting.title;
@@ -757,42 +739,38 @@ function openStory(painting) {
 	storyBody.textContent =
 		painting.description;
 
-	overlay.classList.add(
-		'open'
-	);
+	overlay.classList.add('open');
 
-	hint.classList.add(
-		'hidden'
-	);
+	hint.classList.add('hidden');
 
-	// Stop walking while reading.
 	fps.setPaused(true);
 }
 
-/* ============================================================
+
+/* -----------------------------------------------------------
  * CLOSE STORY
- * ========================================================== */
+ * --------------------------------------------------------- */
 
 function closeStoryPanel() {
 
-	overlay.classList.remove(
-		'open'
-	);
+	overlay.classList.remove('open');
 
 	activePainting = null;
 
 	fps.setPaused(false);
+
 }
 
-/* ============================================================
+
+/* -----------------------------------------------------------
  * PLAQUE CLICK
- * ========================================================== */
+ * --------------------------------------------------------- */
 
 plaque.addEventListener(
 	'click',
 	() => {
 
-		if(currentPlaque) {
+		if (currentPlaque) {
 
 			openStory(
 				currentPlaque
@@ -803,22 +781,26 @@ plaque.addEventListener(
 	}
 );
 
-/* ============================================================
- * CLOSE EVENTS
- * ========================================================== */
+
+/* -----------------------------------------------------------
+ * CLOSE BUTTON
+ * --------------------------------------------------------- */
 
 closeStory.addEventListener(
 	'click',
 	closeStoryPanel
 );
 
+
+/* -----------------------------------------------------------
+ * CLICK OUTSIDE STORY
+ * --------------------------------------------------------- */
+
 overlay.addEventListener(
 	'click',
 	(e) => {
 
-		if(
-			e.target === overlay
-		) {
+		if (e.target === overlay) {
 
 			closeStoryPanel();
 
@@ -826,16 +808,19 @@ overlay.addEventListener(
 
 	}
 );
+
+
+/* -----------------------------------------------------------
+ * ESCAPE KEY
+ * --------------------------------------------------------- */
 
 window.addEventListener(
 	'keydown',
 	(e) => {
 
-		if(
+		if (
 			e.code === 'Escape' &&
-			overlay.classList.contains(
-				'open'
-			)
+			overlay.classList.contains('open')
 		) {
 
 			closeStoryPanel();
@@ -845,98 +830,12 @@ window.addEventListener(
 	}
 );
 
-/* ============================================================
- * WORLD → SCREEN
- * ========================================================== */
 
-function multiplyPoint(m,p) {
-
-	const x = p[0];
-	const y = p[1];
-	const z = p[2];
-
-	return [
-
-		m[0] * x +
-		m[4] * y +
-		m[8] * z +
-		m[12],
-
-		m[1] * x +
-		m[5] * y +
-		m[9] * z +
-		m[13],
-
-		m[2] * x +
-		m[6] * y +
-		m[10] * z +
-		m[14],
-
-		m[3] * x +
-		m[7] * y +
-		m[11] * z +
-		m[15]
-
-	];
-}
-
-function worldToScreen(point) {
-
-	const viewPoint =
-		multiplyPoint(
-			fps.view(),
-			point
-		);
-
-	const clip =
-		multiplyPoint(
-			fps.proj(),
-			viewPoint
-		);
-
-	if(
-		clip[3] <= 0.001
-	)
-		return null;
-
-	const ndcX =
-		clip[0] /
-		clip[3];
-
-	const ndcY =
-		clip[1] /
-		clip[3];
-
-	const ndcZ =
-		clip[2] /
-		clip[3];
-
-	if(
-		ndcZ < -1 ||
-		ndcZ > 1
-	)
-		return null;
-
-	return {
-
-		x:
-			(ndcX + 1) *
-			window.innerWidth /
-			2,
-
-		y:
-			(1 - ndcY) *
-			window.innerHeight /
-			2
-
-	};
-}
-
-/* ============================================================
+/* -----------------------------------------------------------
  * DISTANCE
- * ========================================================== */
+ * --------------------------------------------------------- */
 
-function horizontalDistance(a,b) {
+function horizontalDistance(a, b) {
 
 	return Math.hypot(
 		a[0] - b[0],
@@ -945,65 +844,41 @@ function horizontalDistance(a,b) {
 
 }
 
-/* ============================================================
- * FACING
- * ========================================================== */
 
-function facingScore(
-	position,
-	target
-) {
-
-	const dx =
-		target[0] -
-		position[0];
-
-	const dz =
-		target[2] -
-		position[2];
-
-	const len =
-		Math.hypot(
-			dx,
-			dz
-		);
-
-	if(!len)
-		return 1;
-
-	const fx =
-		fps.forward[0];
-
-	const fz =
-		fps.forward[2];
-
-	return (
-		fx * dx +
-		fz * dz
-	) / len;
-}
-
-/* ============================================================
+/* -----------------------------------------------------------
  * UPDATE PLAQUE
- * ========================================================== */
+ *
+ * IMPORTANT:
+ *
+ * We deliberately DO NOT:
+ *
+ * - calculate screen coordinates
+ * - require the painting to be centered
+ * - require the visitor to face the painting
+ * - require successful 3D projection
+ *
+ * The visitor only has to walk close enough.
+ *
+ * This makes the interaction reliable on mobile.
+ * --------------------------------------------------------- */
 
 function updatePlaque() {
 
-	if(activePainting)
+	if (activePainting) {
+
 		return;
+
+	}
 
 	const candidates =
 		placement.interactables();
 
 	let best = null;
 
-	let bestDist =
-		Infinity;
+	let bestDist = Infinity;
 
-	for(
-		const painting
-		of candidates
-	) {
+
+	for (const painting of candidates) {
 
 		const dist =
 			horizontalDistance(
@@ -1011,145 +886,124 @@ function updatePlaque() {
 				painting.paintingPosition
 			);
 
-		const facing =
-			facingScore(
-				fps.pos,
-				painting.paintingPosition
-			);
 
 		/*
-		 * Museum interaction zone:
+		 * Interaction radius.
 		 *
-		 * > 6.5m:
-		 * too far
-		 *
-		 * < 1.15m:
-		 * too close
-		 *
-		 * facing:
-		 * roughly 65° cone
-		 *
-		 * This makes the plaque feel like a
-		 * physical museum label rather than
-		 * a game HUD.
+		 * 10 metres is intentionally generous.
+		 * This means the visitor doesn't have to stand
+		 * exactly in front of the painting.
 		 */
 
-		if(
-			dist >= 6.5 ||
-			dist < 1.15 ||
-			facing <
-				Math.cos(
-					Math.PI / 5.5
-				)
-		)
+		if (dist >= 10.0) {
+
 			continue;
 
-		const screen =
-			worldToScreen(
-				painting.plaquePosition
-			);
-
-		if(!screen)
-			continue;
-
-		if(
-			dist <
-			bestDist
-		) {
-
-			best =
-				painting;
-
-			bestDist =
-				dist;
-
-			best.screen =
-				screen;
 		}
+
+
+		/*
+		 * Avoid activating when literally inside
+		 * the painting.
+		 */
+
+		if (dist < 0.9) {
+
+			continue;
+
+		}
+
+
+		if (dist < bestDist) {
+
+			best = painting;
+
+			bestDist = dist;
+
+		}
+
 	}
 
-	if(best) {
 
-		currentPlaque =
-			best;
+	if (best) {
+
+		currentPlaque = best;
+
+		/*
+		 * Large, obvious mobile-friendly action.
+		 */
 
 		plaque.textContent =
-			best.title;
+			'READ  ·  ' + best.title;
 
-		plaque.style.left =
-			`${best.screen.x}px`;
-
-		plaque.style.top =
-			`${best.screen.y}px`;
-
-		plaque.classList.add(
-			'visible'
-		);
+		plaque.classList.add('visible');
 
 	} else {
 
-		currentPlaque =
-			null;
+		currentPlaque = null;
 
 		plaque.classList.remove(
 			'visible'
 		);
 
 	}
+
 }
 
-/* ============================================================
+
+/* -----------------------------------------------------------
  * RENDER LOOP
- * ========================================================== */
+ * --------------------------------------------------------- */
 
-regl.frame(
-	({time}) => {
+regl.frame(({ time }) => {
 
-		stats.begin();
+	stats.begin();
 
-		fps.tick({
-			time
-		});
 
-		placement.update(
-			fps.pos,
-			fps.fmouse[1],
-			fovX()
-		);
+	/* Update first-person controller */
 
-		updatePlaque();
+	fps.tick({
+		time
+	});
 
-		regl.clear({
 
-			color: [
-				0,
-				0,
-				0,
-				1
-			],
+	/* Update artwork placement */
 
-			depth: 1
+	placement.update(
+		fps.pos,
+		fps.fmouse[1],
+		fovX()
+	);
 
-		});
 
-		context(
-			() => {
+	/* Update reading plaque */
 
-				if(useReflexion) {
+	updatePlaque();
 
-					reflexion(
-						() => {
 
-							drawMap();
+	/* Clear screen */
 
-							drawPainting(
-								placement.batch()
-							);
+	regl.clear({
 
-						}
-					);
+		color: [
+			0,
+			0,
+			0,
+			1
+		],
 
-				}
+		depth: 1
+
+	});
+
+
+	/* Draw gallery */
+
+	context(() => {
+
+		if (useReflexion) {
+
+			reflexion(() => {
 
 				drawMap();
 
@@ -1157,10 +1011,20 @@ regl.frame(
 					placement.batch()
 				);
 
-			}
+			});
+
+		}
+
+
+		drawMap();
+
+		drawPainting(
+			placement.batch()
 		);
 
-		stats.end();
+	});
 
-	}
-);
+
+	stats.end();
+
+});
