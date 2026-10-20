@@ -1639,6 +1639,16 @@ module.exports = function () {
 
 
     // ========================================================
+    // SKIRTING BOARDS (marble, two steps) on the side and end walls
+    // ========================================================
+    addBox(position, normal, elements, WALL, 0, 0, WALL + 0.12, 0.42, LENGTH - WALL);
+    addBox(position, normal, elements, WALL, 0.42, 0, WALL + 0.07, 0.50, LENGTH - WALL);
+    addBox(position, normal, elements, WIDTH - WALL - 0.12, 0, 0, WIDTH - WALL, 0.42, LENGTH - WALL);
+    addBox(position, normal, elements, WIDTH - WALL - 0.07, 0.42, 0, WIDTH - WALL, 0.50, LENGTH - WALL);
+    addBox(position, normal, elements, WALL, 0, LENGTH - WALL - 0.12, WIDTH - WALL, 0.42, LENGTH - WALL);
+    addBox(position, normal, elements, WALL, 0.42, LENGTH - WALL - 0.07, WIDTH - WALL, 0.50, LENGTH - WALL);
+
+    // ========================================================
     // ENTRANCE
     // ========================================================
 
