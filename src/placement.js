@@ -1,45 +1,98 @@
 'use strict';
 
 const texture = require('./image');
+
 const mat4 = require('gl-mat4');
 
-const dynamicResPeriod = 3000;
+const dynamicResPeriod =
+	3000;
 
-let dynamicRes = 'high';
+let dynamicRes =
+	'high';
+
 let dynamicResTimer;
 
-/* ============================================================
- * ROOM
- * ========================================================== */
 
-const LEFT_X = 0.36;
-const RIGHT_X = 13.64;
-const END_Z = 47.64;
+/* ===========================================================
+ * ROOM FACTS
+ * ===========================================================
+ */
 
-const LABEL_X_LEFT = 0.356;
-const LABEL_X_RIGHT = 13.644;
-const LABEL_Z_END = 47.644;
+const LEFT_X =
+	0.36;
 
-const PAINTING_DEPTH = 0.12;
+const RIGHT_X =
+	13.64;
 
-const CENTRE_Y = 4.0;
+const END_Z =
+	47.64;
 
-const FRAME_W = 0.26;
 
-const MAX_HEIGHT = 5.6;
-const MAX_WIDTH = 7.0;
+const LABEL_X_LEFT =
+	0.356;
 
-/* ============================================================
+const LABEL_X_RIGHT =
+	13.644;
+
+const LABEL_Z_END =
+	47.644;
+
+
+const PAINTING_DEPTH =
+	0.12;
+
+
+/*
+ * All paintings share the same eye-line.
+ */
+
+const CENTRE_Y =
+	4.0;
+
+
+/*
+ * Gold frame width.
+ */
+
+const FRAME_W =
+	0.26;
+
+
+/*
+ * Maximum artwork size.
+ */
+
+const MAX_HEIGHT =
+	5.6;
+
+const MAX_WIDTH =
+	7.0;
+
+
+/* ===========================================================
  * PAINTING DESCRIPTIONS
- * ========================================================== */
+ * ===========================================================
+ *
+ * IMPORTANT:
+ *
+ * These are in exactly the same order as api/local.js.
+ *
+ * 0 = Love me like I am Already Dead
+ * 1 = The Hardest Gift I Gave
+ * 2 = A Private Eulogy
+ * 3 = The Guardians I Built to Defend
+ *
+ * ===========================================================
+ */
 
 const DESCRIPTIONS = [
 
-	/* ========================================================
-	   LOVE ME LIKE I AM ALREADY DEAD
-	======================================================== */
+/* -----------------------------------------------------------
+   0
+   LOVE ME LIKE I AM ALREADY DEAD
+----------------------------------------------------------- */
 
-	`We live in a world soaked in hypocrisy. We’re told not to “speak ill of the dead,” yet we spend lifetimes speaking ill of the living. We judge, ignore, neglect—and then pretend to mourn with grace when it’s too late. People say beautiful things at funerals, but only after burying a lifetime of cruelty or silence.
+`We live in a world soaked in hypocrisy. We’re told not to “speak ill of the dead,” yet we spend lifetimes speaking ill of the living. We judge, ignore, neglect—and then pretend to mourn with grace when it’s too late. People say beautiful things at funerals, but only after burying a lifetime of cruelty or silence.
 
 Why?
 
@@ -60,33 +113,40 @@ It asks one question, quietly but sharply:
 
 Why must someone die before we finally decide they were worthy of love?`,
 
-	/* ========================================================
-	   THE HARDEST GIFT I GAVE
-	======================================================== */
 
-	`True love is an act of shelter, but it is incredibly easy for that shelter to quietly warp into a cage. We fall into the trap of believing that because we love someone deeply, they belong near us, that our affection is enough to justify keeping them close, even when their spirit is pulling toward a completely different horizon. But love isn't a possession. It isn't a debt or a contract of ownership. Realising that you are holding someone back against their will, and choosing to unlatch the door anyway, is perhaps the rawest, most devastating form of love there is. It is the moment you value their breathing room more than your own comfort.
+
+/* -----------------------------------------------------------
+   1
+   THE HARDEST GIFT I GAVE
+----------------------------------------------------------- */
+
+`True love is an act of shelter, but it is incredibly easy for that shelter to quietly warp into a cage. We fall into the trap of believing that because we love someone deeply, they belong near us, that our affection is enough to justify keeping them close, even when their spirit is pulling toward a completely different horizon. But love isn't a possession. It isn't a debt or a contract of ownership. Realising that you are holding someone back against their will, and choosing to unlatch the door anyway, is perhaps the rawest, most devastating form of love there is. It is the moment you value their breathing room more than your own comfort.
 
 But there is a second, heavier truth hidden in that departure, and it rests entirely in the feather left behind in her fingers. Freedom is rarely a clean break; it demands a physical toll. The bird didn't just fly away unharmed. It had to leave a part of itself behind in order to slip through the bars. That single feather is the currency of its flight. It means that when we finally let someone go, they don't leave whole, and we don't end up completely empty-handed. They leave a piece of their identity locked in our grasp, a permanent casualty of the time they spent confined. She is left holding the physical receipt of his freedom, a reminder that the hardest gift you can give someone always costs a piece of both of you.`,
 
-	/* ========================================================
-	   A PRIVATE EULOGY
-	======================================================== */
 
-	`There is a unique kind of sorrow in mourning something you were never supposed to have, or holding onto a loss the world expects you to simply forget. When grief is disallowed by circumstances, society, or our own rigid rules, it cannot be shared. It becomes an isolated country.
+/* -----------------------------------------------------------
+   2
+   A PRIVATE EULOGY
+----------------------------------------------------------- */
+
+`There is a unique kind of sorrow in mourning something you were never supposed to have, or holding onto a loss the world expects you to simply forget. When grief is disallowed by circumstances, society, or our own rigid rules, it cannot be shared. It becomes an isolated country.
 
 In A Private Eulogy, the subject turns her back completely to the world. Her posture is not collapsed in defeat; it is held together with immense, quiet effort, the rigid stillness of someone delivering a final, silent tribute inside her own mind. Clad in a heavy black shroud of self-imposed composure, she creates a boundary that no one else can cross.
 
 She sits alone, at the altar of her own thoughts, giving a beautiful, unauthorized goodbye to a memory that only she is left to honor. We will never know exactly what she is honoring. The viewer is left standing outside the door of her thoughts, witnessing the sheer gravity of a quiet, beautiful goodbye.`,
 
-	/* ========================================================
-	   THE GUARDIANS I BUILT TO DEFEND
-	======================================================== */
 
-	`I built them one at a time, though I don't remember choosing to. I only remember needing them.
+/* -----------------------------------------------------------
+   3
+   THE GUARDIANS I BUILT TO DEFEND
+----------------------------------------------------------- */
+
+`I built them one at a time, though I don't remember choosing to. I only remember needing them.
 
 The first stands above, where thought begins. It doesn't watch the world, it watches me: deciding, in silence, what takes root and what dissolves before it ever becomes belief. I never asked for a guardian of the mind. I just found myself with one, already old, already certain of its job.
 
-The second lies across my mouth. Every word has to pass beneath it first: weighed, questioned, sometimes let through, sometimes swallowed whole. I built this one out of every “should I say this” I ever asked myself and answered wrong, out of every sentence I decided, halfway through, not to finish.
+The second lies across my mouth. Every word has to pass beneath it first: weighed, questioned, sometimes let through, sometimes swallowed whole. I built this one out of every "should I say this" I ever asked myself and answered wrong, out of every sentence I decided, halfway through, not to finish.
 
 The third turns away, facing down, toward everything I've carried but never looked at directly. It doesn't guard my face or my words. It holds what's buried. And the second guardian leans back against it, quietly confessing what I already knew: my voice was never really mine alone. It rests on everything underneath it that I haven't processed yet.
 
@@ -97,39 +157,67 @@ I built these so carefully, so early, that I forgot they were built at all.
 This isn't a portrait of a woman hiding behind her defenses. It's a portrait of the defenses themselves, raised by her for her so quietly that even she had to look twice to recognize it as her own.`
 ];
 
-/* ============================================================
- * ARTWORK POSITIONS
- * ========================================================== */
+
+/* ===========================================================
+ * PAINTING POSITIONS
+ * ===========================================================
+ */
 
 const layouts = [
+
+	/*
+	 * Artwork I
+	 * Love me like I am Already Dead
+	 */
 
 	{
 		side: 'right',
 		z: 34.5
 	},
 
+
+	/*
+	 * Artwork II
+	 * The Hardest Gift I Gave
+	 */
+
 	{
 		side: 'right',
 		z: 44.2
 	},
+
+
+	/*
+	 * Artwork III
+	 * A Private Eulogy
+	 */
 
 	{
 		side: 'left',
 		z: 44.2
 	},
 
+
+	/*
+	 * Artwork IV
+	 * The Guardians I Built to Defend
+	 */
+
 	{
 		side: 'end',
 		z: END_Z
 	}
-
 ];
 
-/* ============================================================
- * DIMENSIONS
- * ========================================================== */
 
-function getDimensions(aspect) {
+/* ===========================================================
+ * DIMENSIONS
+ * ===========================================================
+ */
+
+function getDimensions(
+	aspect
+) {
 
 	const height =
 		Math.min(
@@ -138,18 +226,18 @@ function getDimensions(aspect) {
 		);
 
 	return {
-
 		width:
 			height * aspect,
 
 		height
-
 	};
 }
 
-/* ============================================================
+
+/* ===========================================================
  * PAINTING MODEL
- * ========================================================== */
+ * ===========================================================
+ */
 
 function makeModel(
 	width,
@@ -166,7 +254,13 @@ function makeModel(
 		CENTRE_Y -
 		height / 2;
 
-	if(layout.side === 'left') {
+
+	/* LEFT WALL */
+
+	if (
+		layout.side ===
+		'left'
+	) {
 
 		mat4.fromTranslation(
 			model,
@@ -174,18 +268,24 @@ function makeModel(
 				LEFT_X,
 				y,
 				layout.z +
-					width / 2
+				width / 2
 			]
 		);
+
 
 		mat4.rotateY(
 			model,
 			model,
 			Math.PI / 2
 		);
+	}
 
-	} else if(
-		layout.side === 'right'
+
+	/* RIGHT WALL */
+
+	else if (
+		layout.side ===
+		'right'
 	) {
 
 		mat4.fromTranslation(
@@ -194,35 +294,43 @@ function makeModel(
 				RIGHT_X,
 				y,
 				layout.z -
-					width / 2
+				width / 2
 			]
 		);
+
 
 		mat4.rotateY(
 			model,
 			model,
 			-Math.PI / 2
 		);
+	}
 
-	} else {
+
+	/* END WALL */
+
+	else {
 
 		mat4.fromTranslation(
 			model,
 			[
 				7.0 +
-					width / 2,
+				width / 2,
+
 				y,
+
 				END_Z
 			]
 		);
+
 
 		mat4.rotateY(
 			model,
 			model,
 			Math.PI
 		);
-
 	}
+
 
 	mat4.scale(
 		model,
@@ -234,12 +342,15 @@ function makeModel(
 		]
 	);
 
+
 	return model;
 }
 
-/* ============================================================
+
+/* ===========================================================
  * FRAME MODEL
- * ========================================================== */
+ * ===========================================================
+ */
 
 function makeFrameModel(
 	width,
@@ -256,7 +367,11 @@ function makeFrameModel(
 		CENTRE_Y -
 		height / 2;
 
-	if(layout.side === 'left') {
+
+	if (
+		layout.side ===
+		'left'
+	) {
 
 		mat4.fromTranslation(
 			model,
@@ -264,18 +379,22 @@ function makeFrameModel(
 				LEFT_X,
 				y,
 				layout.z +
-					width / 2
+				width / 2
 			]
 		);
+
 
 		mat4.rotateY(
 			model,
 			model,
 			Math.PI / 2
 		);
+	}
 
-	} else if(
-		layout.side === 'right'
+
+	else if (
+		layout.side ===
+		'right'
 	) {
 
 		mat4.fromTranslation(
@@ -284,42 +403,48 @@ function makeFrameModel(
 				RIGHT_X,
 				y,
 				layout.z -
-					width / 2
+				width / 2
 			]
 		);
+
 
 		mat4.rotateY(
 			model,
 			model,
 			-Math.PI / 2
 		);
+	}
 
-	} else {
+
+	else {
 
 		mat4.fromTranslation(
 			model,
 			[
 				7.0 +
-					width / 2,
+				width / 2,
 				y,
 				END_Z
 			]
 		);
+
 
 		mat4.rotateY(
 			model,
 			model,
 			Math.PI
 		);
-
 	}
+
 
 	return model;
 }
 
-/* ============================================================
+
+/* ===========================================================
  * TEXT MODEL
- * ========================================================== */
+ * ===========================================================
+ */
 
 function makeTextModel(
 	width,
@@ -332,13 +457,18 @@ function makeTextModel(
 
 	const model = [];
 
+
 	const y =
 		CENTRE_Y -
 		height / 2 -
 		FRAME_W -
 		0.38;
 
-	if(layout.side === 'left') {
+
+	if (
+		layout.side ===
+		'left'
+	) {
 
 		mat4.fromTranslation(
 			model,
@@ -346,18 +476,22 @@ function makeTextModel(
 				LABEL_X_LEFT,
 				y,
 				layout.z +
-					width / 2
+				width / 2
 			]
 		);
+
 
 		mat4.rotateY(
 			model,
 			model,
 			Math.PI / 2
 		);
+	}
 
-	} else if(
-		layout.side === 'right'
+
+	else if (
+		layout.side ===
+		'right'
 	) {
 
 		mat4.fromTranslation(
@@ -366,35 +500,39 @@ function makeTextModel(
 				LABEL_X_RIGHT,
 				y,
 				layout.z -
-					width / 2
+				width / 2
 			]
 		);
+
 
 		mat4.rotateY(
 			model,
 			model,
 			-Math.PI / 2
 		);
+	}
 
-	} else {
+
+	else {
 
 		mat4.fromTranslation(
 			model,
 			[
 				7.0 +
-					width / 2,
+				width / 2,
 				y,
 				LABEL_Z_END
 			]
 		);
+
 
 		mat4.rotateY(
 			model,
 			model,
 			Math.PI
 		);
-
 	}
+
 
 	mat4.scale(
 		model,
@@ -406,12 +544,15 @@ function makeTextModel(
 		]
 	);
 
+
 	return model;
 }
 
-/* ============================================================
- * GOLD PLAQUE POSITION
- * ========================================================== */
+
+/* ===========================================================
+ * PLAQUE POSITION
+ * ===========================================================
+ */
 
 function makePlaquePosition(
 	width,
@@ -422,31 +563,39 @@ function makePlaquePosition(
 	const layout =
 		layouts[index];
 
+
 	const y =
 		CENTRE_Y -
 		height / 2 -
 		FRAME_W -
 		0.38;
 
-	if(layout.side === 'left') {
+
+	if (
+		layout.side ===
+		'left'
+	) {
 
 		return [
 			LEFT_X + 0.55,
 			y,
 			layout.z
 		];
-
 	}
 
-	if(layout.side === 'right') {
+
+	if (
+		layout.side ===
+		'right'
+	) {
 
 		return [
 			RIGHT_X - 0.55,
 			y,
 			layout.z
 		];
-
 	}
+
 
 	return [
 		7.0,
@@ -455,27 +604,38 @@ function makePlaquePosition(
 	];
 }
 
-/* ============================================================
- * PLACEMENT EXPORT
- * ========================================================== */
 
-module.exports = (regl) => {
+/* ===========================================================
+ * MAIN PLACEMENT MODULE
+ * ===========================================================
+ */
+
+module.exports =
+(regl) => {
 
 	let batch = [];
 
 	let shownBatch = [];
 
-	/* --------------------------------------------------------
-	   LOAD PAINTING
-	-------------------------------------------------------- */
 
-	const loadPainting = (p) => {
+	/* -------------------------------------------------------
+	 * LOAD PAINTING
+	 * ----------------------------------------------------- */
+
+	const loadPainting =
+	(p) => {
 
 		const index =
 			p.image_id;
 
-		if(!layouts[index])
+
+		if (
+			!layouts[index]
+		) {
+
 			return;
+		}
+
 
 		const {
 			width,
@@ -485,9 +645,11 @@ module.exports = (regl) => {
 				p.aspect
 			);
 
+
 		batch.push({
 
 			...p,
+
 
 			model:
 				makeModel(
@@ -496,6 +658,7 @@ module.exports = (regl) => {
 					index
 				),
 
+
 			framemodel:
 				makeFrameModel(
 					width,
@@ -503,10 +666,13 @@ module.exports = (regl) => {
 					index
 				),
 
-			framesize: [
-				width,
-				height
-			],
+
+			framesize:
+				[
+					width,
+					height
+				],
+
 
 			textmodel:
 				makeTextModel(
@@ -515,21 +681,38 @@ module.exports = (regl) => {
 					index
 				),
 
+
 			text:
-				p.textGen(width),
+				p.textGen(
+					width
+				),
+
 
 			width,
+
 			height,
 
+
 			/*
-			 * Use the title coming from the
-			 * artwork metadata.
+			 * Title from api/local.js.
 			 */
+
 			title:
 				p.title,
 
+
+			/*
+			 * Curatorial description.
+			 */
+
 			description:
 				DESCRIPTIONS[index],
+
+
+			/*
+			 * Position used by the
+			 * museum interaction system.
+			 */
 
 			plaquePosition:
 				makePlaquePosition(
@@ -538,38 +721,56 @@ module.exports = (regl) => {
 					index
 				),
 
+
+			/*
+			 * Approximate centre of
+			 * each painting.
+			 */
+
 			paintingPosition:
 
-				layouts[index].side === 'left'
+				layouts[index].side ===
+				'left'
 
-					? [
+					?
+
+					[
 						LEFT_X + 0.05,
 						CENTRE_Y,
 						layouts[index].z
 					]
 
-					: layouts[index].side === 'right'
+					:
 
-					? [
+				layouts[index].side ===
+				'right'
+
+					?
+
+					[
 						RIGHT_X - 0.05,
 						CENTRE_Y,
 						layouts[index].z
 					]
 
-					: [
+					:
+
+					[
 						7.0,
 						CENTRE_Y,
 						END_Z - 0.05
 					],
 
-			textGen: null
 
+			textGen:
+				null
 		});
 	};
 
-	/* --------------------------------------------------------
-	   LOAD TEXTURES
-	-------------------------------------------------------- */
+
+	/* -------------------------------------------------------
+	 * FETCH
+	 * ----------------------------------------------------- */
 
 	texture.fetch(
 		regl,
@@ -579,16 +780,19 @@ module.exports = (regl) => {
 		() => {}
 	);
 
-	/* --------------------------------------------------------
-	   PUBLIC API
-	-------------------------------------------------------- */
+
+	/* -------------------------------------------------------
+	 * PUBLIC API
+	 * ----------------------------------------------------- */
 
 	return {
 
-		update: () => {
+		update:
+		() => {
 
 			shownBatch =
 				batch;
+
 
 			shownBatch.forEach(
 				(painting) => {
@@ -598,17 +802,23 @@ module.exports = (regl) => {
 						painting,
 						dynamicRes
 					);
-
 				}
 			);
+
 
 			dynamicRes =
 				'low';
 
-			if(dynamicResTimer)
+
+			if (
+				dynamicResTimer
+			) {
+
 				clearTimeout(
 					dynamicResTimer
 				);
+			}
+
 
 			dynamicResTimer =
 				setTimeout(
@@ -620,33 +830,38 @@ module.exports = (regl) => {
 					},
 					dynamicResPeriod
 				);
-
 		},
 
-		batch: () =>
-			shownBatch,
 
-		interactables: () =>
-			shownBatch.map(
-				(p, index) => ({
+		batch:
+			() =>
+				shownBatch,
 
-					index,
 
-					title:
-						p.title,
+		/*
+		 * This is what index.js uses
+		 * to find readable paintings.
+		 */
 
-					description:
-						p.description,
+		interactables:
+			() =>
+				shownBatch.map(
+					(p, index) => ({
 
-					plaquePosition:
-						p.plaquePosition,
+						index,
 
-					paintingPosition:
-						p.paintingPosition
+						title:
+							p.title,
 
-				})
-			)
+						description:
+							p.description,
 
+						plaquePosition:
+							p.plaquePosition,
+
+						paintingPosition:
+							p.paintingPosition
+					})
+				)
 	};
-
 };
