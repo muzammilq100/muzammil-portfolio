@@ -81,6 +81,9 @@ const MAX_WIDTH =
  * 1 = The Hardest Gift I Gave
  * 2 = A Private Eulogy
  * 3 = The Guardians I Built to Defend
+ * 4 = Between Grief and Acceptance
+ * 5 = Uncertainty
+ * 6 = Everything Else Was Easier To Perform
  *
  * ===========================================================
  */
@@ -154,7 +157,79 @@ Between the first guardian and the second, only one eye stays uncovered. Mind, c
 
 I built these so carefully, so early, that I forgot they were built at all.
 
-This isn't a portrait of a woman hiding behind her defenses. It's a portrait of the defenses themselves, raised by her for her so quietly that even she had to look twice to recognize it as her own.`
+This isn't a portrait of a woman hiding behind her defenses. It's a portrait of the defenses themselves, raised by her for her so quietly that even she had to look twice to recognize it as her own.`,
+
+
+/* -----------------------------------------------------------
+   4
+   BETWEEN GRIEF AND ACCEPTANCE
+----------------------------------------------------------- */
+
+`Something has just finished. Not with a blow you could point to, not with any sound loud enough to call an ending. It simply stopped, the way a breath you've been holding without noticing finally has to let go on its own.
+
+And what's left is this: a body that hasn't moved yet. Not because it can't. Moving would mean deciding what to call this, grief or relief, and right now it doesn't have to choose. It can be both at once, sitting in the same chest, breathing the same air.
+
+The hand still curls around the shape of what it used to hold, even though there's nothing left in it. That's the strange part nobody warns you about, how long the hand keeps the memory of weight after the weight itself is gone. You open your fingers and they still won't lie flat. Something in you is still holding on, out of habit more than hope.
+
+Somewhere close, a thin line of smoke keeps rising on its own, unbothered, indifferent to whatever you're feeling. Time doesn't pause to let you finish. It just keeps climbing upward while you're still sitting in the wreckage of the moment, and somehow that keeps going. Life continuing without asking your permission first.
+
+This is what it looks like when you finally understand that something cannot be undone, and instead of breaking, you just go quiet. You sit with the absence like it's something you can still hold, even though it isn't, even though your hands are already empty. And underneath the ache of that, so faint you almost miss it, is a lightness. The kind that only shows up once you stop carrying something you were never meant to carry forever.
+
+Not the fall. Not the healing. Just the long, still breath in between, where losing something and finally being free of it turn out to be the same exact feeling, wearing two different names.`,
+
+
+/* -----------------------------------------------------------
+   5
+   UNCERTAINTY
+----------------------------------------------------------- */
+
+`The moment right before the crown touches your head.
+Not yet crowned.
+Not yet forgotten.
+Just suspended.
+
+That's what uncertainty feels like. Like someone holding a version of your worth just above you, close enough to taste, far enough to keep you reaching. You have no idea if it'll be placed on your head or taken away the moment you start to believe you deserve it.
+
+It's about the aching pause life holds you in the mid-air between "what is" and "what could have been."
+
+It's about the people who make you feel like you're extraordinary, only to leave you questioning if you ever were.
+
+It's about promises unspoken but implied, gestures that said everything but meant nothing.
+
+And maybe that's what life is. A series of held crowns and hollow hands. Moments where you almost became something more. Moments where you almost believed.
+
+Have you never wondered how life can take you from a high to a hollow in a moment. How the ground can vanish beneath your feet, and yet you learn to walk anyway.
+
+Faiz once wrote:
+
+دل نا امید تو نہیں ناکام ہی تو ہے
+لمبی ہے غم کی شام مگر شام ہی تو ہے
+
+(The heart is not hopeless—just defeated a little,
+The evening of sorrow is long, but just an evening still.)
+
+Maybe that's the strange mercy in all this, that just as the good times don't last forever, maybe the bad ones won't either and we go on. Certain only of uncertainty.`,
+
+
+/* -----------------------------------------------------------
+   6
+   EVERYTHING ELSE WAS EASIER TO PERFORM
+----------------------------------------------------------- */
+
+`There is a kind of honesty the body can't help but give away, and a kind it learns to hold back. Hands can be taught to rest gently. Posture can settle into ease. Even fabric, draped just so, catching light in the right places, can be arranged to look like comfort. Almost everything about us can be practiced until it looks true, even when it isn't quite.
+
+The face is different. It says things before we mean to say them. The flicker before a smile, the pause before composure, the small ache that shows up in the eyes when nothing else has moved. It is the one part of us that was never very good at lying. So maybe it makes sense that if any part of us needed protecting, it would be that one.
+
+She looks completely at ease. The kind of comfort you can't fake, or so it seems. She is warm, present, close enough to reach. She offers almost everything a person can offer without saying a word, comfort, beauty, closeness, her hand resting easily like she has nothing to hide.
+
+And that's exactly what makes it work. No one looking at her would think anything is missing. She isn't cold or distant. She isn't guarded in any way you could point to. That's the quiet part of it. The protection is so convincing that it doesn't even look like protection. People don't walk away feeling like they were kept out. They walk away thinking they saw her completely.
+
+Only she knows they didn't.
+
+That's the ache underneath all of it. Not that she hides, but that the hiding costs her nothing on the surface. She gets to be close to people, liked by people, comfortable in front of people, and still keep the one part of herself that actually could be hurt somewhere no one thinks to look. It isn't a wall anyone can see. It's just a very convincing kind of openness, one that gives everything except the one thing that was never really safe to give.
+
+Maybe that's the most human thing about her. Not that she hides something, we all do that. But that she's learned how to hide it so well that even the people closest to her never notice there was a door there at all.`
+
 ];
 
 
@@ -183,7 +258,7 @@ const layouts = [
 
 	{
 		side: 'right',
-		z: 44.2
+		z: 23.5     // between the first two pairs of pillars
 	},
 
 
@@ -194,7 +269,7 @@ const layouts = [
 
 	{
 		side: 'left',
-		z: 44.2
+		z: 23.5     // facing The Hardest Gift I Gave
 	},
 
 
@@ -206,6 +281,42 @@ const layouts = [
 	{
 		side: 'end',
 		z: END_Z
+	},
+
+
+	/*
+	 * Artwork V
+	 * Between Grief and Acceptance
+	 * (facing Love me like I am Already Dead)
+	 */
+
+	{
+		side: 'left',
+		z: 34.5
+	},
+
+
+	/*
+	 * Artwork VI
+	 * Uncertainty
+	 * (entrance hall, before the arch)
+	 */
+
+	{
+		side: 'right',
+		z: 6.5
+	},
+
+
+	/*
+	 * Artwork VII
+	 * Everything Else Was Easier To Perform
+	 * (facing Uncertainty)
+	 */
+
+	{
+		side: 'left',
+		z: 6.5
 	}
 ];
 
