@@ -41,4 +41,4 @@ The two statues are real 3D scans, slimmed down for the web and stored in `res/v
 
 ## The street outside
 
-The view through the entrance door and windows is built from a photograph of a street in Padua taken by Muzammil (`res/street/photo.jpg`). The photo's camera was measured from its perspective lines and the street rebuilt as simple 3D surfaces, so the photo lines up from where it was taken and gains real depth as you move. The cyclist riding past was cut out of a free stock clip from Pexels and packed into a frame sheet (`res/street/cyclist.jpg` and `cyclist_alpha.png`, played by `src/streetlife.js`).
+The view through the entrance door and windows is built from a photograph of a street in Padua taken by Muzammil (`res/street/photo.jpg`). The photo's camera was measured from its perspective lines and the street rebuilt as simple 3D surfaces, so the photo lines up from where it was taken and gains real depth as you move.

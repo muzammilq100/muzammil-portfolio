@@ -114,8 +114,6 @@ const drawStatues = require('./statues')(regl, map);
 
 const drawStreet = require('./street')(regl);
 
-const drawStreetLife = require('./streetlife')(regl);
-
 const drawGlass = require('./glass')(regl);
 
 fps = require('./fps')(
@@ -969,9 +967,6 @@ regl.frame(
 
 				// the street outside, seen through the door and windows
 				drawStreet();
-
-				// a cyclist riding past now and then
-				drawStreetLife();
 
 				// glass last, over everything
 				drawGlass();
