@@ -606,12 +606,125 @@ function makePlaquePosition(
 
 
 /* ===========================================================
+ * PICTURE LIGHT ABOVE EACH PAINTING
+ * ===========================================================
+ *
+ * A slim bronze bar on a short arm, hung above the frame.
+ * Returns the little fixture boxes (drawn in painting.js) and
+ * the light data that mesh.js uses to brighten the wall.
+ *
+ * ===========================================================
+ */
+
+const LIGHT_ARM = 0.42;
+
+function boxModel(centre, A, Nn, sx, sy, sz) {
+
+	return [
+		A[0] * sx, A[1] * sx, A[2] * sx, 0,
+		0, sy, 0, 0,
+		Nn[0] * sz, Nn[1] * sz, Nn[2] * sz, 0,
+		centre[0], centre[1], centre[2], 1
+	];
+}
+
+function makeLight(width, height, index) {
+
+	const layout =
+		layouts[index];
+
+	let W;
+	let A;
+	let Nn;
+
+	if (layout.side === 'left') {
+
+		W = [LEFT_X, layout.z];
+		A = [0, 0, 1];
+		Nn = [1, 0, 0];
+
+	} else if (layout.side === 'right') {
+
+		W = [RIGHT_X, layout.z];
+		A = [0, 0, 1];
+		Nn = [-1, 0, 0];
+
+	} else {
+
+		W = [7.0, END_Z];
+		A = [1, 0, 0];
+		Nn = [0, 0, -1];
+	}
+
+	const barY =
+		CENTRE_Y +
+		height / 2 +
+		FRAME_W +
+		0.30;
+
+	const barLen =
+		Math.min(2.4, Math.max(0.9, width * 0.55));
+
+	const at = (depth, y) => [
+		W[0] + Nn[0] * depth,
+		y,
+		W[1] + Nn[2] * depth
+	];
+
+	const bronze = [0.075, 0.062, 0.050];
+
+	const fixtures = [
+
+		// wall plate
+		{
+			fixmodel: boxModel(at(0.014, barY), A, Nn, 0.10, 0.13, 0.028),
+			fixcol: bronze,
+			fixglow: 0
+		},
+
+		// arm
+		{
+			fixmodel: boxModel(at(LIGHT_ARM / 2, barY), A, Nn, 0.02, 0.02, LIGHT_ARM),
+			fixcol: bronze,
+			fixglow: 0
+		},
+
+		// bar
+		{
+			fixmodel: boxModel(at(LIGHT_ARM, barY), A, Nn, barLen, 0.034, 0.05),
+			fixcol: bronze,
+			fixglow: 0
+		},
+
+		// warm glowing strip under the bar
+		{
+			fixmodel: boxModel(at(LIGHT_ARM - 0.012, barY - 0.019), A, Nn, barLen * 0.94, 0.006, 0.028),
+			fixcol: bronze,
+			fixglow: 1
+		}
+	];
+
+	const c = at(LIGHT_ARM, barY - 0.02);
+
+	return {
+
+		fixtures,
+
+		light: {
+			c: [c[0], c[1], c[2], 1],
+			d: [A[0], A[1], A[2], barLen / 2]
+		}
+	};
+}
+
+
+/* ===========================================================
  * MAIN PLACEMENT MODULE
  * ===========================================================
  */
 
 module.exports =
-(regl) => {
+(regl, map) => {
 
 	let batch = [];
 
@@ -646,9 +759,30 @@ module.exports =
 			);
 
 
+		const lamp =
+			makeLight(
+				width,
+				height,
+				index
+			);
+
+		if (
+			map &&
+			map.lights &&
+			index < map.lights.length
+		) {
+
+			map.lights[index] =
+				lamp.light;
+		}
+
+
 		batch.push({
 
 			...p,
+
+			fixtures:
+				lamp.fixtures,
 
 
 			model:

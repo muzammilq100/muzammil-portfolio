@@ -235,6 +235,10 @@ module.exports = (regl) => {
 		float sideShading = pow(uv.z/4.0, 0.1);
 		vec3 col = texture2D(tex, uv.xy - vec2(wrapping, 0.)).rgb;
 		col *= mix(sideShading, 1., frontMask);
+		// light from the bar above: a touch brighter than the wall,
+		// strongest at the top, easing off towards the bottom
+		float lamp = 1.0 + 0.22 * (0.35 + 0.65 * uv.y) * (1.0 - 0.25 * pow(abs(uv.x - 0.5) * 2.0, 2.0));
+		col *= mix(1.0, lamp, frontMask);
 		gl_FragColor = mix(vec4(0.,0.,0.,shadowAlpha), vec4(col,1.), paintingMask);
 	}`,
 			vert: `
@@ -309,9 +313,75 @@ module.exports = (regl) => {
 		cull: { enable: false },
 		blend: { enable: false }
 	});
+
+	// Minimal picture light: a wall plate, an arm and a slim bar.
+	const fixture = regl({
+		frag: `#extension GL_OES_standard_derivatives : enable
+precision highp float;
+uniform vec3 fixcol;
+uniform float fixglow;
+varying vec3 v_vpos;
+void main() {
+	vec3 n = normalize(cross(dFdx(v_vpos), dFdy(v_vpos)));
+	if (n.z < 0.0) n = -n;
+	vec3 key = normalize(vec3(-0.35, 0.65, 0.70));
+	vec3 col = fixcol * (0.40 + 0.90 * max(dot(n, key), 0.0));
+	col = mix(col, vec3(1.0, 0.88, 0.62), fixglow);
+	gl_FragColor = vec4(col, 1.0);
+}`,
+		vert: `
+precision highp float;
+uniform mat4 proj, view, model;
+uniform float yScale;
+attribute vec3 pos;
+varying vec3 v_vpos;
+void main() {
+	vec4 mpos = model * vec4(pos, 1.0);
+	mpos.y *= yScale;
+	vec4 vp = view * mpos;
+	v_vpos = vp.xyz;
+	gl_Position = proj * vp;
+}`,
+		attributes: {
+			pos: [
+				[-0.5, -0.5, -0.5], [0.5, -0.5, -0.5], [0.5, 0.5, -0.5], [-0.5, 0.5, -0.5],
+				[-0.5, -0.5, 0.5], [0.5, -0.5, 0.5], [0.5, 0.5, 0.5], [-0.5, 0.5, 0.5]
+			]
+		},
+		elements: [
+			0, 1, 2, 0, 2, 3,
+			4, 5, 6, 4, 6, 7,
+			0, 1, 5, 0, 5, 4,
+			2, 3, 7, 2, 7, 6,
+			0, 3, 7, 0, 7, 4,
+			1, 2, 6, 1, 6, 5
+		],
+		uniforms: {
+			model: regl.prop('fixmodel'),
+			fixcol: regl.prop('fixcol'),
+			fixglow: regl.prop('fixglow')
+		},
+		// the matrices can mirror the box, so draw both sides
+		cull: { enable: false },
+		blend: { enable: false }
+	});
+
 	return function (batch) {
 		painting(batch);
 		frame(batch);
+
+		const fixtures = [];
+
+		batch.forEach((p) => {
+			if (p.fixtures) {
+				fixtures.push(...p.fixtures);
+			}
+		});
+
+		if (fixtures.length) {
+			fixture(fixtures);
+		}
+
 		drawText(batch);
 	}
 };
