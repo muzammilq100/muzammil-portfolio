@@ -13,7 +13,9 @@
  * - animated story overlay
  */
 
-var useReflexion = false;
+// the polished floor reflects the room; switched off automatically
+// if the device turns out to be too slow for it
+var useReflexion = true;
 var showStats = false;
 
 
@@ -135,7 +137,8 @@ const context = regl({
 	uniforms: {
 		view: fps.view,
 		proj: fps.proj,
-		yScale: 1.0
+		yScale: 1.0,
+		mirrorOn: () => (useReflexion ? 1.0 : 0.0)
 	}
 });
 
@@ -181,36 +184,6 @@ canvas {
 }
 
 
-/* -----------------------------------------------------------
-   TOP MUSEUM HINT
------------------------------------------------------------ */
-
-.museum-hint {
-	position: fixed;
-	left: 50%;
-	top: 24px;
-	transform: translateX(-50%);
-	z-index: 20;
-	pointer-events: none;
-	padding: 8px 16px;
-	border-radius: 3px;
-	background: rgba(150,122,90,.45);
-	color: rgba(255,250,240,.92);
-	font: 12px/1.4 Georgia, serif;
-	letter-spacing: .12em;
-	text-transform: uppercase;
-	text-align: center;
-	width: max-content;
-	max-width: calc(100vw - 32px);
-	box-sizing: border-box;
-	backdrop-filter: blur(5px);
-	-webkit-backdrop-filter: blur(5px);
-	transition: opacity .7s ease;
-}
-
-.museum-hint.hidden {
-	opacity: 0;
-}
 
 
 /* ===========================================================
@@ -364,16 +337,6 @@ canvas {
 
 @media (max-width: 600px) {
 
-	.museum-hint {
-
-		top: 12px;
-
-		font-size: 10px;
-
-		padding:
-			7px
-			11px;
-	}
 
 
 	.painting-plaque {
@@ -454,22 +417,6 @@ canvas {
 `;
 
 document.head.appendChild(style);
-
-
-/* ===========================================================
-   MUSEUM HINT
-=========================================================== */
-
-const hint =
-	document.createElement('div');
-
-hint.className =
-	'museum-hint';
-
-hint.textContent =
-	'Walk through the gallery  ·  Approach a painting  ·  Read its plaque';
-
-document.body.appendChild(hint);
 
 
 /* ===========================================================
@@ -586,10 +533,6 @@ function openStory(painting) {
 
 	overlay.classList.add(
 		'open'
-	);
-
-	hint.classList.add(
-		'hidden'
 	);
 
 	currentPlaque =
@@ -833,69 +776,64 @@ function updatePlaque() {
 	const candidates =
 		placement.interactables();
 
+	// which way the visitor is looking (flat)
+	const fx = fps.forward[0], fz = fps.forward[2];
+	const fl = Math.hypot(fx, fz) || 1;
+
 	let best = null;
+	let bestDist = Infinity;
 
-	let bestDist =
-		Infinity;
+	for (const painting of candidates) {
 
+		const pp = painting.paintingPosition;
 
-	for (
-		const painting of candidates
-	) {
+		// the wall's normal (into the room) and the direction along it
+		let nx = 0, nz = 0;
+		if (painting.side === 'left') nx = 1;
+		else if (painting.side === 'right') nx = -1;
+		else nz = -1;
 
-		const dist =
-			horizontalDistance(
-				fps.pos,
-				painting.paintingPosition
-			);
+		const dx = pp[0] - fps.pos[0];
+		const dz = pp[2] - fps.pos[2];
 
+		// distance straight out from the wall, and how far to one side
+		const out = -(dx * nx + dz * nz);
+		const along = Math.abs(dx * nz - dz * nx);
 
-		/*
-		 * Near enough to read.
-		 */
+		// facing the painting: looking within about 25 degrees of it
+		const facing = -(fx * nx + fz * nz) / fl;
+
+		// close enough: side walls are always close from the centre line,
+		// the end painting only from the last stretch of the hall
+		const near = painting.side === 'end' ? 11.0 : 8.0;
+
+		const halfWidth = (painting.width || 2) / 2;
+
 		if (
-			dist >= 10.0 ||
-			dist < 0.9
+			facing > 0.9 &&
+			out > 0.5 && out < near &&
+			along < halfWidth + 0.8
 		) {
-
-			continue;
-		}
-
-
-		if (
-			dist < bestDist
-		) {
-
-			best =
-				painting;
-
-			bestDist =
-				dist;
+			if (out < bestDist) {
+				best = painting;
+				bestDist = out;
+			}
 		}
 	}
 
-
 	if (best) {
 
-		currentPlaque =
-			best;
+		currentPlaque = best;
 
-		plaque.textContent =
-			'READ  ·  ' +
-			best.title;
+		plaque.textContent = 'READ  ·  ' + best.title;
 
-		plaque.classList.add(
-			'visible'
-		);
+		plaque.classList.add('visible');
 
 	} else {
 
-		currentPlaque =
-			null;
+		currentPlaque = null;
 
-		plaque.classList.remove(
-			'visible'
-		);
+		plaque.classList.remove('visible');
 	}
 }
 
@@ -904,10 +842,25 @@ function updatePlaque() {
    RENDER LOOP
 =========================================================== */
 
+let perfFrames = 0;
+let perfStart = 0;
+
 regl.frame(
 	({ time }) => {
 
 		stats.begin();
+
+		// after a few seconds, check the frame rate once
+		if (useReflexion) {
+			perfFrames++;
+			if (perfFrames === 30) perfStart = time;
+			if (perfFrames === 150) {
+				const fpsMeasured = 120 / Math.max(time - perfStart, 0.001);
+				if (fpsMeasured < 32) {
+					useReflexion = false;
+				}
+			}
+		}
 
 
 		fps.tick({
@@ -944,14 +897,21 @@ regl.frame(
 					useReflexion
 				) {
 
+					// the room upside down beneath the polished floor
 					reflexion(
 						() => {
 
 							drawMap();
 
+							drawStatues();
+
 							drawPainting(
 								placement.batch()
 							);
+
+							drawStreet();
+
+							drawGlass();
 						}
 					);
 				}
@@ -965,7 +925,7 @@ regl.frame(
 					placement.batch()
 				);
 
-				// the street outside, seen through the door and windows
+				// the street outside, seen through the door
 				drawStreet();
 
 				// glass last, over everything

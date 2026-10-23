@@ -21,7 +21,23 @@ const ROOM_BRIGHTNESS = 0.6;
 // How strongly the picture lights wash the wall around each painting.
 const PICTURE_LIGHT = 0.95;
 
+const { doorLightGLSL } = require('./entrance');
+
+// light falling through the door, pointing from the floor towards the
+// bright street outside: down from above, from slightly to the left
+const DOOR_LIGHT_DIR = (() => {
+  const v = [-0.22, 0.60, -0.77];
+  const l = Math.hypot(v[0], v[1], v[2]);
+  return v.map((x) => (x / l).toFixed(4)).join(', ');
+})();
+
 module.exports = (regl, data, useReflexion) => {
+
+  // things standing on the floor cast soft contact shadows
+  const occluders = (data.occluders || []).slice(0, 24);
+  const aoGLSL = occluders.map(([x, z, r]) =>
+    `ao = min(ao, contact(v_pos.xz, vec2(${x.toFixed(3)}, ${z.toFixed(3)}), ${r.toFixed(3)}));`
+  ).join('\n      ');
 
   // one vec4 pair per light, read live from data.lights so each light
   // switches on as soon as its painting has loaded
@@ -41,6 +57,7 @@ module.exports = (regl, data, useReflexion) => {
     precision highp float;
 
     uniform float yScale;
+    uniform float mirrorOn;
 
     varying vec3 v_pos;
     varying vec3 v_relativepos;
@@ -84,6 +101,14 @@ module.exports = (regl, data, useReflexion) => {
 
     float fadeFar(float a, float b, float x) {
       return 1.0 - smoothstep(a, b, x);
+    }
+
+    ${doorLightGLSL()}
+
+    // soft darkening of the floor around something standing on it
+    float contact(vec2 p, vec2 c, float r) {
+      float d = length(p - c) - r;
+      return mix(0.55, 1.0, smoothstep(-0.05, 0.75, d));
     }
 
     float bell(float x) {
@@ -220,15 +245,16 @@ module.exports = (regl, data, useReflexion) => {
       // FLOOR MATERIAL: polished chequered marble
       // ---------------------------------------------------------
 
-      float tileSize = 0.78;
-      vec2 tile = floor(v_pos.xz / tileSize);
+      float tileSize = 0.62;
+      vec2 tq = mat2(0.70711, 0.70711, -0.70711, 0.70711) * (v_pos.xz - vec2(7.0, 0.0));
+      vec2 tile = floor(tq / tileSize);
       float checker = mod(tile.x + tile.y, 2.0);
       float rnd = hash12(tile);
 
       vec3 lightTile = tileLight * (0.93 + 0.10 * rnd);
       vec3 darkTile  = tileDark + vec3(0.012) * rnd;
 
-      float vein = abs(sin(v_pos.x * 5.5 + v_pos.z * 2.0 + sin(v_pos.z * 1.6) + rnd * 6.0));
+      float vein = abs(sin(tq.x * 5.5 + tq.y * 2.0 + sin(tq.y * 1.6) + rnd * 6.0));
       vein = 1.0 - smoothstep(0.0, 0.09, vein);
 
       vec3 floorMaterial = mix(lightTile, darkTile, checker);
@@ -236,7 +262,7 @@ module.exports = (regl, data, useReflexion) => {
       floorMaterial = mix(floorMaterial, floorMaterial * 1.5 + 0.02, vein * 0.18 * checker);
 
       // hair-line grout between tiles
-      vec2 tf = fract(v_pos.xz / tileSize);
+      vec2 tf = fract(tq / tileSize);
       float edge = min(min(tf.x, 1.0 - tf.x), min(tf.y, 1.0 - tf.y)) * tileSize;
       float grout = (1.0 - smoothstep(0.0, 0.006, edge)) * fadeFar(8.0, 30.0, dist);
       floorMaterial *= 1.0 - 0.28 * grout;
@@ -314,26 +340,31 @@ module.exports = (regl, data, useReflexion) => {
       light *= ${ROOM_BRIGHTNESS.toFixed(3)};
 
       // ---------------------------------------------------------
-      // DAYLIGHT FROM THE STREET
-      // Warm light spills in through the glass door and the two
-      // windows: soft pools on the floor and a glow near the wall.
+      // DAYLIGHT THROUGH THE DOOR
+      // A warm pool on the floor in the shape of the door, crossed
+      // by the soft shadows of the metal bars, plus a gentle glow on
+      // everything near the entrance.
       // ---------------------------------------------------------
       float inZ = max(v_pos.z - 0.35, 0.0);
       float spill = 0.0;
-      if (v_pos.z < 9.0 && v_pos.z > 0.30) {
-        float sDoor = 0.25 + 0.30 * inZ;
-        float door = smoothstep(5.70 - sDoor, 5.90, v_pos.x) * (1.0 - smoothstep(8.10, 8.30 + sDoor, v_pos.x));
-        float sWin = 0.30 + 0.30 * inZ;
-        float winL = smoothstep(1.40 - sWin, 1.70, v_pos.x) * (1.0 - smoothstep(3.40, 3.70 + sWin, v_pos.x));
-        float winR = smoothstep(10.30 - sWin, 10.60, v_pos.x) * (1.0 - smoothstep(12.30, 12.60 + sWin, v_pos.x));
-        float fall = exp(-inZ / 2.6);
-        // windows start higher, so their pools land a little further in
-        float winFall = exp(-max(inZ - 0.6, 0.0) / 2.4) * smoothstep(0.0, 0.9, inZ);
-        spill = isFloor * (door * fall * 1.0 + (winL + winR) * winFall * 0.75);
-        // a general glow on everything near the entrance
-        spill += (1.0 - isFloor) * exp(-inZ / 2.2) * 0.22 * (1.0 - isCeiling * 0.5);
+      if (v_pos.z < 12.0 && v_pos.z > 0.30) {
+        if (isFloor > 0.5) {
+          float through = doorLight(v_pos, vec3(${DOOR_LIGHT_DIR}));
+          spill = through * 1.6 * (1.0 - smoothstep(4.0, 11.0, inZ) * 0.5);
+        }
+        spill += exp(-inZ / 2.4) * 0.24 * (1.0 - isCeiling * 0.5);
       }
       light += spill * 0.55;
+
+      // soft contact shadows where pillars, statues and plants meet the floor
+      if (isFloor > 0.5) {
+        float ao = 1.0;
+        ${aoGLSL}
+        // and a little darker along the foot of the walls
+        float wallD = min(min(v_pos.x - 0.35, 13.65 - v_pos.x), 47.65 - v_pos.z);
+        ao *= mix(0.72, 1.0, smoothstep(0.0, 0.55, wallD));
+        light *= ao;
+      }
 
       vec3 pictureTint = vec3(1.0, 0.93, 0.80);
       vec3 spillTint = mix(vec3(1.0), vec3(1.10, 0.95, 0.78), clamp(spill * 2.0, 0.0, 1.0));
@@ -378,7 +409,25 @@ module.exports = (regl, data, useReflexion) => {
       float atmosphere = fadeFar(8.0, 60.0, dist);
       finalColour = mix(finalColour * 0.72, finalColour, atmosphere);
 
-      gl_FragColor = vec4(finalColour, 1.0);
+      // ---------------------------------------------------------
+      // POLISHED FLOOR
+      // The room is also drawn upside down beneath the floor; the
+      // floor lets some of it through, more at grazing angles and more
+      // on the black tiles than the cream ones.
+      // ---------------------------------------------------------
+      float alpha = 1.0;
+      if (isFloor > 0.5) {
+        if (yScale < 0.0) discard;
+        float cosV = clamp(V.y, 0.0, 1.0);
+        float refl = 0.07 + 0.42 * pow(1.0 - cosV, 4.0);
+        refl *= mix(0.55, 1.0, checker);
+        refl *= 1.0 - 0.6 * grout;
+        alpha = 1.0 - refl * mirrorOn;
+        // the bright pool of daylight washes the reflection out a little
+        alpha = mix(alpha, 1.0, clamp(spill * 0.5, 0.0, 0.6));
+      }
+
+      gl_FragColor = vec4(finalColour, alpha);
     }`,
 
     vert: `
@@ -416,6 +465,9 @@ module.exports = (regl, data, useReflexion) => {
         dot(view[2].xyz, t)
       );
 
+      // in the reflection beneath the floor, the eye is mirrored too
+      v_eye.y *= yScale;
+
       pos.y *= yScale;
 
       gl_Position = proj * view * vec4(pos, 1.0);
@@ -429,15 +481,15 @@ module.exports = (regl, data, useReflexion) => {
 
     uniforms: lightUniforms,
 
-    blend: useReflexion
-      ? {
-          enable: true,
-          func: {
-            src: 'src alpha',
-            dst: 'one minus src alpha'
-          }
-        }
-      : {},
+    blend: {
+      enable: true,
+      func: {
+        srcRGB: 'src alpha',
+        dstRGB: 'one minus src alpha',
+        srcAlpha: 'one',
+        dstAlpha: 'zero'
+      }
+    },
 
     elements:
       new Uint32Array(data.elements)
