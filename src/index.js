@@ -112,6 +112,12 @@ drawPainting = require('./painting')(regl);
 
 const drawStatues = require('./statues')(regl, map);
 
+const drawStreet = require('./street')(regl);
+
+const drawStreetLife = require('./streetlife')(regl);
+
+const drawGlass = require('./glass')(regl);
+
 fps = require('./fps')(
 	map,
 	fovY
@@ -960,6 +966,15 @@ regl.frame(
 				drawPainting(
 					placement.batch()
 				);
+
+				// the street outside, seen through the door and windows
+				drawStreet();
+
+				// people, a cyclist and pigeons out in the street
+				drawStreetLife();
+
+				// glass last, over everything
+				drawGlass();
 			}
 		);
 

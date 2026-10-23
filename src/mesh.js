@@ -146,6 +146,7 @@ module.exports = (regl, data, useReflexion) => {
       float isStem = step(3.5, matId) * step(matId, 4.5);
       float isSoil = step(4.5, matId) * step(matId, 5.5);
       float isFluted = step(6.5, matId) * step(matId, 7.5);
+      float isSteel = step(7.5, matId) * step(matId, 8.5);
 
       // Floor: an upward face lying at y = 0 (not column bases)
       float isFloor =
@@ -277,6 +278,7 @@ module.exports = (regl, data, useReflexion) => {
       material = mix(material, vec3(0.150, 0.285, 0.090), isStem);
       material = mix(material, vec3(0.022, 0.018, 0.014), isSoil);
       material = mix(material, vec3(0.010, 0.010, 0.011), isPot);
+      material = mix(material, vec3(0.045, 0.045, 0.048), isSteel);
 
 
       // ---------------------------------------------------------
@@ -311,8 +313,35 @@ module.exports = (regl, data, useReflexion) => {
       // dim the room as a whole; the picture lights stay strong
       light *= ${ROOM_BRIGHTNESS.toFixed(3)};
 
+      // ---------------------------------------------------------
+      // DAYLIGHT FROM THE STREET
+      // Warm light spills in through the glass door and the two
+      // windows: soft pools on the floor and a glow near the wall.
+      // ---------------------------------------------------------
+      float inZ = max(v_pos.z - 0.35, 0.0);
+      float spill = 0.0;
+      if (v_pos.z < 9.0 && v_pos.z > 0.30) {
+        float sDoor = 0.25 + 0.30 * inZ;
+        float door = smoothstep(5.70 - sDoor, 5.90, v_pos.x) * (1.0 - smoothstep(8.10, 8.30 + sDoor, v_pos.x));
+        float sWin = 0.30 + 0.30 * inZ;
+        float winL = smoothstep(1.40 - sWin, 1.70, v_pos.x) * (1.0 - smoothstep(3.40, 3.70 + sWin, v_pos.x));
+        float winR = smoothstep(10.30 - sWin, 10.60, v_pos.x) * (1.0 - smoothstep(12.30, 12.60 + sWin, v_pos.x));
+        float fall = exp(-inZ / 2.6);
+        // windows start higher, so their pools land a little further in
+        float winFall = exp(-max(inZ - 0.6, 0.0) / 2.4) * smoothstep(0.0, 0.9, inZ);
+        spill = isFloor * (door * fall * 1.0 + (winL + winR) * winFall * 0.75);
+        // a general glow on everything near the entrance
+        spill += (1.0 - isFloor) * exp(-inZ / 2.2) * 0.22 * (1.0 - isCeiling * 0.5);
+      }
+      light += spill * 0.55;
+
       vec3 pictureTint = vec3(1.0, 0.93, 0.80);
-      vec3 finalColour = material * (vec3(light) + pictureTint * pic * ${PICTURE_LIGHT.toFixed(3)} * (1.0 - 0.5 * isFloor));
+      vec3 spillTint = mix(vec3(1.0), vec3(1.10, 0.95, 0.78), clamp(spill * 2.0, 0.0, 1.0));
+      vec3 finalColour = material * (vec3(light) * spillTint + pictureTint * pic * ${PICTURE_LIGHT.toFixed(3)} * (1.0 - 0.5 * isFloor));
+
+      // a dull sheen on the black steel frames
+      vec3 Hst = normalize(lightDirection + V);
+      finalColour += vec3(0.30, 0.29, 0.27) * pow(max(dot(N, Hst), 0.0), 24.0) * 0.25 * isSteel;
 
       // leaves catch a soft sheen
       vec3 Hs = normalize(lightDirection + V);

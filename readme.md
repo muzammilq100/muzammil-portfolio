@@ -38,3 +38,7 @@ The two statues are real 3D scans, slimmed down for the web and stored in `res/v
 
 - Venus de Milo, scan by SMK (Statens Museum for Kunst), via Scan the World / MyMiniFactory
 - Michelangelo's David, scan via Scan the World / MyMiniFactory
+
+## The street outside
+
+The view through the entrance door and windows is built from a photograph of a street in Padua taken by Muzammil (`res/street/photo.jpg`). The photo's camera was measured from its perspective lines and the street rebuilt as simple 3D surfaces, so the photo lines up from where it was taken and gains real depth as you move. The figures in the street are painted in code when the page loads (`src/streetlife.js`).

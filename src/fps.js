@@ -1340,7 +1340,7 @@ function (
 					window.innerWidth /
 					window.innerHeight,
 					0.1,
-					100
+					700
 				);
 
 				return proj;
