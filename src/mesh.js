@@ -11,7 +11,7 @@
  */
 
 // how many picture lights the shader handles (one per painting)
-const MAX_LIGHTS = 6;
+const MAX_LIGHTS = 8;
 
 module.exports = (regl, data, useReflexion) => {
 

@@ -1695,7 +1695,7 @@ module.exports = function () {
     // once each painting has loaded and its size is known.
     const lights = [];
 
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 8; i++) {
         lights.push({
             c: [0, 0, 0, 0],
             d: [1, 0, 0, 0]

@@ -16,6 +16,18 @@ const images = [
     {
         file: 'lv_0_20260914002544.jpg',
         title: 'The Guardians I Built to Defend'
+    },
+    {
+        file: 'between-grief-and-acceptance.jpg',
+        title: 'Between Grief and Acceptance'
+    },
+    {
+        file: 'uncertainty.jpg',
+        title: 'Uncertainty'
+    },
+    {
+        file: 'everything-else-was-easier-to-perform.jpg',
+        title: 'Everything Else Was Easier To Perform'
     }
 ];
 
