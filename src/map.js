@@ -2,6 +2,7 @@
 
 const geom = require('./geom');
 const { addFlutedColumn, addStatue, addPlant } = require('./decor');
+const entrance = require('./entrance');
 
 /*
  * RENAISSANCE ART GALLERY
@@ -1334,24 +1335,14 @@ module.exports = function () {
     addBox(position, normal, elements, WALL, 0.42, LENGTH - WALL - 0.07, WIDTH - WALL, 0.50, LENGTH - WALL);
 
     // ========================================================
-    // ENTRANCE
+    // ENTRANCE: glass door and two arched windows onto the street
     // ========================================================
 
-    addBox(
+    entrance.addEntranceWall(builder);
 
-        position,
-        normal,
-        elements,
+    entrance.addFrames(builder);
 
-        -WALL,
-        0,
-        -WALL,
-
-        WIDTH + WALL,
-        HEIGHT,
-        WALL
-
-    );
+    builder.curMat = [0, 0, 0];
 
 
     // ========================================================
