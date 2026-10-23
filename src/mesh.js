@@ -13,6 +13,14 @@
 // how many picture lights the shader handles (one per painting)
 const MAX_LIGHTS = 8;
 
+// Overall brightness of the room. Lower = moodier. The paintings are
+// not affected, so a darker room makes them stand out more.
+// 1.0 = the old bright room, 0.6 = dim gallery mood.
+const ROOM_BRIGHTNESS = 0.6;
+
+// How strongly the picture lights wash the wall around each painting.
+const PICTURE_LIGHT = 0.95;
+
 module.exports = (regl, data, useReflexion) => {
 
   // one vec4 pair per light, read live from data.lights so each light
@@ -300,12 +308,15 @@ module.exports = (regl, data, useReflexion) => {
       light = mix(light, 0.42 + sculpt * 0.42 + max(dot(N, V), 0.0) * 0.12, isStatue);
       light += max(dot(N, V), 0.0) * 0.10 * isLeaf;
 
+      // dim the room as a whole; the picture lights stay strong
+      light *= ${ROOM_BRIGHTNESS.toFixed(3)};
+
       vec3 pictureTint = vec3(1.0, 0.93, 0.80);
-      vec3 finalColour = material * (vec3(light) + pictureTint * pic * (0.50 - 0.25 * isFloor));
+      vec3 finalColour = material * (vec3(light) + pictureTint * pic * ${PICTURE_LIGHT.toFixed(3)} * (1.0 - 0.5 * isFloor));
 
       // leaves catch a soft sheen
       vec3 Hs = normalize(lightDirection + V);
-      finalColour += vec3(0.55, 0.65, 0.45) * pow(max(dot(N, Hs), 0.0), 36.0) * 0.20 * isLeaf;
+      finalColour += vec3(0.55, 0.65, 0.45) * pow(max(dot(N, Hs), 0.0), 36.0) * 0.20 * isLeaf * ${ROOM_BRIGHTNESS.toFixed(3)};
 
 
       // ---------------------------------------------------------
@@ -323,7 +334,7 @@ module.exports = (regl, data, useReflexion) => {
         vec3 env = mix(vec3(0.035, 0.033, 0.030), vec3(0.58, 0.54, 0.47), smoothstep(0.05, 0.85, R.y));
         float fres = 0.18 + 0.82 * pow(1.0 - max(dot(N, V), 0.0), 3.0);
         float hot = pow(max(dot(R, normalize(vec3(-0.30, 0.90, -0.30))), 0.0), 70.0);
-        finalColour += env * fres * 0.70 + vec3(1.0, 0.97, 0.92) * hot * 0.80;
+        finalColour += (env * fres * 0.70 + vec3(1.0, 0.97, 0.92) * hot * 0.80) * ${ROOM_BRIGHTNESS.toFixed(3)};
       }
 
 
