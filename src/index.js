@@ -970,7 +970,7 @@ regl.frame(
 				// the street outside, seen through the door and windows
 				drawStreet();
 
-				// people, a cyclist and pigeons out in the street
+				// a cyclist riding past now and then
 				drawStreetLife();
 
 				// glass last, over everything
