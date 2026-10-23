@@ -5,11 +5,29 @@
  * -----------------------------
  * Warm greige plaster walls with a soft mottled finish
  * Veined cream marble for pillars, arch and skirting
- * Glossy black and dark-cream marble floor with light reflections
- * Dim, moody museum lighting
+ * Polished black and dark-cream marble floor (no moving glare)
+ * Dim, moody museum lighting with a soft light above each painting
+ * Wall-coloured carved statues, leafy plants in glossy black pots
  */
 
+// how many picture lights the shader handles (one per painting)
+const MAX_LIGHTS = 6;
+
 module.exports = (regl, data, useReflexion) => {
+
+  // one vec4 pair per light, read live from data.lights so each light
+  // switches on as soon as its painting has loaded
+  const lightUniforms = {};
+  let lightDecl = '';
+  let lightCalls = '';
+
+  for (let i = 0; i < MAX_LIGHTS; i++) {
+    lightUniforms['lightC' + i] = () => data.lights[i].c;
+    lightUniforms['lightD' + i] = () => data.lights[i].d;
+    lightDecl += 'uniform vec4 lightC' + i + ', lightD' + i + ';\n';
+    lightCalls += 'pic += pictureLight(lightC' + i + ', lightD' + i + ', v_pos, N);\n';
+  }
+
   return regl({
     frag: `
     precision highp float;
@@ -20,6 +38,9 @@ module.exports = (regl, data, useReflexion) => {
     varying vec3 v_relativepos;
     varying vec3 v_normal;
     varying vec3 v_eye;
+    varying vec3 v_mat;
+
+    ${lightDecl}
 
     // ---------------------------------------------------------
     // SMALL NOISE TOOLKIT
@@ -69,6 +90,32 @@ module.exports = (regl, data, useReflexion) => {
       return p.xz;
     }
 
+    // ---------------------------------------------------------
+    // PICTURE LIGHT
+    // A slim bar hung above the frame. It throws a soft pool of
+    // light down the wall and over the painting.
+    // ---------------------------------------------------------
+
+    float pictureLight(vec4 C, vec4 D, vec3 p, vec3 n) {
+      if (C.w < 0.5) return 0.0;
+
+      float along = dot(p - C.xyz, D.xyz);
+      vec3 closest = C.xyz + D.xyz * clamp(along, -D.w, D.w);
+
+      vec3 L = closest - p;
+      float d = length(L) + 0.001;
+      L /= d;
+
+      float ndl = max(dot(n, L), 0.0);
+      float atten = 1.0 / (1.0 + d * d / 5.0);
+
+      // shines downwards only and stays close to its own painting
+      float below = smoothstep(-0.05, 0.60, C.y - p.y);
+      float side = 1.0 - smoothstep(D.w + 0.3, D.w + 2.4, abs(along));
+
+      return pow(ndl, 0.6) * atten * below * side;
+    }
+
     void main() {
 
       vec3 N = normalize(v_normal);
@@ -82,10 +129,21 @@ module.exports = (regl, data, useReflexion) => {
       // SURFACE CLASSIFICATION
       // ---------------------------------------------------------
 
+      // Material ids (see decor.js)
+      float matId = v_mat.x;
+      float isObj = step(0.5, matId);
+      float isStatue = step(0.5, matId) * step(matId, 1.5);
+      float isLeaf = step(1.5, matId) * step(matId, 2.5);
+      float isPot = step(2.5, matId) * step(matId, 3.5);
+      float isStem = step(3.5, matId) * step(matId, 4.5);
+      float isSoil = step(4.5, matId) * step(matId, 5.5);
+      float isFluted = step(6.5, matId) * step(matId, 7.5);
+
       // Floor: an upward face lying at y = 0 (not column bases)
       float isFloor =
         step(0.99, N.y) *
-        (1.0 - smoothstep(0.01, 0.05, abs(v_pos.y)));
+        (1.0 - smoothstep(0.01, 0.05, abs(v_pos.y))) *
+        (1.0 - isObj);
 
       // Ceiling and coffer undersides
       float isCeiling =
@@ -120,6 +178,9 @@ module.exports = (regl, data, useReflexion) => {
       // ---------------------------------------------------------
 
       vec2 uv = planeUV(v_pos, N);
+
+      // the round fluted shafts carry their own texture coordinates
+      uv = mix(uv, v_mat.yz, isFluted);
 
       // Plaster: soft mottled limestone wash
       vec3 wallMaterial = plaster;
@@ -176,6 +237,41 @@ module.exports = (regl, data, useReflexion) => {
 
 
       // ---------------------------------------------------------
+      // STATUES: carved in the same tone as the plaster walls, so
+      // they sit quietly and leave the attention to the paintings
+      // ---------------------------------------------------------
+
+      vec3 statueMaterial = mix(plaster, plasterShade, 0.30);
+      if (detail) {
+        float sm = fbm(vec2(v_pos.x * 2.3 + v_pos.z * 1.7, v_pos.y * 2.9));
+        statueMaterial *= 0.95 + 0.08 * sm;
+      }
+      material = mix(material, statueMaterial, isStatue);
+
+
+      // ---------------------------------------------------------
+      // PLANTS
+      // ---------------------------------------------------------
+
+      float across = abs(v_mat.y);
+      float along = v_mat.z;
+
+      vec3 leafDark = vec3(0.050, 0.190, 0.058);
+      vec3 leafLight = vec3(0.165, 0.395, 0.105);
+      vec3 leafMaterial = mix(leafDark, leafLight, 0.30 + 0.55 * along * (1.0 - 0.45 * across));
+      float rib = 1.0 - smoothstep(0.0, 0.05, across);
+      leafMaterial = mix(leafMaterial, vec3(0.34, 0.50, 0.19), rib * 0.75);
+      float veins = pow(abs(sin((along * 64.0 - across * 6.0) * 3.14159)), 12.0);
+      leafMaterial *= 1.0 - 0.12 * veins * (1.0 - rib);
+      leafMaterial *= 1.0 - 0.28 * smoothstep(0.80, 1.0, across);
+
+      material = mix(material, leafMaterial, isLeaf);
+      material = mix(material, vec3(0.150, 0.285, 0.090), isStem);
+      material = mix(material, vec3(0.022, 0.018, 0.014), isSoil);
+      material = mix(material, vec3(0.010, 0.010, 0.011), isPot);
+
+
+      // ---------------------------------------------------------
       // MUSEUM LIGHTING (dimmer, moodier)
       // ---------------------------------------------------------
 
@@ -184,13 +280,9 @@ module.exports = (regl, data, useReflexion) => {
 
       float light = 0.62 + diffuse * 0.26;
 
-      // Soft pools of spot-light on the walls where the paintings hang
-      float wash =
-        bell((v_pos.z - 34.5) / 3.8) +
-        bell((v_pos.z - 44.2) / 3.4) * 1.1 +
-        bell((v_pos.z - 47.0) / 3.6) * 0.8;
-      wash *= bell((v_pos.y - 4.2) / 2.9);
-      light += wash * 0.14 * (1.0 - isFloor);
+      // Light from the bar above each painting
+      float pic = 0.0;
+      ${lightCalls}
 
       // Corridor glow and the end wall light
       light += (1.0 - smoothstep(7.0, 35.0, abs(v_pos.z - 29.0))) * 0.06;
@@ -201,33 +293,37 @@ module.exports = (regl, data, useReflexion) => {
 
       light += (1.0 - smoothstep(0.0, 3.5, v_pos.y)) * 0.03;
 
-      vec3 finalColour = material * light;
+      // carved forms: a soft side light and a little fill so the
+      // folds and features read without the statue standing out
+      vec3 sculptKey = normalize(vec3(0.45, 0.75, -0.50));
+      float sculpt = max(dot(N, sculptKey), 0.0);
+      light = mix(light, 0.42 + sculpt * 0.42 + max(dot(N, V), 0.0) * 0.12, isStatue);
+      light += max(dot(N, V), 0.0) * 0.10 * isLeaf;
+
+      vec3 pictureTint = vec3(1.0, 0.93, 0.80);
+      vec3 finalColour = material * (vec3(light) + pictureTint * pic * (0.50 - 0.25 * isFloor));
+
+      // leaves catch a soft sheen
+      vec3 Hs = normalize(lightDirection + V);
+      finalColour += vec3(0.55, 0.65, 0.45) * pow(max(dot(N, Hs), 0.0), 36.0) * 0.20 * isLeaf;
 
 
       // ---------------------------------------------------------
-      // GLOSSY FLOOR: lamp reflections + fresnel
+      // FLOOR: the moving lamp glare has been removed, the marble
+      // keeps its colour and its picture-light pools only.
       // ---------------------------------------------------------
 
-      float reflectivity = 0.0;
 
-      if (isFloor > 0.5) {
-        float spec = 0.0;
-        for (int i = 0; i < 7; i++) {
-          vec3 lampPos = vec3(7.0, 7.6, 4.0 + float(i) * 7.0);
-          vec3 L = normalize(lampPos - v_pos);
-          vec3 H = normalize(L + V);
-          float nh = max(H.y, 0.0);
-          spec += pow(nh, 220.0) * 1.6 + pow(nh, 40.0) * 0.16;
-        }
-        finalColour += vec3(1.0, 0.92, 0.76) * spec * 0.75;
+      // ---------------------------------------------------------
+      // GLOSSY BLACK POTS: soft reflection of the lit room
+      // ---------------------------------------------------------
 
-        float viewDot = max(V.y, 0.0);
-        float fres = pow(1.0 - viewDot, 3.0);
-        reflectivity = clamp(0.20 + 0.55 * fres, 0.0, 0.80);
-        reflectivity *= 0.55 + 0.45 * fadeFar(6.0, 70.0, dist);
-
-        // fallback sheen when the mirrored pass is switched off
-        ${useReflexion ? '' : 'finalColour += vec3(0.10, 0.09, 0.07) * fres;'}
+      if (isPot > 0.5) {
+        vec3 R = reflect(-V, N);
+        vec3 env = mix(vec3(0.035, 0.033, 0.030), vec3(0.58, 0.54, 0.47), smoothstep(0.05, 0.85, R.y));
+        float fres = 0.18 + 0.82 * pow(1.0 - max(dot(N, V), 0.0), 3.0);
+        float hot = pow(max(dot(R, normalize(vec3(-0.30, 0.90, -0.30))), 0.0), 70.0);
+        finalColour += env * fres * 0.70 + vec3(1.0, 0.97, 0.92) * hot * 0.80;
       }
 
 
@@ -242,13 +338,7 @@ module.exports = (regl, data, useReflexion) => {
       float atmosphere = fadeFar(8.0, 60.0, dist);
       finalColour = mix(finalColour * 0.72, finalColour, atmosphere);
 
-      float alpha = ${
-        useReflexion
-          ? '1.0 - reflectivity'
-          : '1.0'
-      };
-
-      gl_FragColor = vec4(finalColour, alpha);
+      gl_FragColor = vec4(finalColour, 1.0);
     }`,
 
     vert: `
@@ -260,15 +350,18 @@ module.exports = (regl, data, useReflexion) => {
 
     attribute vec3 position;
     attribute vec3 normal;
+    attribute vec3 a_mat;
 
     varying vec3 v_pos;
     varying vec3 v_relativepos;
     varying vec3 v_normal;
     varying vec3 v_eye;
+    varying vec3 v_mat;
 
     void main() {
 
       vec3 pos = position;
+      v_mat = a_mat;
 
       // Keep original world position for material calculations.
       v_pos = pos;
@@ -290,8 +383,11 @@ module.exports = (regl, data, useReflexion) => {
 
     attributes: {
       position: data.position,
-      normal: data.normal
+      normal: data.normal,
+      a_mat: data.mat
     },
+
+    uniforms: lightUniforms,
 
     blend: useReflexion
       ? {

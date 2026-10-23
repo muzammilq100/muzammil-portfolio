@@ -7,7 +7,7 @@
  * - eye-level camera only
  * - horizontal looking only
  * - calm walking
- * - gold reading plaque when approaching a painting
+ * - plain translucent title card when approaching a painting
  * - tap/click plaque to open description
  * - mobile touch controls
  * - animated story overlay
@@ -106,9 +106,11 @@ drawMap = mesh(
 	useReflexion
 );
 
-placement = require('./placement')(regl);
+placement = require('./placement')(regl, map);
 
 drawPainting = require('./painting')(regl);
+
+const drawStatues = require('./statues')(regl, map);
 
 fps = require('./fps')(
 	map,
@@ -181,47 +183,25 @@ canvas {
 
 .museum-hint {
 	position: fixed;
-
 	left: 50%;
 	top: 24px;
-
 	transform: translateX(-50%);
-
 	z-index: 20;
-
 	pointer-events: none;
-
-	padding: 9px 18px;
-
-	border:
-		1px solid
-		rgba(202,160,76,.35);
-
-	border-radius: 2px;
-
-	background:
-		rgba(13,10,7,.48);
-
-	color:
-		rgba(246,232,199,.72);
-
-	font:
-		12px/1.4
-		Georgia,
-		serif;
-
-	letter-spacing: .14em;
-
+	padding: 8px 16px;
+	border-radius: 3px;
+	background: rgba(150,122,90,.45);
+	color: rgba(255,250,240,.92);
+	font: 12px/1.4 Georgia, serif;
+	letter-spacing: .12em;
 	text-transform: uppercase;
-
-	backdrop-filter:
-		blur(5px);
-
-	-webkit-backdrop-filter:
-		blur(5px);
-
-	transition:
-		opacity .7s ease;
+	text-align: center;
+	width: max-content;
+	max-width: calc(100vw - 32px);
+	box-sizing: border-box;
+	backdrop-filter: blur(5px);
+	-webkit-backdrop-filter: blur(5px);
+	transition: opacity .7s ease;
 }
 
 .museum-hint.hidden {
@@ -230,494 +210,147 @@ canvas {
 
 
 /* ===========================================================
-   GOLD READING PLAQUE
+   TITLE CARD (appears when you walk up to a painting)
+   Plain, beige brown, see-through
 =========================================================== */
 
 .painting-plaque {
-
 	position: fixed;
-
 	left: 50%;
-
 	bottom: 28px;
-
 	z-index: 30;
-
-	transform:
-		translateX(-50%)
-		translateY(14px);
-
-	width:
-		min(
-			520px,
-			calc(100vw - 30px)
-		);
-
+	transform: translateX(-50%) translateY(10px);
+	width: min(520px, calc(100vw - 30px));
 	max-width: 520px;
-
 	min-width: 0;
-
-	padding:
-		14px
-		24px
-		15px;
-
-	border:
-		1px solid
-		#8f681d;
-
-	border-radius: 2px;
-
-	background:
-		linear-gradient(
-			180deg,
-			#f4d783 0%,
-			#c7942e 28%,
-			#8b5b13 54%,
-			#d5aa49 78%,
-			#80520f 100%
-		);
-
-	box-shadow:
-		0 3px 14px rgba(0,0,0,.55),
-		inset 0 1px rgba(255,248,210,.7),
-		inset 0 -2px rgba(70,39,4,.55);
-
-	color:
-		#211506;
-
-	cursor:
-		pointer;
-
-	font:
-		600 13px/1.25
-		Georgia,
-		serif;
-
-	letter-spacing:
-		.055em;
-
-	text-align:
-		center;
-
-	text-shadow:
-		0 1px rgba(255,240,180,.45);
-
+	box-sizing: border-box;
+	padding: 14px 22px;
+	border: none;
+	border-radius: 4px;
+	background: rgba(158,130,98,.62);
+	color: #fffaf0;
+	font: 500 13px/1.3 Georgia, serif;
+	letter-spacing: .05em;
+	text-align: center;
+	cursor: pointer;
 	opacity: 0;
-
 	visibility: hidden;
-
 	pointer-events: none;
-
 	touch-action: manipulation;
-
-	-webkit-tap-highlight-color:
-		transparent;
-
+	-webkit-tap-highlight-color: transparent;
 	user-select: none;
-
 	-webkit-user-select: none;
-
-	transition:
-		opacity .28s ease,
-		transform .28s ease,
-		filter .28s ease;
+	backdrop-filter: blur(6px);
+	-webkit-backdrop-filter: blur(6px);
+	transition: opacity .28s ease, transform .28s ease, background .28s ease;
 }
-
-
-/* Visible plaque */
 
 .painting-plaque.visible {
-
 	opacity: 1;
-
 	visibility: visible;
-
 	pointer-events: auto;
-
-	transform:
-		translateX(-50%)
-		translateY(0);
+	transform: translateX(-50%) translateY(0);
 }
-
-
-/* Desktop hover */
 
 .painting-plaque:hover {
-
-	filter:
-		brightness(1.12);
-
-	transform:
-		translateX(-50%)
-		translateY(-2px);
+	background: rgba(170,141,107,.72);
 }
-
-
-/* Mobile / touch press */
 
 .painting-plaque:active {
-
-	transform:
-		translateX(-50%)
-		scale(.985);
-}
-
-
-/* Decorative screws */
-
-.painting-plaque::before,
-.painting-plaque::after {
-
-	content: "";
-
-	position: absolute;
-
-	top: 50%;
-
-	width: 5px;
-
-	height: 5px;
-
-	margin-top: -3px;
-
-	border-radius: 50%;
-
-	background:
-		#5e3c0b;
-
-	box-shadow:
-		inset 0 1px
-		rgba(255,224,130,.5);
-}
-
-.painting-plaque::before {
-	left: 6px;
-}
-
-.painting-plaque::after {
-	right: 6px;
+	transform: translateX(-50%) scale(.985);
 }
 
 
 /* ===========================================================
-   STORY OVERLAY
+   DESCRIPTION OVERLAY
 =========================================================== */
 
 .story-overlay {
-
 	position: fixed;
-
 	inset: 0;
-
 	z-index: 100;
-
 	display: flex;
-
 	align-items: center;
-
 	justify-content: center;
-
-	padding:
-		clamp(
-			20px,
-			5vw,
-			70px
-		);
-
-	background:
-		rgba(
-			5,
-			4,
-			3,
-			.58
-		);
-
-	backdrop-filter:
-		blur(3px);
-
-	-webkit-backdrop-filter:
-		blur(3px);
-
+	padding: clamp(20px, 5vw, 70px);
+	background: rgba(18,13,8,.30);
 	opacity: 0;
-
 	visibility: hidden;
-
 	pointer-events: none;
-
 	touch-action: auto;
-
-	transition:
-		opacity .38s ease,
-		visibility 0s linear .38s;
+	transition: opacity .38s ease, visibility 0s linear .38s;
 }
-
-
-/* Open state */
 
 .story-overlay.open {
-
 	opacity: 1;
-
 	visibility: visible;
-
 	pointer-events: auto;
-
-	transition:
-		opacity .38s ease;
+	transition: opacity .38s ease;
 }
 
 
 /* ===========================================================
-   STORY CARD
+   DESCRIPTION CARD
+   Plain beige brown, translucent, no ornament
 =========================================================== */
 
 .story-card {
-
 	position: relative;
-
-	width:
-		min(
-			760px,
-			88vw
-		);
-
-	max-height:
-		82vh;
-
+	width: min(760px, 88vw);
+	max-height: 82vh;
 	overflow-y: auto;
-
-	padding:
-		42px
-		clamp(
-			25px,
-			5vw,
-			58px
-		)
-		46px;
-
+	padding: 40px clamp(25px, 5vw, 56px) 44px;
 	box-sizing: border-box;
-
-	border:
-		1px solid
-		rgba(
-			204,
-			164,
-			82,
-			.7
-		);
-
-	background:
-		linear-gradient(
-			rgba(20,15,10,.80),
-			rgba(10,8,6,.88)
-		),
-		radial-gradient(
-			circle at 50% 0%,
-			rgba(210,168,83,.12),
-			transparent 55%
-		);
-
-	box-shadow:
-		0 20px 80px
-		rgba(0,0,0,.65),
-
-		inset 0 0 45px
-		rgba(196,151,57,.055);
-
-	color:
-		#eadfc8;
-
-	transform:
-		translateY(18px)
-		scale(.97);
-
-	transition:
-		transform .48s
-		cubic-bezier(
-			.2,
-			.8,
-			.2,
-			1
-		);
-
+	border: none;
+	border-radius: 4px;
+	background: rgba(150,122,92,.78);
+	backdrop-filter: blur(4px);
+	-webkit-backdrop-filter: blur(4px);
+	box-shadow: 0 12px 40px rgba(0,0,0,.25);
+	color: #fffaf0;
+	transform: translateY(12px);
+	transition: transform .4s ease;
 	touch-action: auto;
-
-	-webkit-overflow-scrolling:
-		touch;
+	-webkit-overflow-scrolling: touch;
 }
 
-
-/* Card animation */
-
-.story-overlay.open
-.story-card {
-
-	transform:
-		translateY(0)
-		scale(1);
+.story-overlay.open .story-card {
+	transform: translateY(0);
 }
-
-
-/* Decorative line */
-
-.story-card::before {
-
-	content: "";
-
-	position: absolute;
-
-	left: 16px;
-
-	right: 16px;
-
-	top: 15px;
-
-	height: 1px;
-
-	background:
-		linear-gradient(
-			90deg,
-			transparent,
-			#b88a37,
-			transparent
-		);
-}
-
-
-/* ===========================================================
-   STORY TITLE
-=========================================================== */
 
 .story-title {
-
-	margin:
-		0
-		35px
-		25px
-		0;
-
-	color:
-		#e0b65c;
-
-	font:
-		normal
-		clamp(
-			25px,
-			3.2vw,
-			39px
-		)
-		/
-		1.12
-		Georgia,
-		serif;
-
-	letter-spacing:
-		.025em;
+	margin: 0 38px 22px 0;
+	color: #ffffff;
+	font: normal clamp(24px, 3vw, 36px) / 1.15 Georgia, serif;
+	letter-spacing: .01em;
 }
-
-
-/* ===========================================================
-   STORY BODY
-=========================================================== */
 
 .story-body {
-
 	margin: 0;
-
-	white-space:
-		pre-line;
-
-	font:
-		normal
-		clamp(
-			15px,
-			1.5vw,
-			18px
-		)
-		/
-		1.72
-		Georgia,
-		serif;
-
-	color:
-		rgba(
-			240,
-			232,
-			216,
-			.91
-		);
+	white-space: pre-line;
+	font: normal clamp(15px, 1.5vw, 18px) / 1.72 Georgia, serif;
+	color: rgba(255,250,240,.96);
 }
 
-
-/* ===========================================================
-   CLOSE BUTTON
-=========================================================== */
-
 .story-close {
-
 	position: absolute;
-
-	top: 13px;
-
-	right: 15px;
-
+	top: 12px;
+	right: 14px;
 	width: 34px;
-
 	height: 34px;
-
-	border:
-		1px solid
-		rgba(
-			208,
-			169,
-			91,
-			.55
-		);
-
+	border: 1px solid rgba(255,248,235,.40);
 	border-radius: 50%;
-
-	background:
-		rgba(
-			0,
-			0,
-			0,
-			.18
-		);
-
-	color:
-		#d8b463;
-
-	cursor:
-		pointer;
-
-	font:
-		25px/29px
-		Georgia,
-		serif;
-
-	touch-action:
-		manipulation;
-
+	background: transparent;
+	color: #fffaf0;
+	cursor: pointer;
+	font: 24px/29px Georgia, serif;
+	touch-action: manipulation;
 	z-index: 5;
-
-	transition:
-		background .2s ease,
-		transform .2s ease;
+	transition: background .2s ease;
 }
 
 .story-close:hover {
-
-	background:
-		rgba(
-			210,
-			170,
-			90,
-			.12
-		);
-
-	transform:
-		rotate(90deg);
+	background: rgba(255,248,235,.16);
 }
 
 
@@ -836,7 +469,7 @@ document.body.appendChild(hint);
 
 
 /* ===========================================================
-   GOLD PLAQUE
+   TITLE CARD
 =========================================================== */
 
 const plaque =
@@ -1321,6 +954,8 @@ regl.frame(
 
 
 				drawMap();
+
+				drawStatues();
 
 				drawPainting(
 					placement.batch()

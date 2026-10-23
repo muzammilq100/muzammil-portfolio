@@ -1,5 +1,8 @@
 'use strict';
 
+const geom = require('./geom');
+const { addFlutedColumn, addStatue, addPlant } = require('./decor');
+
 /*
  * RENAISSANCE ART GALLERY
  * ------------------------
@@ -121,8 +124,70 @@ for (const z of COLUMN_Z) {
 }
 
 
+// ============================================================
+// ENTRANCE ARCH, STATUES AND PLANTS
+// ============================================================
+
+const ARCH_Z = 12;
+const ARCH_R_IN = 2.95;     // half of the clear opening
+const ARCH_COL_R = 0.62;    // radius of the round fluted columns
+const ARCH_COL_X = ARCH_R_IN + ARCH_COL_R;
+
+// Statues stand in the two far corners, turned towards the hall.
+// They are real 3D scans (res/venus.bin, res/david.bin) placed on
+// the pedestals by statues.js. height = statue height in metres.
+// They are close to the height of the paintings (about 5.2 m).
+const STATUES = [
+    { file: 'venus.bin', x: 1.85, z: 46.2, yaw: 2.67, height: 5.2 },
+    { file: 'david.bin', x: WIDTH - 1.85, z: 46.2, yaw: -2.67, height: 5.2 }
+];
+
+// low round pedestal under each statue
+const PEDESTAL_TOP = 0.8;
+const PEDESTAL_R = 1.17;
+
+// Six plants, in three pairs facing each other across the hall,
+// tucked into the corners between the side walls and the pillars.
+// "away" points towards open floor so leaves lean out of the corner.
+const PLANTS = [];
+
+[
+    { z: 16.8, dz: -0.7 },   // in front of the first pair of pillars
+    { z: 19.2, dz: 0.7 },    // just behind them
+    { z: 27.8, dz: -0.7 }    // in front of the second pair
+].forEach((p, i) => {
+    PLANTS.push({ x: 1.0, z: p.z, seed: 11 + i * 7, away: [1, p.dz] });
+    PLANTS.push({ x: WIDTH - 1.0, z: p.z, seed: 53 + i * 5, away: [-1, p.dz] });
+});
+
+function boxSegments(x, z, halfW, halfD) {
+    return [
+        [[x - halfW, z - halfD], [x + halfW, z - halfD]],
+        [[x + halfW, z - halfD], [x + halfW, z + halfD]],
+        [[x + halfW, z + halfD], [x - halfW, z + halfD]],
+        [[x - halfW, z + halfD], [x - halfW, z - halfD]]
+    ];
+}
+
+const obstacleSegments = [];
+
+for (const sgn of [-1, 1]) {
+    obstacleSegments.push(
+        ...boxSegments(WIDTH / 2 + sgn * ARCH_COL_X, ARCH_Z, 0.85, 0.85)
+    );
+}
+
+for (const st of STATUES) {
+    obstacleSegments.push(...boxSegments(st.x, st.z, PEDESTAL_R * 1.1, PEDESTAL_R * 1.1));
+}
+
+for (const pl of PLANTS) {
+    obstacleSegments.push(...boxSegments(pl.x, pl.z, 0.42, 0.42));
+}
+
+
 const collisionSegments =
-    wallSegments.concat(columnSegments);
+    wallSegments.concat(columnSegments, obstacleSegments);
 
 
 // ============================================================
@@ -283,6 +348,15 @@ function makeGrid(segments) {
 
 
 // ============================================================
+// MATERIAL ATTRIBUTE + BUILDER (shared by every mesh below)
+// ============================================================
+
+let matArr = [];
+
+let builder = { curMat: [0, 0, 0] };
+
+
+// ============================================================
 // QUAD
 // ============================================================
 
@@ -313,6 +387,17 @@ function pushQuad(
         ...n,
         ...n,
         ...n
+    );
+
+
+    // material triple (id, u, v) read by the shader
+    const m = builder.curMat;
+
+    matArr.push(
+        ...m,
+        ...m,
+        ...m,
+        ...m
     );
 
 
@@ -464,272 +549,103 @@ function addBox(
 
 
 // ============================================================
-// ARCH RING
+// ARCH RING (built with the shared builder so every face is
+// wound the right way round)
 // ============================================================
 
+function archQuad(a, b, c, d, n) {
+    const B = builder;
+    const ia = B.vert(a, n);
+    const ib = B.vert(b, n);
+    const ic = B.vert(c, n);
+    const id = B.vert(d, n);
+    B.tri(ia, ib, ic);
+    B.tri(ib, id, ic);
+}
+
 function addArchRing(
-    position,
-    normal,
-    elements,
-
-    centerX,
+    cx,
     springY,
-
     innerRadius,
     outerRadius,
-
     frontZ,
     backZ,
-
     steps
 ) {
 
-    for (
-        let i = 0;
-        i < steps;
-        i++
-    ) {
+    for (let i = 0; i < steps; i++) {
 
-        const a0 =
-            Math.PI *
-            i /
-            steps;
+        const a0 = Math.PI * i / steps;
+        const a1 = Math.PI * (i + 1) / steps;
 
+        const c0 = Math.cos(a0);
+        const s0 = Math.sin(a0);
+        const c1 = Math.cos(a1);
+        const s1 = Math.sin(a1);
 
-        const a1 =
-            Math.PI *
-            (i + 1) /
-            steps;
+        const i0 = [cx + innerRadius * c0, springY + innerRadius * s0];
+        const i1 = [cx + innerRadius * c1, springY + innerRadius * s1];
+        const o0 = [cx + outerRadius * c0, springY + outerRadius * s0];
+        const o1 = [cx + outerRadius * c1, springY + outerRadius * s1];
 
-
-        const x0i =
-            centerX +
-            innerRadius *
-            Math.cos(a0);
-
-
-        const y0i =
-            springY +
-            innerRadius *
-            Math.sin(a0);
-
-
-        const x1i =
-            centerX +
-            innerRadius *
-            Math.cos(a1);
-
-
-        const y1i =
-            springY +
-            innerRadius *
-            Math.sin(a1);
-
-
-        const x0o =
-            centerX +
-            outerRadius *
-            Math.cos(a0);
-
-
-        const y0o =
-            springY +
-            outerRadius *
-            Math.sin(a0);
-
-
-        const x1o =
-            centerX +
-            outerRadius *
-            Math.cos(a1);
-
-
-        const y1o =
-            springY +
-            outerRadius *
-            Math.sin(a1);
-
-
-        // FRONT OF ARCH
-
-        elements.push(
-
-            ...pushQuad(
-
-                position,
-                normal,
-
-                [
-                    x0i,
-                    y0i,
-                    frontZ
-                ],
-
-                [
-                    x1i,
-                    y1i,
-                    frontZ
-                ],
-
-                [
-                    x0o,
-                    y0o,
-                    frontZ
-                ],
-
-                [
-                    x1o,
-                    y1o,
-                    frontZ
-                ],
-
-                [0, 0, -1]
-
-            )
-
+        // front and back faces
+        archQuad(
+            [i0[0], i0[1], frontZ], [i1[0], i1[1], frontZ],
+            [o0[0], o0[1], frontZ], [o1[0], o1[1], frontZ],
+            [0, 0, -1]
         );
 
-
-        // BACK OF ARCH
-
-        elements.push(
-
-            ...pushQuad(
-
-                position,
-                normal,
-
-                [
-                    x0o,
-                    y0o,
-                    backZ
-                ],
-
-                [
-                    x1o,
-                    y1o,
-                    backZ
-                ],
-
-                [
-                    x0i,
-                    y0i,
-                    backZ
-                ],
-
-                [
-                    x1i,
-                    y1i,
-                    backZ
-                ],
-
-                [0, 0, 1]
-
-            )
-
+        archQuad(
+            [i0[0], i0[1], backZ], [i1[0], i1[1], backZ],
+            [o0[0], o0[1], backZ], [o1[0], o1[1], backZ],
+            [0, 0, 1]
         );
 
+        // inner curve (the underside you walk beneath)
+        const mid = (a0 + a1) / 2;
 
-        // INNER CURVE
-
-        const midA =
-            (a0 + a1) / 2;
-
-
-        const innerNormal = [
-
-            -Math.cos(midA),
-            -Math.sin(midA),
-            0
-
-        ];
-
-
-        elements.push(
-
-            ...pushQuad(
-
-                position,
-                normal,
-
-                [
-                    x0i,
-                    y0i,
-                    backZ
-                ],
-
-                [
-                    x1i,
-                    y1i,
-                    backZ
-                ],
-
-                [
-                    x0i,
-                    y0i,
-                    frontZ
-                ],
-
-                [
-                    x1i,
-                    y1i,
-                    frontZ
-                ],
-
-                innerNormal
-
-            )
-
+        archQuad(
+            [i0[0], i0[1], frontZ], [i1[0], i1[1], frontZ],
+            [i0[0], i0[1], backZ], [i1[0], i1[1], backZ],
+            [-Math.cos(mid), -Math.sin(mid), 0]
         );
 
-
-        // OUTER CURVE
-
-        const outerNormal = [
-
-            Math.cos(midA),
-            Math.sin(midA),
-            0
-
-        ];
-
-
-        elements.push(
-
-            ...pushQuad(
-
-                position,
-                normal,
-
-                [
-                    x0o,
-                    y0o,
-                    frontZ
-                ],
-
-                [
-                    x1o,
-                    y1o,
-                    frontZ
-                ],
-
-                [
-                    x0o,
-                    y0o,
-                    backZ
-                ],
-
-                [
-                    x1o,
-                    y1o,
-                    backZ
-                ],
-
-                outerNormal
-
-            )
-
+        // outer curve
+        archQuad(
+            [o0[0], o0[1], frontZ], [o1[0], o1[1], frontZ],
+            [o0[0], o0[1], backZ], [o1[0], o1[1], backZ],
+            [Math.cos(mid), Math.sin(mid), 0]
         );
+    }
+}
+
+
+// ============================================================
+// SPANDREL: the wall that fills the space above the curve
+// ============================================================
+
+function addSpandrel(
+    cx,
+    springY,
+    radius,
+    topY,
+    frontZ,
+    backZ,
+    steps
+) {
+
+    for (let i = 0; i < steps; i++) {
+
+        const a0 = Math.PI * i / steps;
+        const a1 = Math.PI * (i + 1) / steps;
+
+        const x0 = cx + radius * Math.cos(a0);
+        const y0 = springY + radius * Math.sin(a0);
+        const x1 = cx + radius * Math.cos(a1);
+        const y1 = springY + radius * Math.sin(a1);
+
+        archQuad([x0, y0, frontZ], [x1, y1, frontZ], [x0, topY, frontZ], [x1, topY, frontZ], [0, 0, -1]);
+        archQuad([x0, y0, backZ], [x1, y1, backZ], [x0, topY, backZ], [x1, topY, backZ], [0, 0, 1]);
     }
 }
 
@@ -738,16 +654,15 @@ function addArchRing(
 // GRAND RENAISSANCE ARCH
 // ============================================================
 //
-// IMPORTANT PROPORTION CHANGES:
+// A true semicircular arch with correct proportions:
 //
-// The arch is now:
-// - farther down the gallery
-// - wider
-// - lower at the spring point
-// - less deep
-// - less dominant vertically
-//
-// This makes it read as a monumental doorway.
+//   - clear opening 5.9 m wide, springing at 3.0 m, so the
+//     curve is a perfect half circle that crowns at 5.95 m
+//   - round fluted columns (20 carved vertical grooves) stand
+//     on either side, their inner faces exactly on the line
+//     where the arch springs
+//   - the whole curve sits below the entablature, so it is never
+//     cut by the cornice, and the wall above it is filled in
 // ============================================================
 
 function addGrandArch(
@@ -757,339 +672,110 @@ function addGrandArch(
     z
 ) {
 
-    const cx =
-        WIDTH / 2;
+    const cx = WIDTH / 2;
+
+    const R_IN = ARCH_R_IN;
+    const SPRING = 3.0;
+    const R_OUT = R_IN + 0.42;
+    const R_MOULD = R_OUT + 0.15;
+
+    const COL_R = ARCH_COL_R;
+    const COL_X = ARCH_COL_X;
+    const COL_SHAFT_TOP = 5.98;
+
+    const frontZ = z - 0.45;
+    const backZ = z + 0.45;
+    const steps = 64;
 
 
     // --------------------------------------------------------
-    // MAIN ARCH PROPORTIONS
+    // ROUND FLUTED COLUMNS
     // --------------------------------------------------------
 
-    const springY = 3.35;
+    const ENT_Y = addFlutedColumn(builder, cx - COL_X, z, 0, COL_SHAFT_TOP, COL_R);
 
-    const innerRadius = 3.75;
+    addFlutedColumn(builder, cx + COL_X, z, 0, COL_SHAFT_TOP, COL_R);
 
-    const outerRadius = 4.15;
-
-
-    const frontZ =
-        z - 0.45;
-
-
-    const backZ =
-        z + 0.45;
-
-
-    const steps = 56;
+    builder.curMat = [0, 0, 0];
 
 
     // --------------------------------------------------------
-    // INNER ARCH
+    // ARCH RING AND OUTER MOULDING
     // --------------------------------------------------------
+
+    addArchRing(cx, SPRING, R_IN, R_OUT, frontZ, backZ, steps);
 
     addArchRing(
-
-        position,
-        normal,
-        elements,
-
-        cx,
-        springY,
-
-        innerRadius,
-        4.00,
-
-        frontZ,
-        backZ,
-
+        cx, SPRING, R_OUT, R_MOULD,
+        frontZ - 0.07, backZ + 0.07,
         steps
-
     );
 
 
     // --------------------------------------------------------
-    // SECOND MOULDING
+    // WALL ABOVE THE ARCH AND BESIDE IT
     // --------------------------------------------------------
 
-    addArchRing(
+    addSpandrel(cx, SPRING, R_MOULD, ENT_Y + 0.05, frontZ, backZ, steps);
 
-        position,
-        normal,
-        elements,
+    for (const sgn of [-1, 1]) {
 
-        cx,
-        springY,
+        const x0 = cx + sgn * (R_MOULD - 0.02);
+        const x1 = cx + sgn * COL_X;
 
-        4.08,
-        4.25,
-
-        frontZ - 0.07,
-        backZ + 0.07,
-
-        steps
-
-    );
+        addBox(
+            position, normal, elements,
+            Math.min(x0, x1), SPRING, frontZ,
+            Math.max(x0, x1), ENT_Y + 0.05, backZ
+        );
+    }
 
 
     // --------------------------------------------------------
-    // ARCH PIERS
+    // IMPOST BLOCKS where the arch springs from the columns
     // --------------------------------------------------------
 
-    addBox(
+    for (const sgn of [-1, 1]) {
 
-        position,
-        normal,
-        elements,
+        const xa = cx + sgn * (R_IN - 0.05);
+        const xb = cx + sgn * (R_IN + 0.85);
 
-        cx - 4.25,
-        0,
-        frontZ,
-
-        cx - 3.75,
-        springY,
-        backZ
-
-    );
-
-
-    addBox(
-
-        position,
-        normal,
-        elements,
-
-        cx + 3.75,
-        0,
-        frontZ,
-
-        cx + 4.25,
-        springY,
-        backZ
-
-    );
+        addBox(
+            position, normal, elements,
+            Math.min(xa, xb), SPRING - 0.16, z - 0.60,
+            Math.max(xa, xb), SPRING, z + 0.60
+        );
+    }
 
 
     // --------------------------------------------------------
-    // LARGE PILASTERS
+    // ENTABLATURE: architrave, frieze, cornice
     // --------------------------------------------------------
 
+    const EX = COL_X + COL_R * 1.42 + 0.45;
+
     addBox(
-
-        position,
-        normal,
-        elements,
-
-        cx - 4.55,
-        0,
-        z - 0.62,
-
-        cx - 3.55,
-        6.75,
-        z + 0.62
-
+        position, normal, elements,
+        cx - EX, ENT_Y, z - 0.70,
+        cx + EX, ENT_Y + 0.44, z + 0.70
     );
 
-
     addBox(
-
-        position,
-        normal,
-        elements,
-
-        cx + 3.55,
-        0,
-        z - 0.62,
-
-        cx + 4.55,
-        6.75,
-        z + 0.62
-
+        position, normal, elements,
+        cx - EX + 0.12, ENT_Y + 0.44, z - 0.62,
+        cx + EX - 0.12, ENT_Y + 0.70, z + 0.62
     );
 
-
-    // --------------------------------------------------------
-    // PILASTER BASES
-    // --------------------------------------------------------
-
     addBox(
-
-        position,
-        normal,
-        elements,
-
-        cx - 4.78,
-        0,
-        z - 0.82,
-
-        cx - 3.32,
-        0.22,
-        z + 0.82
-
+        position, normal, elements,
+        cx - EX - 0.10, ENT_Y + 0.70, z - 0.84,
+        cx + EX + 0.10, ENT_Y + 0.84, z + 0.84
     );
 
-
     addBox(
-
-        position,
-        normal,
-        elements,
-
-        cx + 3.32,
-        0,
-        z - 0.82,
-
-        cx + 4.78,
-        0.22,
-        z + 0.82
-
-    );
-
-
-    addBox(
-
-        position,
-        normal,
-        elements,
-
-        cx - 4.62,
-        0.22,
-        z - 0.68,
-
-        cx - 3.48,
-        0.42,
-        z + 0.68
-
-    );
-
-
-    addBox(
-
-        position,
-        normal,
-        elements,
-
-        cx + 3.48,
-        0.22,
-        z - 0.68,
-
-        cx + 4.62,
-        0.42,
-        z + 0.68
-
-    );
-
-
-    // --------------------------------------------------------
-    // PILASTER CAPITALS
-    // --------------------------------------------------------
-
-    addBox(
-
-        position,
-        normal,
-        elements,
-
-        cx - 4.68,
-        6.75,
-        z - 0.76,
-
-        cx - 3.32,
-        7.05,
-        z + 0.76
-
-    );
-
-
-    addBox(
-
-        position,
-        normal,
-        elements,
-
-        cx + 3.32,
-        6.75,
-        z - 0.76,
-
-        cx + 4.68,
-        7.05,
-        z + 0.76
-
-    );
-
-
-    // --------------------------------------------------------
-    // CAPITAL DETAIL
-    // --------------------------------------------------------
-
-    addBox(
-
-        position,
-        normal,
-        elements,
-
-        cx - 4.82,
-        7.05,
-        z - 0.86,
-
-        cx - 3.18,
-        7.25,
-        z + 0.86
-
-    );
-
-
-    addBox(
-
-        position,
-        normal,
-        elements,
-
-        cx + 3.18,
-        7.05,
-        z - 0.86,
-
-        cx + 4.82,
-        7.25,
-        z + 0.86
-
-    );
-
-
-    // --------------------------------------------------------
-    // TOP CORNICE
-    // --------------------------------------------------------
-
-    addBox(
-
-        position,
-        normal,
-        elements,
-
-        cx - 4.80,
-        7.25,
-        z - 0.72,
-
-        cx + 4.80,
-        7.48,
-        z + 0.72
-
-    );
-
-
-    addBox(
-
-        position,
-        normal,
-        elements,
-
-        cx - 4.58,
-        7.48,
-        z - 0.58,
-
-        cx + 4.58,
-        7.68,
-        z + 0.58
-
+        position, normal, elements,
+        cx - EX - 0.22, ENT_Y + 0.84, z - 0.96,
+        cx + EX + 0.22, ENT_Y + 1.00, z + 0.96
     );
 
 
@@ -1098,19 +784,9 @@ function addGrandArch(
     // --------------------------------------------------------
 
     addBox(
-
-        position,
-        normal,
-        elements,
-
-        cx - 0.40,
-        7.05,
-        z - 0.55,
-
-        cx + 0.40,
-        7.68,
-        z + 0.55
-
+        position, normal, elements,
+        cx - 0.30, SPRING + R_IN - 0.10, z - 0.56,
+        cx + 0.30, ENT_Y, z + 0.56
     );
 }
 
@@ -1547,6 +1223,15 @@ module.exports = function () {
 
     const elements = [];
 
+    matArr = [];
+
+    builder = geom.createBuilder(
+        position,
+        normal,
+        elements,
+        matArr
+    );
+
 
     // ========================================================
     // FLOOR
@@ -1706,7 +1391,7 @@ module.exports = function () {
         normal,
         elements,
 
-        12
+        ARCH_Z
 
     );
 
@@ -1854,6 +1539,26 @@ module.exports = function () {
 
 
     // ========================================================
+    // STATUES (far corners)
+    // ========================================================
+
+    for (const st of STATUES) {
+        addStatue(builder, st.x, st.z, PEDESTAL_R, PEDESTAL_TOP);
+    }
+
+
+    // ========================================================
+    // PLANTS (three pairs facing each other)
+    // ========================================================
+
+    for (const pl of PLANTS) {
+        addPlant(builder, pl.x, pl.z, pl.seed, 1.0, pl.away);
+    }
+
+    builder.curMat = [0, 0, 0];
+
+
+    // ========================================================
     // PAINTING POSITIONS
     // ========================================================
 
@@ -1986,9 +1691,29 @@ module.exports = function () {
     // RETURN MAP
     // ========================================================
 
+    // One picture light per painting. placement.js fills these in
+    // once each painting has loaded and its size is known.
+    const lights = [];
+
+    for (let i = 0; i < 6; i++) {
+        lights.push({
+            c: [0, 0, 0, 0],
+            d: [1, 0, 0, 0]
+        });
+    }
+
+
     return {
 
         placements,
+
+        lights,
+
+        statues: STATUES,
+
+        pedestalTop: PEDESTAL_TOP,
+
+        mat: matArr,
 
         getAreaIndex,
 
