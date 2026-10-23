@@ -152,7 +152,7 @@ const PEDESTAL_R = 1.17;
 const PLANTS = [];
 
 [
-    { z: 16.8, dz: -0.7 },   // in front of the first pair of pillars
+    { z: 10.4, dz: -0.7 },   // just before the entrance arch
     { z: 19.2, dz: 0.7 },    // just behind them
     { z: 27.8, dz: -0.7 }    // in front of the second pair
 ].forEach((p, i) => {

@@ -299,12 +299,12 @@ const layouts = [
 	/*
 	 * Artwork VI
 	 * Uncertainty
-	 * (entrance hall, before the arch)
+	 * (just past the arch)
 	 */
 
 	{
 		side: 'right',
-		z: 6.5
+		z: 14.6
 	},
 
 
@@ -312,11 +312,16 @@ const layouts = [
 	 * Artwork VII
 	 * Everything Else Was Easier To Perform
 	 * (facing Uncertainty)
+	 *
+	 * Square painting, kept to the width of Uncertainty
+	 * opposite, so the pair matches.
 	 */
 
 	{
 		side: 'left',
-		z: 6.5
+		z: 14.6,
+		maxW: 3.70,
+		maxH: 3.70
 	}
 ];
 
@@ -327,13 +332,25 @@ const layouts = [
  */
 
 function getDimensions(
-	aspect
+	aspect,
+	layout
 ) {
+
+	/*
+	 * A layout can ask for a smaller painting (maxW / maxH),
+	 * otherwise every painting uses the shared limits.
+	 */
+
+	const maxH =
+		(layout && layout.maxH) || MAX_HEIGHT;
+
+	const maxW =
+		(layout && layout.maxW) || MAX_WIDTH;
 
 	const height =
 		Math.min(
-			MAX_HEIGHT,
-			MAX_WIDTH / aspect
+			maxH,
+			maxW / aspect
 		);
 
 	return {
@@ -866,7 +883,8 @@ module.exports =
 			height
 		} =
 			getDimensions(
-				p.aspect
+				p.aspect,
+				layouts[index]
 			);
 
 
