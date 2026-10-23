@@ -53,6 +53,29 @@ const walkStepLen = 1000;
 const runStepLen = 5;
 
 
+/*
+ * GUIDED MUSEUM MODE
+ *
+ * The visitor walks only along the centre line of the hall,
+ * forwards and backwards, and turns in fixed 45 degree steps
+ * (0, 45, 90 ... 315, all the way round, either way).
+ */
+
+const CENTRE_X = 7.0;           // middle of the 14 m wide hall
+
+const PATH_START_Z = 1.6;       // just inside the entrance
+
+const PATH_END_Z = 45.6;        // a comfortable distance from the end painting
+
+const TURN_STEP = Math.PI / 4;  // 45 degrees
+
+const TURN_EASE = 7.0;          // how quickly a turn glides into place
+
+const MOUSE_STEP_PX = 140;      // mouse travel for one 45 degree step
+
+const SWIPE_STEP_PX = 70;       // finger travel for one 45 degree step
+
+
 /* -----------------------------------------------------------
  * GEOMETRY HELPERS
  * --------------------------------------------------------- */
@@ -258,15 +281,20 @@ function (
 	 * CAMERA STATE
 	 * ----------------------------------------------------- */
 
+	// mouse[1] is the target heading (always a multiple of 45 degrees),
+	// fmouse[1] glides towards it. Math.PI looks straight down the hall.
 	var mouse = [
 		0,
-		Math.PI * 3 / 4
+		Math.PI
 	];
 
 	var fmouse = [
 		0,
-		Math.PI * 3 / 4
+		Math.PI
 	];
+
+	// distance dragged or swiped since the last 45 degree step
+	var turnAccum = 0;
 
 	var dir = [
 		0,
@@ -275,9 +303,9 @@ function (
 	];
 
 	var pos = [
-		2,
+		CENTRE_X,
 		height,
-		2
+		PATH_START_Z
 	];
 
 	var forward = [
@@ -335,10 +363,16 @@ function (
 	 * Vertical camera rotation is deliberately disabled.
 	 * ----------------------------------------------------- */
 
+	const turn = (steps) => {
+
+		mouse[1] += steps * TURN_STEP;
+	};
+
+
 	const orientCamera = (
 		dx,
 		dy,
-		sensibility
+		stepPx
 	) => {
 
 		dx =
@@ -368,9 +402,27 @@ function (
 
 		mouse[0] = 0;
 
-		mouse[1] +=
-			dx *
-			sensibility;
+		/*
+		 * Drags and swipes add up; every stepPx of travel
+		 * turns the view one 45 degree step.
+		 */
+
+		if (paused) {
+			turnAccum = 0;
+			return;
+		}
+
+		turnAccum += dx;
+
+		while (turnAccum >= stepPx) {
+			turn(1);
+			turnAccum -= stepPx;
+		}
+
+		while (turnAccum <= -stepPx) {
+			turn(-1);
+			turnAccum += stepPx;
+		}
 	};
 
 
@@ -393,7 +445,7 @@ function (
 					orientCamera(
 						move.dx,
 						move.dy,
-						mouseSensibility
+						MOUSE_STEP_PX
 					);
 				}
 			);
@@ -460,7 +512,7 @@ function (
 		<div
 			id="museum-look-hint"
 		>
-			SWIPE TO LOOK
+			SWIPE TO TURN
 		</div>
 	`;
 
@@ -570,11 +622,12 @@ function (
 			joystickRadius;
 
 
+		// along the hall only: sideways movement is ignored
 		dir[0] =
-			nx;
+			0;
 
 		dir[2] =
-			ny;
+			Math.abs(ny) > 0.15 ? ny : 0;
 	};
 
 
@@ -738,6 +791,8 @@ function (
 
 				lookLastX =
 					touch.clientX;
+
+				turnAccum = 0;
 			}
 		}
 	};
@@ -829,7 +884,7 @@ function (
 			orientCamera(
 				dx,
 				0,
-				touchSensibility
+				SWIPE_STEP_PX
 			);
 		}
 	};
@@ -1152,31 +1207,42 @@ function (
 		}
 
 
-		keys[e.code] =
+		const isDown =
 			e.type ===
 			'keydown';
+
+		keys[e.code] =
+			isDown;
+
+
+		/*
+		 * Left / right turn one 45 degree step per press.
+		 */
+
+		if (
+			isDown &&
+			!e.repeat &&
+			!paused
+		) {
+
+			if (
+				e.code === 'KeyA' ||
+				e.code === 'ArrowLeft'
+			) {
+				turn(-1);
+			}
+
+			if (
+				e.code === 'KeyD' ||
+				e.code === 'ArrowRight'
+			) {
+				turn(1);
+			}
+		}
 
 
 		run =
 			false;
-
-
-		const left =
-			keys['KeyA'] ||
-			keys['ArrowLeft']
-				?
-				1
-				:
-				0;
-
-
-		const right =
-			keys['KeyD'] ||
-			keys['ArrowRight']
-				?
-				1
-				:
-				0;
 
 
 		const up =
@@ -1198,7 +1264,7 @@ function (
 
 
 		dir = [
-			right - left,
+			0,
 			0,
 			down - up
 		];
@@ -1312,9 +1378,9 @@ function (
 
 				vec3.set(
 					forward,
-					1,
+					Math.sin(fmouse[1]),
 					0,
-					0
+					-Math.cos(fmouse[1])
 				);
 
 
@@ -1326,50 +1392,13 @@ function (
 				);
 
 
-				vec3.rotateY(
-					force,
-					dir,
-					tmp1,
-					-mouse[1]
-				);
-
-
-				vec3.rotateY(
-					forward,
-					forward,
-					tmp1,
-					-mouse[1]
-				);
-
-
-				/*
-				 * Vertical camera rotation is disabled.
-				 */
-
-				vec3.rotateX(
-					forward,
-					forward,
-					tmp1,
-					0
-				);
-
-
-				vec3.rotateX(
-					up,
-					up,
-					tmp1,
-					0
-				);
-
-
-				vec3.normalize(
-					force,
-					force
-				);
-
-
 				/* ------------------------------------------------
-				 * MOVEMENT
+				 * MOVEMENT ALONG THE CENTRE LINE
+				 *
+				 * Forward / back always carry the visitor along
+				 * the hall, in the direction they are roughly
+				 * facing. Facing a side wall, forward goes on
+				 * deeper into the gallery.
 				 * ---------------------------------------------- */
 
 				const speed =
@@ -1380,15 +1409,22 @@ function (
 						walkSpeed;
 
 
-				vec3.scale(
-					force,
-					force,
-					speed * dt
-				);
+				const facingZ =
+					-Math.cos(mouse[1]);
+
+				const towards =
+					Math.abs(facingZ) > 0.2
+						?
+						Math.sign(facingZ)
+						:
+						1;
 
 
-				pos[1] =
-					height;
+				let dz =
+					-dir[2] *
+					towards *
+					speed *
+					Math.min(dt, 0.1);
 
 
 				if (paused) {
@@ -1397,119 +1433,26 @@ function (
 
 					dir[2] = 0;
 
-					vec3.set(
-						force,
-						0,
-						0,
-						0
-					);
+					dz = 0;
 				}
 
 
-				const newPos =
-					vec3.add(
-						[],
-						pos,
-						force
+				const targetZ =
+					Math.min(
+						PATH_END_Z,
+						Math.max(
+							PATH_START_Z,
+							pos[2] + dz
+						)
 					);
 
 
-				/* ------------------------------------------------
-				 * WALL COLLISION
-				 * ---------------------------------------------- */
-
-				const collisions =
-					getGridSegments(
-						newPos[0],
-						newPos[2]
-					)
-
-					.map(
-						([
-							[ax, ay],
-							[bx, by]
-						]) => [
-
-							[
-								ax,
-								height,
-								ay
-							],
-
-							[
-								bx,
-								height,
-								by
-							]
-						]
-					)
-
-					.filter(
-						([a, b]) =>
-							sdLine(
-								newPos,
-								a,
-								b,
-								tmp1,
-								tmp2
-							)
-							<
-							distToWalls
-					);
-
-
-				if (
-					collisions.length !== 0
-				) {
-
-					for (
-						let [a, b]
-						of collisions
-					) {
-
-						const distance =
-							distToWalls -
-							sdLine(
-								newPos,
-								a,
-								b,
-								tmp1,
-								tmp2
-							);
-
-
-						const delta =
-							vec3.sub(
-								tmp1,
-								b,
-								a
-							).reverse();
-
-
-						delta[0] =
-							-delta[0];
-
-
-						vec3.normalize(
-							delta,
-							delta
-						);
-
-
-						vec3.scale(
-							delta,
-							delta,
-							distance
-						);
-
-
-						vec3.add(
-							force,
-							force,
-							delta
-						);
-					}
-				}
+				vec3.set(
+					force,
+					CENTRE_X - pos[0],
+					0,
+					targetZ - pos[2]
+				);
 
 
 				/* ------------------------------------------------
@@ -1647,13 +1590,19 @@ function (
 					0;
 
 
-				fmouse[1] =
-					rotationFilter *
-					mouse[1]
-					+
-					(1 -
-						rotationFilter) *
-					fmouse[1];
+				fmouse[1] +=
+					(mouse[1] - fmouse[1]) *
+					Math.min(
+						1,
+						Math.min(dt, 0.1) * TURN_EASE
+					);
+
+				if (
+					Math.abs(mouse[1] - fmouse[1]) < 0.0005
+				) {
+
+					fmouse[1] = mouse[1];
+				}
 
 
 				/* ------------------------------------------------
