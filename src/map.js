@@ -1702,6 +1702,15 @@ module.exports = function () {
 
         statues: STATUES,
 
+        // things standing on the floor, for soft contact shadows: [x, z, radius]
+        occluders: [
+            ...COLUMN_Z.flatMap((z) => [[1.25, z, 0.78], [WIDTH - 1.25, z, 0.78]]),
+            [WIDTH / 2 - ARCH_COL_X, ARCH_Z, 0.86],
+            [WIDTH / 2 + ARCH_COL_X, ARCH_Z, 0.86],
+            ...STATUES.map((st) => [st.x, st.z, PEDESTAL_R * 1.12]),
+            ...PLANTS.map((pl) => [pl.x, pl.z, 0.34])
+        ],
+
         pedestalTop: PEDESTAL_TOP,
 
         mat: matArr,

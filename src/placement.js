@@ -913,6 +913,9 @@ module.exports =
 			fixtures:
 				lamp.fixtures,
 
+			side:
+				layouts[index].side,
+
 
 			model:
 				makeModel(
@@ -1110,6 +1113,12 @@ module.exports =
 			() =>
 				shownBatch.map(
 					(p, index) => ({
+
+						side:
+							p.side,
+
+						width:
+							p.width,
 
 						index,
 
