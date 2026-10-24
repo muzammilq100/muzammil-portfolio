@@ -22,6 +22,7 @@ const ROOM_BRIGHTNESS = 0.6;
 const PICTURE_LIGHT = 0.95;
 
 const { doorLightGLSL } = require('./entrance');
+const { skylightGLSL } = require('./skylight');
 
 // light falling through the door, pointing from the floor towards the
 // bright street outside: down from above, from slightly to the left
@@ -105,6 +106,16 @@ module.exports = (regl, data, useReflexion) => {
 
     ${doorLightGLSL()}
 
+    ${skylightGLSL()}
+
+    vec3 skyAbove(vec3 dir) {
+      float h = clamp(dir.y, 0.0, 1.0);
+      vec3 col = mix(vec3(0.80, 0.86, 0.92), vec3(0.42, 0.60, 0.86), smoothstep(0.55, 1.0, h));
+      vec2 cp = dir.xz / max(dir.y, 0.2) * 1.6;
+      float c = smoothstep(0.50, 0.78, fbm(cp * 0.7 + vec2(3.1, 7.4)));
+      return mix(col, vec3(0.97, 0.96, 0.93), c * 0.65);
+    }
+
     // soft darkening of the floor around something standing on it
     float contact(vec2 p, vec2 c, float r) {
       float d = length(p - c) - r;
@@ -172,6 +183,8 @@ module.exports = (regl, data, useReflexion) => {
       float isSoil = step(4.5, matId) * step(matId, 5.5);
       float isFluted = step(6.5, matId) * step(matId, 7.5);
       float isSteel = step(7.5, matId) * step(matId, 8.5);
+      float isSky = step(8.5, matId) * step(matId, 9.5);
+      float isCream = step(9.5, matId) * step(matId, 10.5);
 
       // Floor: an upward face lying at y = 0 (not column bases)
       float isFloor =
@@ -306,6 +319,13 @@ module.exports = (regl, data, useReflexion) => {
       material = mix(material, vec3(0.010, 0.010, 0.011), isPot);
       material = mix(material, vec3(0.045, 0.045, 0.048), isSteel);
 
+      // cream plaster of the skylight, with a faint carved texture
+      vec3 creamMat = vec3(0.84, 0.80, 0.70);
+      if (detail) {
+        creamMat *= 0.95 + 0.08 * fbm(vec2(v_pos.x + v_pos.y, v_pos.z + v_pos.y) * 6.0);
+      }
+      material = mix(material, creamMat, isCream);
+
 
       // ---------------------------------------------------------
       // MUSEUM LIGHTING (dimmer, moodier)
@@ -356,6 +376,22 @@ module.exports = (regl, data, useReflexion) => {
       }
       light += spill * 0.55;
 
+      // ---------------------------------------------------------
+      // SUNLIGHT THROUGH THE SKYLIGHT
+      // Bright squares on the floor (and the foot of the walls),
+      // each crossed by the shadows of its glazing bars, and a soft
+      // daylight glow under the glass.
+      // ---------------------------------------------------------
+      float sun = 0.0;
+      float glow = skylightGlow(v_pos);
+      if (glow > 0.0 && v_pos.y < 7.9 && isSky < 0.5) {
+        float ndl = max(dot(N, SKY_SUN), 0.0);
+        if (ndl > 0.0) sun = skylightAt(v_pos) * ndl;
+      }
+      light += sun * 1.15 + glow * 0.07 * (1.0 - isCeiling);
+      // the coffers glow with daylight, brighter towards the glass
+      light += isCream * (0.25 + 0.55 * smoothstep(8.0, 8.62, v_pos.y)) * glow;
+
       // soft contact shadows where pillars, statues and plants meet the floor
       if (isFloor > 0.5) {
         float ao = 1.0;
@@ -368,6 +404,7 @@ module.exports = (regl, data, useReflexion) => {
 
       vec3 pictureTint = vec3(1.0, 0.93, 0.80);
       vec3 spillTint = mix(vec3(1.0), vec3(1.10, 0.95, 0.78), clamp(spill * 2.0, 0.0, 1.0));
+      spillTint = mix(spillTint, vec3(1.08, 1.0, 0.86), clamp(sun * 1.5, 0.0, 1.0));
       vec3 finalColour = material * (vec3(light) * spillTint + pictureTint * pic * ${PICTURE_LIGHT.toFixed(3)} * (1.0 - 0.5 * isFloor));
 
       // a dull sheen on the black steel frames
@@ -415,6 +452,12 @@ module.exports = (regl, data, useReflexion) => {
       // floor lets some of it through, more at grazing angles and more
       // on the black tiles than the cream ones.
       // ---------------------------------------------------------
+      // the sky through the glass is simply the sky
+      if (isSky > 0.5) {
+        vec3 dirUp = normalize(v_pos - v_eye);
+        finalColour = skyAbove(dirUp * vec3(1.0, sign(dirUp.y), 1.0)) * 1.05;
+      }
+
       float alpha = 1.0;
       if (isFloor > 0.5) {
         if (yScale < 0.0) discard;
@@ -424,7 +467,7 @@ module.exports = (regl, data, useReflexion) => {
         refl *= 1.0 - 0.6 * grout;
         alpha = 1.0 - refl * mirrorOn;
         // the bright pool of daylight washes the reflection out a little
-        alpha = mix(alpha, 1.0, clamp(spill * 0.5, 0.0, 0.6));
+        alpha = mix(alpha, 1.0, clamp(spill * 0.5 + sun * 0.5, 0.0, 0.6));
       }
 
       gl_FragColor = vec4(finalColour, alpha);

@@ -3,6 +3,7 @@
 const geom = require('./geom');
 const { addFlutedColumn, addStatue, addPlant } = require('./decor');
 const entrance = require('./entrance');
+const skylight = require('./skylight');
 
 /*
  * RENAISSANCE ART GALLERY
@@ -1264,26 +1265,11 @@ module.exports = function () {
     // CEILING
     // ========================================================
 
-    elements.push(
+    // the plain ceiling, with a coffered glass skylight over the middle
+    // of the hall (see skylight.js)
+    skylight.addSkylight(builder, [0, 0, 0], LENGTH);
 
-        ...pushQuad(
-
-            position,
-            normal,
-
-            [0, HEIGHT, LENGTH],
-
-            [WIDTH, HEIGHT, LENGTH],
-
-            [0, HEIGHT, 0],
-
-            [WIDTH, HEIGHT, 0],
-
-            [0, -1, 0]
-
-        )
-
-    );
+    builder.curMat = [0, 0, 0];
 
 
     // ========================================================
@@ -1502,10 +1488,6 @@ module.exports = function () {
 
         4,
         9,
-        14,
-        19,
-        24,
-        29,
         34,
         39,
         44
