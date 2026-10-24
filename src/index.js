@@ -118,10 +118,19 @@ const drawStreet = require('./street')(regl);
 
 const drawGlass = require('./glass')(regl);
 
+// the cloister garden beyond the corridor windows
+const drawGarden = require('./garden')(regl);
+
+// the Florence street beyond the corridor's far door
+const drawFlorence = require('./florence')(regl);
+
 fps = require('./fps')(
 	map,
 	fovY
 );
+
+// the shader picks the picture lights nearest the visitor
+map.viewer = fps.pos;
 
 
 /* -----------------------------------------------------------
@@ -791,6 +800,7 @@ function updatePlaque() {
 		let nx = 0, nz = 0;
 		if (painting.side === 'left') nx = 1;
 		else if (painting.side === 'right') nx = -1;
+		else if (painting.side === 'corridor') nz = 1;
 		else nz = -1;
 
 		const dx = pp[0] - fps.pos[0];
@@ -911,6 +921,10 @@ regl.frame(
 
 							drawStreet();
 
+							drawGarden();
+
+							drawFlorence();
+
 							drawGlass();
 						}
 					);
@@ -927,6 +941,11 @@ regl.frame(
 
 				// the street outside, seen through the door
 				drawStreet();
+
+				// the garden and the Florence street, through the corridor glass
+				drawGarden();
+
+				drawFlorence();
 
 				// glass last, over everything
 				drawGlass();

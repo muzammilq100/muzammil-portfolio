@@ -25,7 +25,11 @@ const RIGHT_X =
 	13.64;
 
 const END_Z =
-	47.64;
+	57.64;
+
+// the painting wall of the new corridor (faces +z)
+const CORR_Z =
+	48.36;
 
 
 const LABEL_X_LEFT =
@@ -35,7 +39,10 @@ const LABEL_X_RIGHT =
 	13.644;
 
 const LABEL_Z_END =
-	47.644;
+	57.644;
+
+const LABEL_Z_CORR =
+	48.356;
 
 
 const PAINTING_DEPTH =
@@ -48,6 +55,9 @@ const PAINTING_DEPTH =
 
 const CENTRE_Y =
 	4.0;
+
+const cyOf = (index) =>
+	(layouts[index] && layouts[index].cy) || CENTRE_Y;
 
 
 /*
@@ -322,7 +332,19 @@ const layouts = [
 		z: 14.6,
 		maxW: 3.70,
 		maxH: 3.70
-	}
+	},
+
+
+	/*
+	 * Artworks VIII, IX and X
+	 * The new corridor's painting wall, one in each of three bays.
+	 * The corridor is lower than the main hall, so these hang a
+	 * little lower and are a little smaller.
+	 */
+
+	{ side: 'corridor', x: 21.0, cy: 3.05, maxW: 3.1, maxH: 3.5 },
+	{ side: 'corridor', x: 29.8, cy: 3.05, maxW: 3.1, maxH: 3.5 },
+	{ side: 'corridor', x: 38.6, cy: 3.05, maxW: 3.1, maxH: 3.5 }
 ];
 
 
@@ -379,7 +401,7 @@ function makeModel(
 	const model = [];
 
 	const y =
-		CENTRE_Y -
+		cyOf(index) -
 		height / 2;
 
 
@@ -431,6 +453,25 @@ function makeModel(
 			model,
 			model,
 			-Math.PI / 2
+		);
+	}
+
+
+	/* CORRIDOR WALL */
+
+	else if (
+		layout.side ===
+		'corridor'
+	) {
+
+		mat4.fromTranslation(
+			model,
+			[
+				layout.x -
+				width / 2,
+				y,
+				CORR_Z
+			]
 		);
 	}
 
@@ -492,7 +533,7 @@ function makeFrameModel(
 	const model = [];
 
 	const y =
-		CENTRE_Y -
+		cyOf(index) -
 		height / 2;
 
 
@@ -544,6 +585,23 @@ function makeFrameModel(
 	}
 
 
+	else if (
+		layout.side ===
+		'corridor'
+	) {
+
+		mat4.fromTranslation(
+			model,
+			[
+				layout.x -
+				width / 2,
+				y,
+				CORR_Z
+			]
+		);
+	}
+
+
 	else {
 
 		mat4.fromTranslation(
@@ -587,7 +645,7 @@ function makeTextModel(
 
 
 	const y =
-		CENTRE_Y -
+		cyOf(index) -
 		height / 2 -
 		FRAME_W -
 		0.38;
@@ -637,6 +695,23 @@ function makeTextModel(
 			model,
 			model,
 			-Math.PI / 2
+		);
+	}
+
+
+	else if (
+		layout.side ===
+		'corridor'
+	) {
+
+		mat4.fromTranslation(
+			model,
+			[
+				layout.x -
+				width / 2,
+				y,
+				LABEL_Z_CORR
+			]
 		);
 	}
 
@@ -693,7 +768,7 @@ function makePlaquePosition(
 
 
 	const y =
-		CENTRE_Y -
+		cyOf(index) -
 		height / 2 -
 		FRAME_W -
 		0.38;
@@ -721,6 +796,19 @@ function makePlaquePosition(
 			RIGHT_X - 0.55,
 			y,
 			layout.z
+		];
+	}
+
+
+	if (
+		layout.side ===
+		'corridor'
+	) {
+
+		return [
+			layout.x,
+			y,
+			CORR_Z + 0.55
 		];
 	}
 
@@ -777,6 +865,12 @@ function makeLight(width, height, index) {
 		A = [0, 0, 1];
 		Nn = [-1, 0, 0];
 
+	} else if (layout.side === 'corridor') {
+
+		W = [layout.x, CORR_Z];
+		A = [1, 0, 0];
+		Nn = [0, 0, 1];
+
 	} else {
 
 		W = [7.0, END_Z];
@@ -785,7 +879,7 @@ function makeLight(width, height, index) {
 	}
 
 	const barY =
-		CENTRE_Y +
+		cyOf(index) +
 		height / 2 +
 		FRAME_W +
 		0.30;
@@ -1017,6 +1111,19 @@ module.exports =
 						RIGHT_X - 0.05,
 						CENTRE_Y,
 						layouts[index].z
+					]
+
+					:
+
+				layouts[index].side ===
+				'corridor'
+
+					?
+
+					[
+						layouts[index].x,
+						cyOf(index),
+						CORR_Z + 0.05
 					]
 
 					:

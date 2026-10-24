@@ -23,6 +23,7 @@ const PICTURE_LIGHT = 0.95;
 
 const { doorLightGLSL } = require('./entrance');
 const { skylightGLSL } = require('./skylight');
+const { windowLightGLSL } = require('./wing');
 
 // light falling through the door, pointing from the floor towards the
 // bright street outside: down from above, from slightly to the left
@@ -40,6 +41,27 @@ module.exports = (regl, data, useReflexion) => {
     `ao = min(ao, contact(v_pos.xz, vec2(${x.toFixed(3)}, ${z.toFixed(3)}), ${r.toFixed(3)}));`
   ).join('\n      ');
 
+  // The shader takes MAX_LIGHTS picture lights; each frame the ones
+  // nearest the visitor are chosen (data.viewer is the visitor's position).
+  const OFF = { c: [0, 0, 0, 0], d: [1, 0, 0, 0] };
+  let pickTick = -1;
+  let picked = [];
+  const nearestLights = (ctx) => {
+    const tick = ctx && ctx.tick !== undefined ? ctx.tick : 0;
+    if (tick !== pickTick || picked.length === 0) {
+      pickTick = tick;
+      const v = data.viewer || [7, 2, 20];
+      picked = data.lights
+        .filter((l) => l.c[3] > 0.5)
+        .map((l) => ({ l, d: Math.hypot(l.c[0] - v[0], l.c[2] - v[2]) }))
+        .sort((a, b) => a.d - b.d)
+        .slice(0, MAX_LIGHTS)
+        .map((e) => e.l);
+      while (picked.length < MAX_LIGHTS) picked.push(OFF);
+    }
+    return picked;
+  };
+
   // one vec4 pair per light, read live from data.lights so each light
   // switches on as soon as its painting has loaded
   const lightUniforms = {};
@@ -47,8 +69,8 @@ module.exports = (regl, data, useReflexion) => {
   let lightCalls = '';
 
   for (let i = 0; i < MAX_LIGHTS; i++) {
-    lightUniforms['lightC' + i] = () => data.lights[i].c;
-    lightUniforms['lightD' + i] = () => data.lights[i].d;
+    lightUniforms['lightC' + i] = (ctx) => nearestLights(ctx)[i].c;
+    lightUniforms['lightD' + i] = (ctx) => nearestLights(ctx)[i].d;
     lightDecl += 'uniform vec4 lightC' + i + ', lightD' + i + ';\n';
     lightCalls += 'pic += pictureLight(lightC' + i + ', lightD' + i + ', v_pos, N);\n';
   }
@@ -107,6 +129,8 @@ module.exports = (regl, data, useReflexion) => {
     ${doorLightGLSL()}
 
     ${skylightGLSL()}
+
+    ${windowLightGLSL()}
 
     vec3 skyAbove(vec3 dir) {
       float h = clamp(dir.y, 0.0, 1.0);
@@ -201,8 +225,9 @@ module.exports = (regl, data, useReflexion) => {
       float isShell = clamp(
         step(abs(v_pos.x - 0.35), 0.02) * step(0.5, N.x) +
         step(abs(v_pos.x - 13.65), 0.02) * step(0.5, -N.x) +
-        step(abs(v_pos.z - 47.65), 0.02) * step(0.5, -N.z) +
-        step(abs(v_pos.z - 0.35), 0.02) * step(0.5, N.z),
+        step(abs(v_pos.z - 57.65), 0.02) * step(0.5, -N.z) +
+        step(abs(v_pos.z - 0.35), 0.02) * step(0.5, N.z) +
+        step(10.5, matId) * step(matId, 11.5),
         0.0, 1.0);
 
 
@@ -342,7 +367,7 @@ module.exports = (regl, data, useReflexion) => {
 
       // Corridor glow and the end wall light
       light += (1.0 - smoothstep(7.0, 35.0, abs(v_pos.z - 29.0))) * 0.06;
-      light += (1.0 - smoothstep(2.0, 16.0, abs(v_pos.z - 46.0))) * 0.14;
+      light += (1.0 - smoothstep(2.0, 16.0, abs(v_pos.z - 56.0))) * 0.14 * (1.0 - smoothstep(14.5, 18.0, v_pos.x));
 
       // Walls fall into shadow towards the ceiling
       light *= mix(0.80, 1.0, min(1.0, fadeFar(4.5, 8.0, v_pos.y) + isFloor));
@@ -388,16 +413,27 @@ module.exports = (regl, data, useReflexion) => {
         float ndl = max(dot(N, SKY_SUN), 0.0);
         if (ndl > 0.0) sun = skylightAt(v_pos) * ndl;
       }
-      light += sun * 1.15 + glow * 0.07 * (1.0 - isCeiling);
+      light += sun * 0.85 + glow * 0.05 * (1.0 - isCeiling);
       // the coffers glow with daylight, brighter towards the glass
-      light += isCream * (0.25 + 0.55 * smoothstep(8.0, 8.62, v_pos.y)) * glow;
+      light += isCream * (0.18 + 0.42 * smoothstep(8.0, 8.62, v_pos.y)) * glow;
+
+      // ---------------------------------------------------------
+      // DAYLIGHT IN THE NEW CORRIDOR
+      // Soft window shapes from the garden windows on the floor and
+      // the painting wall, and a gentle glow throughout.
+      // ---------------------------------------------------------
+      float winL = windowLight(v_pos, N);
+      float cg = corridorGlow(v_pos);
+      light += winL * 0.48 + cg * 0.16 * (1.0 - 0.4 * isCeiling);
 
       // soft contact shadows where pillars, statues and plants meet the floor
       if (isFloor > 0.5) {
         float ao = 1.0;
         ${aoGLSL}
         // and a little darker along the foot of the walls
-        float wallD = min(min(v_pos.x - 0.35, 13.65 - v_pos.x), 47.65 - v_pos.z);
+        float wallD = min(v_pos.x - 0.35, 57.65 - v_pos.z);
+        if (v_pos.z < 48.35) wallD = min(wallD, 13.65 - v_pos.x);
+        if (v_pos.x > 13.65) wallD = min(min(wallD, v_pos.z - 48.35), 50.35 - v_pos.x);
         ao *= mix(0.72, 1.0, smoothstep(0.0, 0.55, wallD));
         light *= ao;
       }
@@ -455,19 +491,20 @@ module.exports = (regl, data, useReflexion) => {
       // the sky through the glass is simply the sky
       if (isSky > 0.5) {
         vec3 dirUp = normalize(v_pos - v_eye);
-        finalColour = skyAbove(dirUp * vec3(1.0, sign(dirUp.y), 1.0)) * 1.05;
+        finalColour = skyAbove(dirUp * vec3(1.0, sign(dirUp.y), 1.0)) * 0.92;
       }
 
       float alpha = 1.0;
       if (isFloor > 0.5) {
         if (yScale < 0.0) discard;
         float cosV = clamp(V.y, 0.0, 1.0);
-        float refl = 0.07 + 0.42 * pow(1.0 - cosV, 4.0);
-        refl *= mix(0.55, 1.0, checker);
-        refl *= 1.0 - 0.6 * grout;
+        // a high polish: a clear reflection even looking down, a mirror at grazing angles
+        float refl = 0.16 + 0.58 * pow(1.0 - cosV, 3.0);
+        refl *= mix(0.72, 1.0, checker);
+        refl *= 1.0 - 0.5 * grout;
         alpha = 1.0 - refl * mirrorOn;
         // the bright pool of daylight washes the reflection out a little
-        alpha = mix(alpha, 1.0, clamp(spill * 0.5 + sun * 0.5, 0.0, 0.6));
+        alpha = mix(alpha, 1.0, clamp(spill * 0.4 + sun * 0.4, 0.0, 0.45));
       }
 
       gl_FragColor = vec4(finalColour, alpha);
