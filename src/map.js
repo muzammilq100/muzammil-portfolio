@@ -4,6 +4,7 @@ const geom = require('./geom');
 const { addFlutedColumn, addStatue, addPlant } = require('./decor');
 const entrance = require('./entrance');
 const skylight = require('./skylight');
+const wing = require('./wing');
 
 /*
  * RENAISSANCE ART GALLERY
@@ -30,7 +31,7 @@ const skylight = require('./skylight');
 // ============================================================
 
 const WIDTH = 14;
-const LENGTH = 48;
+const LENGTH = 58;          // extended: the new wing opens off the far end
 const HEIGHT = 8;
 
 const WALL = 0.35;
@@ -140,8 +141,8 @@ const ARCH_COL_X = ARCH_R_IN + ARCH_COL_R;
 // the pedestals by statues.js. height = statue height in metres.
 // They are close to the height of the paintings (about 5.2 m).
 const STATUES = [
-    { file: 'venus.bin', x: 1.85, z: 46.2, yaw: 2.67, height: 5.2 },
-    { file: 'david.bin', x: WIDTH - 1.85, z: 46.2, yaw: -2.67, height: 5.2 }
+    { file: 'venus.bin', x: 1.85, z: 56.2, yaw: 2.67, height: 5.2 },
+    { file: 'david.bin', x: WIDTH - 2.1, z: 56.2, yaw: -2.67, height: 5.2 }
 ];
 
 // low round pedestal under each statue
@@ -1305,7 +1306,7 @@ module.exports = function () {
 
         WIDTH + WALL,
         HEIGHT,
-        LENGTH
+        wing.C.z0
 
     );
 
@@ -1315,8 +1316,8 @@ module.exports = function () {
     // ========================================================
     addBox(position, normal, elements, WALL, 0, 0, WALL + 0.12, 0.42, LENGTH - WALL);
     addBox(position, normal, elements, WALL, 0.42, 0, WALL + 0.07, 0.50, LENGTH - WALL);
-    addBox(position, normal, elements, WIDTH - WALL - 0.12, 0, 0, WIDTH - WALL, 0.42, LENGTH - WALL);
-    addBox(position, normal, elements, WIDTH - WALL - 0.07, 0.42, 0, WIDTH - WALL, 0.50, LENGTH - WALL);
+    addBox(position, normal, elements, WIDTH - WALL - 0.12, 0, 0, WIDTH - WALL, 0.42, wing.C.z0);
+    addBox(position, normal, elements, WIDTH - WALL - 0.07, 0.42, 0, WIDTH - WALL, 0.50, wing.C.z0);
     addBox(position, normal, elements, WALL, 0, LENGTH - WALL - 0.12, WIDTH - WALL, 0.42, LENGTH - WALL);
     addBox(position, normal, elements, WALL, 0.42, LENGTH - WALL - 0.07, WIDTH - WALL, 0.50, LENGTH - WALL);
 
@@ -1345,7 +1346,7 @@ module.exports = function () {
         0,
         LENGTH - WALL,
 
-        WIDTH + WALL,
+        WIDTH - WALL,
         HEIGHT,
         LENGTH + WALL
 
@@ -1490,7 +1491,9 @@ module.exports = function () {
         9,
         34,
         39,
-        44
+        44,
+        49,
+        54
 
     ];
 
@@ -1509,6 +1512,15 @@ module.exports = function () {
 
         );
     }
+
+
+    // ========================================================
+    // THE NEW WING: corridor, windows, vault and far door
+    // ========================================================
+
+    wing.addWing(builder);
+
+    builder.curMat = [0, 0, 0];
 
 
     // ========================================================
@@ -1668,7 +1680,7 @@ module.exports = function () {
     // once each painting has loaded and its size is known.
     const lights = [];
 
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < 10; i++) {
         lights.push({
             c: [0, 0, 0, 0],
             d: [1, 0, 0, 0]

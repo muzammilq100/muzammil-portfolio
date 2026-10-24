@@ -146,7 +146,14 @@ function addEntranceWall(B) {
 	// above the arch
 	archShoulders(B);
 
-	// carved surround on the gallery side: jambs, an archivolt and a keystone
+	addSurround(B);
+}
+
+
+/* carved surround on the gallery side: jambs, an archivolt and a keystone */
+function addSurround(B) {
+
+	const z1 = WALL;
 	const W = 0.32, D = 0.07;
 	box(B, DOOR.x0 - W, 0.30, z1, DOOR.x0, DOOR.spring, z1 + D, STONE);
 	box(B, DOOR.x1, 0.30, z1, DOOR.x1 + W, DOOR.spring, z1 + D, STONE);
@@ -322,6 +329,7 @@ function doorLightGLSL() {
 
 module.exports = {
 	addEntranceWall,
+	addSurround,
 	addFrames,
 	glassPanes,
 	doorLightGLSL,

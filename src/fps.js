@@ -63,9 +63,55 @@ const runStepLen = 5;
 
 const CENTRE_X = 7.0;           // middle of the 14 m wide hall
 
-const PATH_START_Z = 1.6;       // just inside the entrance
+/*
+ * The walk is an L: down the middle of the main hall, then left
+ * along the middle of the new corridor. Points are [x, z].
+ */
+const PATH = [
+	[7.0, 1.6],      // just inside the entrance
+	[7.0, 53.0],     // the turn, in line with the corridor
+	[47.4, 53.0]     // a few steps short of the far door
+];
 
-const PATH_END_Z = 45.6;        // a comfortable distance from the end painting
+const SEGS = PATH.slice(1).map((p, i) => {
+	const a = PATH[i];
+	const dx = p[0] - a[0], dz = p[1] - a[1];
+	const len = Math.hypot(dx, dz);
+	return { a, len, dir: [dx / len, dz / len] };
+});
+
+const PATH_LEN = SEGS.reduce((t, sg) => t + sg.len, 0);
+
+// position on the path at distance s
+function pathPoint(s) {
+	let rest = Math.max(0, Math.min(PATH_LEN, s));
+	for (const sg of SEGS) {
+		if (rest <= sg.len) {
+			return [sg.a[0] + sg.dir[0] * rest, sg.a[1] + sg.dir[1] * rest];
+		}
+		rest -= sg.len;
+	}
+	const last = PATH[PATH.length - 1];
+	return [last[0], last[1]];
+}
+
+// direction of travel just ahead of s (increasing) and just behind it
+function pathDirs(s) {
+	let acc = 0;
+	for (let i = 0; i < SEGS.length; i++) {
+		const sg = SEGS[i];
+		const end = acc + sg.len;
+		if (s < end - 1e-4 || i === SEGS.length - 1) {
+			const ahead = sg.dir;
+			const atStart = s <= acc + 1e-4 && i > 0;
+			const back = atStart ? SEGS[i - 1].dir : sg.dir;
+			return { ahead, back: [-back[0], -back[1]] };
+		}
+		acc = end;
+	}
+	const d = SEGS[SEGS.length - 1].dir;
+	return { ahead: d, back: [-d[0], -d[1]] };
+}
 
 const TURN_STEP = Math.PI / 4;  // 45 degrees
 
@@ -305,8 +351,12 @@ function (
 	var pos = [
 		CENTRE_X,
 		height,
-		PATH_START_Z
+		PATH[0][1]
 	];
+
+	// how far along the path the visitor is, and which way they last went
+	var pathS = 0;
+	var lastTowards = 1;
 
 	var forward = [
 		0.707,
@@ -1409,18 +1459,21 @@ function (
 						walkSpeed;
 
 
-				const facingZ =
-					-Math.cos(mouse[1]);
+				// which way along the path to go: the direction (ahead or back)
+				// that best matches where the visitor is facing; facing a
+				// side wall, keep going the way they were last going
+				const fx = Math.sin(mouse[1]);
+				const fz = -Math.cos(mouse[1]);
+				const pd = pathDirs(pathS);
+				const aheadDot = fx * pd.ahead[0] + fz * pd.ahead[1];
+				const backDot = fx * pd.back[0] + fz * pd.back[1];
 
-				const towards =
-					Math.abs(facingZ) > 0.2
-						?
-						Math.sign(facingZ)
-						:
-						1;
+				let towards = lastTowards;
+				if (Math.max(aheadDot, backDot) > 0.3) {
+					towards = aheadDot >= backDot ? 1 : -1;
+				}
 
-
-				let dz =
+				let ds =
 					-dir[2] *
 					towards *
 					speed *
@@ -1433,25 +1486,24 @@ function (
 
 					dir[2] = 0;
 
-					dz = 0;
+					ds = 0;
 				}
 
 
-				const targetZ =
-					Math.min(
-						PATH_END_Z,
-						Math.max(
-							PATH_START_Z,
-							pos[2] + dz
-						)
-					);
+				if (ds !== 0) {
+					lastTowards = Math.sign(ds) * Math.sign(-dir[2] || 1);
+				}
+
+				pathS = Math.max(0, Math.min(PATH_LEN, pathS + ds));
+
+				const target = pathPoint(pathS);
 
 
 				vec3.set(
 					force,
-					CENTRE_X - pos[0],
+					target[0] - pos[0],
 					0,
-					targetZ - pos[2]
+					target[1] - pos[2]
 				);
 
 
