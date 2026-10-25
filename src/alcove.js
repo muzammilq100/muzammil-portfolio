@@ -35,15 +35,19 @@ const A = {
 	cx: WIDTH + WALL + HALF,
 	arch: { r: 2.6, spring: 4.4 },
 	dome: { r: 3.3, base: HEIGHT },
-	oculus: 1.1
+	oculus: 3.3
 };
-// the glass sits a little way up the oculus's stone throat
-A.ringY = A.dome.base + Math.sqrt(A.dome.r * A.dome.r - A.oculus * A.oculus);
-A.domeTop = A.ringY + 0.45;
+A.domeTop = A.dome.base + A.dome.r;
 
-// glazing of the oculus, like the panes of the hall's skylight: two
-// rings and eight spokes, as fractions of the oculus radius
-const GLAZE = { ring1: 0.28, ring2: 0.66, bar: 0.022, spokes: 8 };
+// the glass dome's frame: sixteen ribs and two rings (their elevations)
+const GLAZE = { spokes: 16, ringE: [0.42, 0.95], bar: 0.035 };
+
+// the tree: its size and, roughly, its crown and trunk (for shadows)
+const TREE = { sxz: 1.32, sy: 1.6, yaw: 0.6 };
+TREE.crownC = [A.cx, 0.4 + 3.4 * TREE.sy, A.zc];
+TREE.crownR = [2.3 * TREE.sxz, 1.9 * TREE.sy, 2.3 * TREE.sxz];
+TREE.trunkR = 0.26 * TREE.sxz;
+TREE.trunkTop = 0.4 + 2.2 * TREE.sy;
 
 // the bench round the tree
 const BENCH = { inner: 1.05, outer: 1.62, seat: 0.48, soil: 0.4 };
@@ -51,7 +55,7 @@ const BENCH = { inner: 1.05, outer: 1.62, seat: 0.48, soil: 0.4 };
 // the sun through the oculus: high, from the far side, so its patterned
 // pool of light lands on the floor just inside the arch
 const SHAFT = (() => {
-	const v = [0.27, 1.0, -0.12];
+	const v = [0.2, 1.0, -0.15];
 	const l = Math.hypot(...v);
 	return v.map((c) => c / l);
 })();
@@ -179,71 +183,39 @@ function addCourt(B) {
 	B.lathe([[R + 0.02, HEIGHT - 0.18, 1], [R - 0.12, HEIGHT - 0.18, 1], [R - 0.12, HEIGHT - 0.06, 1], [R - 0.05, HEIGHT, 1], [R, HEIGHT + 0.02]],
 		A.cx, A.zc, seg, { mat: () => STONE });
 
-	// the dome, seen from below, with coffers suggested by ribs
+	// the dome is all glass: the sky shows through it between slender
+	// cream ribs and two rings, like a great round skylight
 	const rings = 16;
 	const D = (a, e, rr) => [A.cx + Math.cos(a) * Math.cos(e) * rr, A.dome.base + Math.sin(e) * rr, A.zc + Math.sin(a) * Math.cos(e) * rr];
-	const eTop = Math.acos(A.oculus / R);
+	const eTop = Math.PI / 2;
 	for (let i = 0; i < seg; i++) {
 		for (let j = 0; j < rings; j++) {
 			const a0 = Math.PI * 2 * i / seg, a1 = Math.PI * 2 * (i + 1) / seg;
 			const e0 = eTop * j / rings, e1 = eTop * (j + 1) / rings;
 			const n = (a, e) => [-Math.cos(a) * Math.cos(e), -Math.sin(e), -Math.sin(a) * Math.cos(e)];
-			const v = [B.vert(D(a0, e0, R), n(a0, e0), CREAM), B.vert(D(a1, e0, R), n(a1, e0), CREAM),
-				B.vert(D(a1, e1, R), n(a1, e1), CREAM), B.vert(D(a0, e1, R), n(a0, e1), CREAM)];
+			const v = [B.vert(D(a0, e0, R), n(a0, e0), SKY), B.vert(D(a1, e0, R), n(a1, e0), SKY),
+				B.vert(D(a1, e1, R), n(a1, e1), SKY), B.vert(D(a0, e1, R), n(a0, e1), SKY)];
 			B.tri(v[0], v[1], v[2]);
 			B.tri(v[0], v[2], v[3]);
 		}
 	}
-	// sixteen ribs up the dome
-	for (let k = 0; k < 16; k++) {
-		const a = Math.PI * 2 * k / 16;
-		const pts = [];
-		for (let j = 0; j <= 12; j++) pts.push(D(a, eTop * j / 12, R - 0.03));
-		B.tube(pts, () => 0.045, 16, 6, { mat: () => STONE });
-	}
-	// two rings of the coffering
-	for (const e of [eTop * 0.35, eTop * 0.7]) {
-		const rr = Math.cos(e) * (R - 0.03), y = A.dome.base + Math.sin(e) * (R - 0.03);
-		const pts = [];
-		for (let i = 0; i <= 64; i++) {
-			const a = Math.PI * 2 * i / 64;
-			pts.push([A.cx + Math.cos(a) * rr, y, A.zc + Math.sin(a) * rr]);
-		}
-		B.tube(pts, () => 0.04, 64, 6, { mat: () => STONE });
-	}
-	// the oculus: a stone throat, the sky through clear glass, and black
-	// glazing bars in the same pattern as the hall's skylight
-	const yTop = A.ringY;
-	const yG = A.domeTop;
-	B.lathe([[A.oculus + 0.16, yTop - 0.06, 1], [A.oculus, yTop - 0.06, 1], [A.oculus, yG + 0.08, 1]], A.cx, A.zc, 48, { mat: () => STONE });
-	const c = B.vert([A.cx, yG + 0.06, A.zc], [0, -1, 0], SKY);
-	for (let i = 0; i < 48; i++) {
-		const a0 = Math.PI * 2 * i / 48, a1 = Math.PI * 2 * (i + 1) / 48;
-		B.tri(c, B.vert([A.cx + Math.cos(a0) * A.oculus, yG + 0.06, A.zc + Math.sin(a0) * A.oculus], [0, -1, 0], SKY),
-			B.vert([A.cx + Math.cos(a1) * A.oculus, yG + 0.06, A.zc + Math.sin(a1) * A.oculus], [0, -1, 0], SKY));
-	}
-	const ringPts = (rr) => {
-		const pts = [];
-		for (let i = 0; i <= 64; i++) {
-			const a = Math.PI * 2 * i / 64;
-			pts.push([A.cx + Math.cos(a) * rr, yG, A.zc + Math.sin(a) * rr]);
-		}
-		return pts;
-	};
-	const R0 = A.oculus;
-	B.tube(ringPts(R0 * GLAZE.ring1), () => 0.022, 64, 6, { mat: () => STEEL });
-	B.tube(ringPts(R0 * GLAZE.ring2), () => 0.022, 64, 6, { mat: () => STEEL });
-	B.tube(ringPts(R0 - 0.03), () => 0.035, 64, 6, { mat: () => STEEL });
+	// the ribs, meeting at a small hub at the top
 	for (let k = 0; k < GLAZE.spokes; k++) {
 		const a = Math.PI * 2 * k / GLAZE.spokes;
-		const p = (rr) => [A.cx + Math.cos(a) * rr, yG, A.zc + Math.sin(a) * rr];
-		B.tube([p(R0 * GLAZE.ring1), p(R0 * 0.6), p(R0 - 0.02)], () => 0.02, 8, 5, { mat: () => STEEL });
+		const pts = [];
+		for (let j = 0; j <= 14; j++) pts.push(D(a, (eTop - 0.06) * j / 14, R - 0.04));
+		B.tube(pts, () => 0.04, 20, 6, { mat: () => CREAM });
 	}
-	// a cross through the middle
-	for (const a of [0, Math.PI / 2]) {
-		const p = (rr) => [A.cx + Math.cos(a) * rr, yG, A.zc + Math.sin(a) * rr];
-		B.tube([p(-R0 * GLAZE.ring1), p(0), p(R0 * GLAZE.ring1)], () => 0.018, 6, 5, { mat: () => STEEL });
+	for (const e of GLAZE.ringE) {
+		const rr = Math.cos(e) * (R - 0.04), y = A.dome.base + Math.sin(e) * (R - 0.04);
+		const pts = [];
+		for (let i = 0; i <= 72; i++) {
+			const a = Math.PI * 2 * i / 72;
+			pts.push([A.cx + Math.cos(a) * rr, y, A.zc + Math.sin(a) * rr]);
+		}
+		B.tube(pts, () => 0.035, 72, 6, { mat: () => CREAM });
 	}
+	B.ellipsoid([A.cx, A.dome.base + R - 0.06, A.zc], [0.16, 0.08, 0.16], 6, 12, { mat: () => CREAM });
 
 	// black slab benches along the three walls, set a little off the wall
 	const benchY = 0.46, depth = 0.55, gap = 0.12;
@@ -278,30 +250,62 @@ function addAlcove(B) {
 const f = (x) => x.toFixed(4);
 
 function oculusGLSL() {
+	const R = A.dome.r;
+	const ringRs = GLAZE.ringE.map((e) => Math.cos(e) * R);
 	return `
 	const vec3 SHAFT = vec3(${f(SHAFT[0])}, ${f(SHAFT[1])}, ${f(SHAFT[2])});
 
-	// how much sun the glazed oculus lets through towards p (0..1):
-	// the open disc, less the soft shadows of its rings and spokes
+	// how much sun the glass dome lets through towards p (0..1): the round
+	// opening, less the soft shadows of its ribs and rings (worked out on
+	// the dome's base, where the frame is seen almost straight on)
 	float oculusOpen(vec3 p) {
-		float t = (${f(A.domeTop)} - p.y) / SHAFT.y;
+		float t = (${f(A.dome.base + 0.6)} - p.y) / SHAFT.y;
 		vec3 q = p + SHAFT * t;
 		vec2 d2 = q.xz - vec2(${f(A.cx)}, ${f(A.zc)});
 		float d = length(d2);
-		float soft = 0.015 + 0.012 * t;
-		float open = 1.0 - smoothstep(${f(A.oculus - 0.05)} - soft, ${f(A.oculus - 0.05)} + soft, d);
+		float soft = 0.02 + 0.012 * t;
+		float open = 1.0 - smoothstep(${f(R - 0.15)} - soft, ${f(R - 0.15)} + soft, d);
 		float hw = ${f(GLAZE.bar)};
 		float cover = 0.0;
-		cover = max(cover, 1.0 - smoothstep(hw - soft, hw + soft, abs(d - ${f(A.oculus * GLAZE.ring1)})));
-		cover = max(cover, 1.0 - smoothstep(hw - soft, hw + soft, abs(d - ${f(A.oculus * GLAZE.ring2)})));
+		${ringRs.map((r) => `cover = max(cover, 1.0 - smoothstep(hw - soft, hw + soft, abs(d - ${f(r)})));`).join('\n\t\t')}
 		float ang = atan(d2.y, d2.x);
 		float stp = ${f(Math.PI * 2 / GLAZE.spokes)};
 		float da = abs(mod(ang + stp * 0.5, stp) - stp * 0.5);
-		float spoke = 1.0 - smoothstep(hw - soft, hw + soft, d * sin(da));
-		cover = max(cover, d > ${f(A.oculus * GLAZE.ring1)} ? spoke : 0.0);
-		float crs = min(abs(d2.x), abs(d2.y));
-		cover = max(cover, d < ${f(A.oculus * GLAZE.ring1)} ? 1.0 - smoothstep(hw - soft, hw + soft, crs) : 0.0);
-		return open * (1.0 - cover * 0.9);
+		cover = max(cover, 1.0 - smoothstep(hw - soft, hw + soft, d * sin(da)));
+		cover = max(cover, 1.0 - smoothstep(0.16 - soft, 0.16 + soft, d));
+		return open * (1.0 - cover * 0.85);
+	}
+
+	// the tree's own shade: its crown lets dappled light through, its
+	// trunk blocks it
+	float treeShade(vec3 p) {
+		vec3 c = vec3(${f(TREE.crownC[0])}, ${f(TREE.crownC[1])}, ${f(TREE.crownC[2])});
+		vec3 r = vec3(${f(TREE.crownR[0])}, ${f(TREE.crownR[1])}, ${f(TREE.crownR[2])});
+		vec3 oc = (p - c) / r, dd = SHAFT / r;
+		float a = dot(dd, dd), b = dot(oc, dd), cc = dot(oc, oc) - 1.0;
+		float disc = b * b - a * cc;
+		float tr = 1.0;
+		if (disc > 0.0) {
+			float sq = sqrt(disc);
+			float t0 = max(0.0, (-b - sq) / a), t1 = (-b + sq) / a;
+			float len = max(0.0, t1 - t0);
+			if (len > 0.0) {
+				vec3 m = p + SHAFT * (t0 + t1) * 0.5;
+				float gaps = sin(m.x * 4.1 + m.y * 1.3) * sin(m.z * 3.7 - m.y * 2.1) * sin(m.x * 2.3 + m.z * 2.9);
+				gaps = smoothstep(0.15, 0.55, gaps);
+				tr = mix(exp(-len * 1.4), 1.0, gaps * exp(-len * 0.35));
+			}
+		}
+		// the trunk, a leaning column near the middle
+		float tt = (${f(TREE.trunkTop)} - p.y) / SHAFT.y;
+		if (tt > 0.0) {
+			vec2 o = p.xz - vec2(${f(A.cx)}, ${f(A.zc)});
+			vec2 dir = SHAFT.xz;
+			float k = clamp(-dot(o, dir) / dot(dir, dir), 0.0, tt);
+			float dist = length(o + dir * k);
+			tr *= smoothstep(${f(TREE.trunkR * 0.7)}, ${f(TREE.trunkR * 1.3)}, dist);
+		}
+		return tr;
 	}`;
 }
 
@@ -314,7 +318,7 @@ function alcoveLightGLSL() {
 		if (p.x < ${f(A.x0 - 0.75)} || p.z < ${f(A.z0 - 0.5)} || p.z > ${f(A.z1 + 0.5)}) return 0.0;
 		float ndl = max(dot(n, SHAFT), 0.0);
 		if (ndl <= 0.0) return 0.0;
-		return ndl * oculusOpen(p);
+		return ndl * oculusOpen(p) * treeShade(p);
 	}
 
 	// soft daylight filling the court, brightest under the dome
@@ -326,4 +330,4 @@ function alcoveLightGLSL() {
 	}`;
 }
 
-module.exports = { addAlcove, alcoveLightGLSL, oculusGLSL, A, BENCH, SHAFT };
+module.exports = { addAlcove, alcoveLightGLSL, oculusGLSL, A, BENCH, SHAFT, TREE };

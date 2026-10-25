@@ -46,7 +46,7 @@ const T = 0.28;                       // half thickness of the garden's walls
 // and on the north by an arcade with its walk behind it. The corridor
 // itself closes the south side, so no walkway runs into its windows.
 const G = {
-	westBack: 10.6,                   // back of the west house
+	westBack: 14.4,                   // back of the west house (the main hall stands behind it)
 	westCol: 15.0 - T,                // centre line of the west house's front wall
 	eastCol: 37.4 + T,                // centre line of the east house's front wall
 	eastBack: 41.8,                   // back of the east house

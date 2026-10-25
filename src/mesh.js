@@ -229,7 +229,7 @@ module.exports = (regl, data, useReflexion) => {
       float isShell = clamp(
         step(abs(v_pos.x - 0.35), 0.02) * step(0.5, N.x) +
         step(abs(v_pos.x - 13.65), 0.02) * step(0.5, -N.x) +
-        step(abs(v_pos.z - ${g4(WING.z1)}), 0.02) * step(0.5, -N.z) +
+        step(abs(v_pos.z - ${g4(WING.hallEnd)}), 0.02) * step(0.5, -N.z) +
         step(abs(v_pos.z - 0.35), 0.02) * step(0.5, N.z) +
         step(10.5, matId) * step(matId, 11.5),
         0.0, 1.0);
@@ -373,7 +373,7 @@ module.exports = (regl, data, useReflexion) => {
 
       // Corridor glow and the end wall light
       light += (1.0 - smoothstep(7.0, 35.0, abs(v_pos.z - 29.0))) * 0.04;
-      light += (1.0 - smoothstep(2.0, 16.0, abs(v_pos.z - ${g4(WING.z1 - 1.6)}))) * 0.09 * (1.0 - smoothstep(14.5, 18.0, v_pos.x));
+      light += (1.0 - smoothstep(2.0, 16.0, abs(v_pos.z - ${g4(WING.hallEnd - 1.6)}))) * 0.09 * (1.0 - smoothstep(14.5, 18.0, v_pos.x));
 
       // Walls fall into shadow towards the ceiling
       light *= mix(0.80, 1.0, min(1.0, fadeFar(4.5, 8.0, v_pos.y) + isFloor));
@@ -434,7 +434,7 @@ module.exports = (regl, data, useReflexion) => {
       // ---------------------------------------------------------
       float aSun = alcoveSun(v_pos, N);
       float aGlow = alcoveGlow(v_pos);
-      light += aSun * 1.7 + aGlow * 0.24 * (1.0 - 0.3 * isCeiling);
+      light += aSun * 1.8 + aGlow * 0.5 * (1.0 - 0.3 * isCeiling);
       light += isCream * aGlow * 0.18 * smoothstep(8.0, 10.5, v_pos.y);
       sun = max(sun, aSun);
 
@@ -451,9 +451,10 @@ module.exports = (regl, data, useReflexion) => {
         float ao = 1.0;
         ${aoGLSL}
         // and a little darker along the foot of the walls
-        float wallD = min(v_pos.x - 0.35, ${g4(WING.z1)} - v_pos.z);
-        if (v_pos.z < ${g4(WING.z0)} && v_pos.x < 14.0) wallD = min(wallD, 13.65 - v_pos.x);
-        if (v_pos.x > 13.65 && v_pos.z > ${g4(WING.z0 - 1.0)}) wallD = min(min(wallD, v_pos.z - ${g4(WING.z0)}), ${g4(WING.x1)} - v_pos.x);
+        float wallD = v_pos.x - 0.35;
+        if (v_pos.x < 14.0) wallD = min(wallD, ${g4(WING.hallEnd)} - v_pos.z);
+        if (v_pos.x < 14.0 && (v_pos.z < ${g4(WING.z0)} || v_pos.z > ${g4(WING.z1)})) wallD = min(wallD, 13.65 - v_pos.x);
+        if (v_pos.x > 13.65 && v_pos.z > ${g4(WING.z0 - 1.0)}) wallD = min(min(min(wallD, v_pos.z - ${g4(WING.z0)}), ${g4(WING.z1)} - v_pos.z), ${g4(WING.x1)} - v_pos.x);
         ao *= mix(0.72, 1.0, smoothstep(0.0, 0.55, wallD));
         light *= ao;
       }

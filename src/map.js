@@ -32,7 +32,7 @@ const alcove = require('./alcove');
 // ============================================================
 
 const WIDTH = 14;
-const LENGTH = 47.55;       // the corridor opens off the left wall just past the last pillars
+const LENGTH = wing.C.hallEnd + 0.35;   // the end wall stands a little past the corridor opening
 const HEIGHT = 8;
 
 const WALL = 0.35;
@@ -1307,7 +1307,11 @@ module.exports = function () {
 
 
     // the left wall (as you walk in) is built by alcove.js, with the
-    // tree alcove's arch cut into it
+    // tree alcove's arch cut into it; past the corridor opening it carries
+    // on to the end wall
+    addBox(position, normal, elements, WIDTH - WALL, 0, wing.C.z1 + 2 * WALL, WIDTH + WALL, HEIGHT, LENGTH - WALL);
+    addBox(position, normal, elements, WIDTH - WALL - 0.12, 0, wing.C.z1 + 2 * WALL, WIDTH - WALL, 0.42, LENGTH - WALL);
+    addBox(position, normal, elements, WIDTH - WALL - 0.07, 0.42, wing.C.z1 + 2 * WALL, WIDTH - WALL, 0.50, LENGTH - WALL);
 
 
     // ========================================================
@@ -1343,7 +1347,7 @@ module.exports = function () {
         0,
         LENGTH - WALL,
 
-        WIDTH - WALL,
+        WIDTH + WALL,
         HEIGHT,
         LENGTH + WALL
 
@@ -1468,7 +1472,8 @@ module.exports = function () {
         9,
         34,
         39,
-        44
+        44,
+        49
 
     ];
 

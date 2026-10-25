@@ -20,11 +20,12 @@
  * court, and a little by the hall.
  */
 
-const { A, BENCH, SHAFT, oculusGLSL } = require('./alcove');
+const { A, BENCH, SHAFT, TREE, oculusGLSL } = require('./alcove');
 const quality = require('./quality');
 
-const SCALE = 1.3;
-const YAW = 0.6;
+// a tall tree: stretched a little more upwards than outwards
+const SXZ = TREE.sxz, SY = TREE.sy;
+const YAW = TREE.yaw;
 
 function decode(buf) {
 	const dv = new DataView(buf);
@@ -49,13 +50,15 @@ function build(m) {
 	const leaf = new Float32Array(m.nV);
 	const c = Math.cos(YAW), s = Math.sin(YAW);
 	for (let i = 0; i < m.nV; i++) {
-		const x = (m.mn[0] + m.pos[i * 3] / 65535 * m.sz[0]) * SCALE;
-		const y = (m.mn[1] + m.pos[i * 3 + 1] / 65535 * m.sz[1]) * SCALE;
-		const z = (m.mn[2] + m.pos[i * 3 + 2] / 65535 * m.sz[2]) * SCALE;
+		const x = (m.mn[0] + m.pos[i * 3] / 65535 * m.sz[0]) * SXZ;
+		const y = (m.mn[1] + m.pos[i * 3 + 1] / 65535 * m.sz[1]) * SY;
+		const z = (m.mn[2] + m.pos[i * 3 + 2] / 65535 * m.sz[2]) * SXZ;
 		position[i * 3] = A.cx + c * x + s * z;
 		position[i * 3 + 1] = BENCH.soil + 0.02 + y;
 		position[i * 3 + 2] = A.zc - s * x + c * z;
-		const nx = m.nrm[i * 3] / 127, ny = m.nrm[i * 3 + 1] / 127, nz = m.nrm[i * 3 + 2] / 127;
+		let nx = m.nrm[i * 3] / 127 / SXZ, ny = m.nrm[i * 3 + 1] / 127 / SY, nz = m.nrm[i * 3 + 2] / 127 / SXZ;
+		const nl = Math.hypot(nx, ny, nz) || 1;
+		nx /= nl; ny /= nl; nz /= nl;
 		normal[i * 3] = c * nx + s * nz;
 		normal[i * 3 + 1] = ny;
 		normal[i * 3 + 2] = -s * nx + c * nz;
@@ -88,8 +91,8 @@ function loadTexture(regl, url, opts, fallback) {
 const f = (x) => x.toFixed(4);
 
 // the crown, roughly, for the sun shaft's shade inside it
-const CROWN_C = [A.cx, BENCH.soil + 3.3 * SCALE, A.zc];
-const CROWN_R = [2.3 * SCALE, 1.8 * SCALE, 2.3 * SCALE];
+const CROWN_C = TREE.crownC;
+const CROWN_R = TREE.crownR;
 
 const VERT = `
 precision highp float;
@@ -170,7 +173,7 @@ void main() {
 
 	// soft daylight in the court, coming mostly from above
 	float up = 0.6 + 0.4 * N.y;
-	float light = (0.30 + 0.16 * up) * ao;
+	float light = (0.42 + 0.22 * up) * ao;
 
 	// the shaft of sun through the oculus
 	float ndl = v_leaf > 0.5 ? (0.35 + 0.65 * abs(dot(N, SHAFT))) : max(dot(N, SHAFT), 0.0);
