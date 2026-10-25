@@ -9,6 +9,11 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      # set in the repository's Settings > Secrets; until they are there,
+      # the Cloudflare steps below are skipped
+      CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -32,3 +37,22 @@ jobs:
           branch: gh-pages
           folder: .
           token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Gather the site for Cloudflare
+        if: ${{ env.CF_TOKEN != '' && env.CF_ACCOUNT != '' }}
+        run: |
+          mkdir -p cf-site
+          cp index.html cf-site/
+          cp -r res images cf-site/
+      - name: Set up Node.js for Cloudflare
+        if: ${{ env.CF_TOKEN != '' && env.CF_ACCOUNT != '' }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Publish to Cloudflare Pages
+        if: ${{ env.CF_TOKEN != '' && env.CF_ACCOUNT != '' }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          npx --yes wrangler@3 pages project create muzammil-gallery --production-branch=main || true
+          npx --yes wrangler@3 pages deploy cf-site --project-name=muzammil-gallery --branch=main --commit-dirty=true
