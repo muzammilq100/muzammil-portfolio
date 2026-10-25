@@ -1309,7 +1309,7 @@ module.exports = function () {
     // the left wall (as you walk in) is built by alcove.js, with the
     // tree alcove's arch cut into it; past the corridor opening it carries
     // on to the end wall
-    addBox(position, normal, elements, WIDTH - WALL, 0, wing.C.z1 + 2 * WALL, WIDTH + WALL, HEIGHT, LENGTH - WALL);
+    addBox(position, normal, elements, WIDTH - WALL, 0, wing.C.z1, WIDTH + WALL, HEIGHT, LENGTH - WALL);
     addBox(position, normal, elements, WIDTH - WALL - 0.12, 0, wing.C.z1 + 2 * WALL, WIDTH - WALL, 0.42, LENGTH - WALL);
     addBox(position, normal, elements, WIDTH - WALL - 0.07, 0.42, wing.C.z1 + 2 * WALL, WIDTH - WALL, 0.50, LENGTH - WALL);
 
