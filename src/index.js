@@ -132,6 +132,11 @@ const drawFlorence = require('./florence')(regl);
 // the tree in the alcove by the entrance
 const drawTree = require('./tree')(regl);
 
+// the artist himself, reading under the glass dome, and the About card
+const drawAvatar = require('./avatar')(regl);
+const about = require('./about');
+const { A: COURT } = require('./alcove');
+
 fps = require('./fps')(
 	map,
 	fovY
@@ -349,6 +354,27 @@ canvas {
 
 
 /* ===========================================================
+   ABOUT: the camera glides into the tree court, so the card
+   sits to the right and leaves the view clear
+=========================================================== */
+
+.story-overlay.about-mode {
+	justify-content: flex-end;
+	background: transparent;
+}
+
+.story-overlay.about-mode .story-card {
+	width: min(440px, 38vw);
+	max-height: 86vh;
+	transform: translateX(16px);
+}
+
+.story-overlay.about-mode.open .story-card {
+	transform: translateX(0);
+}
+
+
+/* ===========================================================
    MOBILE
 =========================================================== */
 
@@ -429,6 +455,16 @@ canvas {
 		top: 10px;
 
 		right: 10px;
+	}
+
+	.story-overlay.about-mode .story-card {
+		width: calc(100vw - 24px);
+		max-height: 46vh;
+		transform: translateY(16px);
+	}
+
+	.story-overlay.about-mode.open .story-card {
+		transform: translateY(0);
 	}
 }
 `;
@@ -526,6 +562,11 @@ const closeStory =
 
 let activePainting = null;
 
+// how far the camera has glided into the tree court for the About card
+const aboutZoom = { p: 0, target: 0, last: 0 };
+
+const ABOUT_CARD = { title: about.title, description: about.text, isAbout: true };
+
 let currentPlaque = null;
 
 
@@ -548,9 +589,14 @@ function openStory(painting) {
 	storyBody.textContent =
 		painting.description || '';
 
+	overlay.classList.toggle('about-mode', !!painting.isAbout);
+
 	overlay.classList.add(
 		'open'
 	);
+
+	// the About card: glide into the tree court to look at him
+	aboutZoom.target = painting.isAbout ? 1 : 0;
 
 	currentPlaque =
 		painting;
@@ -575,6 +621,8 @@ function closeStoryPanel() {
 	overlay.classList.remove(
 		'open'
 	);
+
+	aboutZoom.target = 0;
 
 	activePainting =
 		null;
@@ -839,11 +887,20 @@ function updatePlaque() {
 		}
 	}
 
+	// facing the tree court from the hall: the About card
+	if (!best) {
+		const px = fps.pos[0], pz = fps.pos[2];
+		const facingCourt = fx / fl > 0.85;
+		if (facingCourt && px < 13.6 && pz > COURT.z0 - 0.5 && pz < COURT.z1 + 0.5) {
+			best = Object.assign({}, ABOUT_CARD, { plaqueTitle: about.name });
+		}
+	}
+
 	if (best) {
 
 		currentPlaque = best;
 
-		plaque.textContent = 'READ  ·  ' + best.title;
+		plaque.textContent = best.isAbout ? 'ABOUT  ·  ' + best.plaqueTitle : 'READ  ·  ' + best.title;
 
 		plaque.classList.add('visible');
 
@@ -853,6 +910,90 @@ function updatePlaque() {
 
 		plaque.classList.remove('visible');
 	}
+}
+
+
+/* ===========================================================
+   THE ARTIST'S BRUSH
+   Tapping or clicking the floating brush opens the About card.
+=========================================================== */
+
+const glMat4 = require('gl-mat4');
+
+function brushOnScreen() {
+	const st = drawAvatar.state;
+	if (!st || !st.glowPos) return null;
+	const v = multiplyPoint(fps.view(), [st.glowPos[0], st.glowPos[1] - 0.08, st.glowPos[2], 1]);
+	const c = multiplyPoint(fps.proj(), v);
+	if (c[3] <= 0.05) return null;
+	return [
+		(c[0] / c[3] * 0.5 + 0.5) * window.innerWidth,
+		(0.5 - c[1] / c[3] * 0.5) * window.innerHeight,
+		c[3]
+	];
+}
+
+let tapStart = null;
+
+window.addEventListener('pointerdown', (e) => {
+	tapStart = { x: e.clientX, y: e.clientY, t: performance.now() };
+}, true);
+
+window.addEventListener('pointerup', (e) => {
+	const t0 = tapStart;
+	tapStart = null;
+	if (!t0 || activePainting || !e.target || !/^(CANVAS|BODY)$/.test(e.target.tagName)) return;
+	if (Math.hypot(e.clientX - t0.x, e.clientY - t0.y) > 12 || performance.now() - t0.t > 600) return;
+	const b = brushOnScreen();
+	if (!b) return;
+	// with the mouse captured for looking around, aim from the middle of
+	// the screen
+	const locked = !!document.pointerLockElement;
+	const x = locked ? window.innerWidth / 2 : e.clientX;
+	const y = locked ? window.innerHeight / 2 : e.clientY;
+	// a generous target: the brush is slim, and fingers are not
+	const r = Math.max(e.pointerType === 'touch' ? 60 : 40, 260 / b[2]);
+	if (Math.hypot(x - b[0], y - b[1]) < r) {
+		e.preventDefault();
+		e.stopPropagation();
+		openStory(ABOUT_CARD);
+	}
+}, true);
+
+
+/* ===========================================================
+   ABOUT ZOOM
+   While the About card is open the camera glides from wherever
+   the visitor stands into the tree court, framing him on the left
+   (or above the card, on a phone), and glides back when it closes.
+=========================================================== */
+
+function applyAboutZoom(time) {
+	const dt = Math.min(Math.max(time - aboutZoom.last, 0), 0.1);
+	aboutZoom.last = time;
+	const step = dt / 1.6;
+	aboutZoom.p = aboutZoom.target > aboutZoom.p ? Math.min(1, aboutZoom.p + step) : Math.max(0, aboutZoom.p - step);
+	if (aboutZoom.p <= 0) return;
+
+	const k = aboutZoom.p < 0.5 ? 2 * aboutZoom.p * aboutZoom.p : 1 - Math.pow(-2 * aboutZoom.p + 2, 2) / 2;
+	const portrait = window.innerHeight > window.innerWidth;
+	const st = drawAvatar.state;
+	const hx = st && st.hipsPos ? st.hipsPos[0] : COURT.cx - 1.2;
+	const hz = st && st.hipsPos ? st.hipsPos[2] : COURT.zc;
+
+	const eye1 = portrait ? [hx - 2.3, 2.0, hz - 0.1] : [hx - 1.55, 1.55, hz + 0.3];
+	const tgt1 = portrait ? [hx + 0.1, 0.2, hz - 0.1] : [hx + 0.1, 0.7, hz + 0.6];
+
+	const p = fps.pos, f = fps.forward;
+	const eye0 = [p[0], p[1], p[2]];
+	const tgt0 = [p[0] + f[0], p[1] + f[1], p[2] + f[2]];
+	const mix = (a, b) => a.map((v, i) => v + (b[i] - v) * k);
+	// the eye travels along a curve that comes through the arch, so it
+	// never passes through a wall on the way in or out
+	const ctl = [COURT.cx - 6.2, 1.7, COURT.zc];
+	const u = 1 - k;
+	const eye = eye0.map((v, i) => u * u * v + 2 * u * k * ctl[i] + k * k * eye1[i]);
+	glMat4.lookAt(fps.view(), eye, mix(tgt0, tgt1), [0, 1, 0]);
 }
 
 
@@ -884,6 +1025,8 @@ regl.frame(
 		fps.tick({
 			time
 		});
+
+		applyAboutZoom(time);
 
 
 		placement.update(
@@ -925,6 +1068,8 @@ regl.frame(
 
 							drawTree();
 
+							drawAvatar();
+
 							drawPainting(
 								placement.batch()
 							);
@@ -946,6 +1091,8 @@ regl.frame(
 				drawStatues();
 
 				drawTree();
+
+				drawAvatar();
 
 				drawPainting(
 					placement.batch()
