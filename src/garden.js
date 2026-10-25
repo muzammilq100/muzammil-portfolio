@@ -30,7 +30,8 @@
  */
 
 const geom = require('./geom');
-const { wallWithHoles } = require('./wing');
+const quality = require('./quality');
+const { wallWithHoles, C } = require('./wing');
 
 
 /* ===========================================================
@@ -38,18 +39,22 @@ const { wallWithHoles } = require('./wing');
  * ===========================================================
  */
 
-const T = 0.28;                       // half thickness of the arcade walls
+const T = 0.28;                       // half thickness of the garden's walls
 
+// The garden is exactly as long as the corridor: closed on the west and
+// east by plain houses whose fronts line up with the corridor's ends,
+// and on the north by an arcade with its walk behind it. The corridor
+// itself closes the south side, so no walkway runs into its windows.
 const G = {
-	westBack: 14.35,                  // back wall of the west walk
-	westCol: 17.6,                    // west column line
-	eastCol: 47.1,                    // east column line
-	eastBack: 50.35,                  // back wall of the east walk
-	south: 58.35,                     // outside face of the corridor
-	northCol: 77.0,                   // north column line
-	northBack: 80.0,                  // back wall of the north walk
-	cx: 32.35,                        // centre of the garden
-	cz: 67.675
+	westBack: 10.6,                   // back of the west house
+	westCol: 15.0 - T,                // centre line of the west house's front wall
+	eastCol: 37.4 + T,                // centre line of the east house's front wall
+	eastBack: 41.8,                   // back of the east house
+	south: C.z1 + 0.7,                // outside face of the corridor
+	northCol: C.z1 + 0.7 + 16.0,      // north column line
+	northBack: C.z1 + 0.7 + 19.0,     // back wall of the north walk
+	cx: (15.0 + 37.4) / 2,            // centre of the garden
+	cz: (C.z1 + 0.7 + C.z1 + 0.7 + 16.0 - T) / 2
 };
 
 // the open courtyard, between the faces of the arcade walls
@@ -68,17 +73,16 @@ const EAVE_N = 11.9;                  // north range
 const EAVE_SIDE = 9.6;                // west and east ranges
 const LOGGIA = { x0: G.cx - 2.9, x1: G.cx + 2.9, top: 14.4 };
 
-const NORTH_BAYS = 9;
-const SIDE_BAYS = 5;
+const NORTH_BAYS = 7;
+const SIDE_BAYS = 4;
 const NORTH_PITCH = (G.eastCol - G.westCol) / NORTH_BAYS;
 const SIDE_PITCH = (G.northCol - G.south) / SIDE_BAYS;
-const OPEN_NORTH = 4;                 // the bays where the cross paths go through
-const OPEN_SIDE = 2;
+const OPEN_NORTH = 3;                 // the bay where the cross path goes through
 const CORNER = 0.26;                  // extra width of the corner piers
 
 const PATH_EDGE = 1.4;                // perimeter path width
 const CROSS = 1.1;                    // half width of the cross paths
-const CIRCLE = 3.3;                   // the round space at the centre
+const CIRCLE = 3.0;                   // the round space at the centre
 
 // garden sun: from behind the corridor, a little from the east
 const SUN = (() => {
@@ -103,46 +107,56 @@ const K = {
 // crowns: centre, radii, leaf cell, leaf colour, blossom colour
 const CROWNS = [];
 
-const MAGNOLIA = { c: [24.6, 4.6, 71.6], r: [5.0, 3.6, 4.5] };
+// positions relative to the centre of the garden
+const at = (dx, y, dz) => [G.cx + dx, y, G.cz + dz];
+
+// the magnolia stands in the far bed on the right (seen from the corridor)
+const MAG_C = at(-5.9, 0, 3.4);
+const MS = 0.85;
+const MAGNOLIA = { c: [MAG_C[0], 4.6 * MS + 0.5, MAG_C[2]], r: [5.0 * MS, 3.6 * MS, 4.5 * MS] };
 // the magnolia's crown is a few overlapping masses, so it is broad and uneven
 const MAG_BLOBS = [
-	{ c: [24.6, 4.4, 71.6], r: [3.9, 2.6, 3.6], n: 260 },
-	{ c: [21.9, 4.0, 70.4], r: [2.6, 2.1, 2.4], n: 120 },
-	{ c: [27.3, 4.5, 70.0], r: [2.5, 2.2, 2.3], n: 120 },
-	{ c: [25.4, 6.9, 72.4], r: [2.6, 2.0, 2.5], n: 120 },
-	{ c: [23.0, 6.1, 73.6], r: [2.2, 1.9, 2.0], n: 90 },
-	{ c: [26.9, 3.4, 73.4], r: [2.0, 1.5, 1.9], n: 70 }
-];
+	{ d: [0, 4.4, 0], r: [3.9, 2.6, 3.6], n: 230 },
+	{ d: [-2.7, 4.0, -1.2], r: [2.6, 2.1, 2.4], n: 105 },
+	{ d: [2.7, 4.5, -1.6], r: [2.5, 2.2, 2.3], n: 105 },
+	{ d: [0.8, 6.9, 0.8], r: [2.6, 2.0, 2.5], n: 105 },
+	{ d: [-1.6, 6.1, 2.0], r: [2.2, 1.9, 2.0], n: 80 },
+	{ d: [2.3, 3.4, 1.8], r: [2.0, 1.5, 1.9], n: 60 }
+].map((b) => ({
+	c: [MAG_C[0] + b.d[0] * MS, b.d[1] * MS + 0.5, MAG_C[2] + b.d[2] * MS],
+	r: b.r.map((v) => v * MS),
+	n: b.n
+}));
 for (const b of MAG_BLOBS) {
 	CROWNS.push({ ...b, cell: 0, leaf: [0.50, 0.70, 0.46], bloom: [1, 1, 1], size: [0.95, 1.35], magnolia: 1, shadow: 1 });
 }
 
-const CYPRESS_X = [36.8, 40.3, 43.8];
-for (const x of CYPRESS_X) {
-	const h = 9.2 + (x % 1.7) * 0.6;
-	CROWNS.push({ c: [x, h / 2 + 0.5, 74.3], r: [0.95, h / 2, 0.95], cell: 1, leaf: [0.50, 0.64, 0.50], bloom: [1, 1, 1], n: 190, size: [0.75, 1.0], spindle: 1, shadow: 1 });
+const CYPRESS_DX = [3.6, 6.3, 9.0];
+for (const dx of CYPRESS_DX) {
+	const h = 8.6 + (dx % 1.7) * 0.6;
+	CROWNS.push({ c: at(dx, h / 2 + 0.5, 5.2), r: [0.9, h / 2, 0.9], cell: 1, leaf: [0.50, 0.64, 0.50], bloom: [1, 1, 1], n: 180, size: [0.72, 0.98], spindle: 1, shadow: 1 });
 }
 
 const SHRUBS = [
-	{ x: 22.4, z: 62.6, bloom: [1.0, 0.62, 0.78] },
-	{ x: 27.6, z: 61.9, bloom: [1.0, 0.98, 0.94] },
-	{ x: 37.0, z: 62.4, bloom: [1.0, 0.98, 0.94] },
-	{ x: 42.3, z: 62.7, bloom: [1.0, 0.58, 0.72] }
-];
+	{ d: [-8.4, -4.0], bloom: [1.0, 0.62, 0.78] },
+	{ d: [-3.6, -4.6], bloom: [1.0, 0.98, 0.94] },
+	{ d: [3.8, -4.3], bloom: [1.0, 0.98, 0.94] },
+	{ d: [8.5, -4.0], bloom: [1.0, 0.58, 0.72] }
+].map((s) => ({ x: G.cx + s.d[0], z: G.cz + s.d[1], bloom: s.bloom }));
 for (const s of SHRUBS) {
-	CROWNS.push({ c: [s.x, 0.95, s.z], r: [1.35, 1.0, 1.2], cell: 3, leaf: [0.70, 0.86, 0.58], bloom: s.bloom, n: 80, size: [0.55, 0.8], shadow: 1 });
+	CROWNS.push({ c: [s.x, 0.95, s.z], r: [1.25, 0.95, 1.1], cell: 3, leaf: [0.70, 0.86, 0.58], bloom: s.bloom, n: 80, size: [0.55, 0.8], shadow: 1 });
 }
 
 // lemon trees in pots on the diagonals round the wellhead
 const LEMONS = [45, 135, 225, 315].map((d) => {
 	const a = d * Math.PI / 180;
-	return [G.cx + Math.cos(a) * 2.55, G.cz + Math.sin(a) * 2.55];
+	return [G.cx + Math.cos(a) * 2.3, G.cz + Math.sin(a) * 2.3];
 });
 for (const [x, z] of LEMONS) {
 	CROWNS.push({ c: [x, 1.85, z], r: [0.62, 0.55, 0.62], cell: 3, leaf: [0.78, 0.95, 0.55], bloom: [1.25, 1.0, 0.25], n: 36, size: [0.32, 0.42], shadow: 1 });
 }
 
-// low flowering plants along the inside of the parapets
+// low flowering plants along the foot of the houses and the parapet
 const BORDERS = [];
 {
 	const strip = (x0, z0, x1, z1, skipA, skipB) => {
@@ -156,8 +170,8 @@ const BORDERS = [];
 		}
 	};
 	const o = 0.45;
-	strip(YARD.x0 + o, YARD.z0 + 1.2, YARD.x0 + o, YARD.z1 - o, G.cz, 1.9);
-	strip(YARD.x1 - o, YARD.z0 + 1.2, YARD.x1 - o, YARD.z1 - o, G.cz, 1.9);
+	strip(YARD.x0 + o, YARD.z0 + 1.2, YARD.x0 + o, YARD.z1 - o, G.cz, 1.0);
+	strip(YARD.x1 - o, YARD.z0 + 1.2, YARD.x1 - o, YARD.z1 - o, G.cz, 1.0);
 	strip(YARD.x0 + o, YARD.z1 - o, YARD.x1 - o, YARD.z1 - o, G.cx, 1.9);
 }
 
@@ -225,11 +239,12 @@ function bays(start, pitch, count, firstInset, lastInset) {
 }
 
 const NORTH_ARCH = bays(G.westCol, NORTH_PITCH, NORTH_BAYS, T + CORNER, T + CORNER);
-const SIDE_ARCH = bays(G.south, SIDE_PITCH, SIDE_BAYS, 0.32, T + CORNER);
+const SIDE_BAY = bays(G.south, SIDE_PITCH, SIDE_BAYS, 0.32, T + CORNER);
 
 // column positions along each arcade (u)
+const BASILICA_SHIFT = [G.cx - 32.35, G.northCol - 77.0];
+
 const NORTH_COLS = Array.from({ length: NORTH_BAYS - 1 }, (_, k) => G.westCol + (k + 1) * NORTH_PITCH);
-const SIDE_COLS = Array.from({ length: SIDE_BAYS - 1 }, (_, k) => G.south + (k + 1) * SIDE_PITCH);
 
 const archRadius = (a) => (a[1] - a[0]) / 2 - 0.2;
 const archCentre = (a) => (a[0] + a[1]) / 2;
@@ -272,14 +287,15 @@ function arcadeWall(B, side, o) {
 	const holes = [];
 	o.arches.forEach((a, k) => holes.push(archHole(a, k === o.open)));
 
-	const upper = [];
-	for (const a of o.arches) {
+	// every window: centre, sill, head, width; doors have no shutters
+	const wins = [];
+	for (const a of (o.bays || o.arches)) {
 		const c = archCentre(a);
 		if (o.oculi) holes.push(roundHole(c, 6.85, 0.3));
-		if (o.skipWindow && o.skipWindow(c)) continue;
-		holes.push(rectHole(c, 1.05, o.win[0], o.win[1]));
-		upper.push(c);
+		wins.push({ c, y0: o.win[0], y1: o.win[1], w: 1.05 });
 	}
+	for (const wdw of (o.extraWindows || [])) wins.push(wdw);
+	for (const wdw of wins) holes.push(rectHole(wdw.c, wdw.w, wdw.y0, wdw.y1));
 	for (const extra of (o.extraHoles || [])) holes.push(extra);
 
 	wallWithHoles(F, {
@@ -336,23 +352,32 @@ function arcadeWall(B, side, o) {
 	}
 
 	// windows: dark glass set back, green shutters folded open, a stone frame
-	for (const c of upper) {
-		const [y0, y1] = o.win;
-		lface([c - 0.53, y0, 0.06], [c + 0.53, y0, 0.06], [c + 0.53, y1, 0.06], [c - 0.53, y1, 0.06], [0, 0, 1], K.PANE);
-		for (const s of [-1, 1]) {
-			const e = c + s * 0.525;
-			lbox(e + s * 0.02, y0 + 0.02, T + 0.02, e + s * 0.55, y1 - 0.02, T + 0.06, K.SHUTTER);
+	for (const { c, y0, y1, w, door } of wins) {
+		const h = w / 2;
+		lface([c - h - 0.01, y0, 0.06], [c + h + 0.01, y0, 0.06], [c + h + 0.01, y1, 0.06], [c - h - 0.01, y1, 0.06], [0, 0, 1], door ? K.DARK : K.PANE);
+		if (door) {
+			// a plain stone frame and two panelled leaves
+			lbox(c - h - 0.16, 0, T - 0.01, c - h, y1 + 0.16, T + 0.07, K.STONE);
+			lbox(c + h, 0, T - 0.01, c + h + 0.16, y1 + 0.16, T + 0.07, K.STONE);
+			lbox(c - h - 0.16, y1, T - 0.01, c + h + 0.16, y1 + 0.2, T + 0.09, K.STONE);
+			lbox(c - h, 0, 0.07, c + h, y1 - 0.02, 0.12, K.SHUTTER);
+			lbox(c - 0.012, 0, 0.12, c + 0.012, y1 - 0.02, 0.14, K.DARK);
+			continue;
 		}
-		lbox(c - 0.62, y1, T - 0.01, c + 0.62, y1 + 0.16, T + 0.05, K.STONE);
-		lbox(c - 0.62, y0 - 0.1, T - 0.01, c + 0.62, y0, T + 0.09, K.STONE);
+		for (const s of [-1, 1]) {
+			const e = c + s * h;
+			lbox(e + s * 0.02, y0 + 0.02, T + 0.02, e + s * (h + 0.025), y1 - 0.02, T + 0.06, K.SHUTTER);
+		}
+		lbox(c - h - 0.09, y1, T - 0.01, c + h + 0.09, y1 + 0.16, T + 0.05, K.STONE);
+		lbox(c - h - 0.09, y0 - 0.1, T - 0.01, c + h + 0.09, y0, T + 0.09, K.STONE);
 		// glazing bars
 		lbox(c - 0.015, y0, 0.06, c + 0.015, y1, 0.09, K.SHUTTER);
-		lbox(c - 0.53, (y0 + y1) / 2 - 0.015, 0.06, c + 0.53, (y0 + y1) / 2 + 0.015, 0.09, K.SHUTTER);
+		lbox(c - h, (y0 + y1) / 2 - 0.015, 0.06, c + h, (y0 + y1) / 2 + 0.015, 0.09, K.SHUTTER);
 	}
 
 	// oculi: dark inside
 	if (o.oculi) {
-		for (const a of o.arches) {
+		for (const a of (o.bays || o.arches)) {
 			const c = archCentre(a);
 			lface([c - 0.31, 6.54, 0.0], [c + 0.31, 6.54, 0.0], [c + 0.31, 7.16, 0.0], [c - 0.31, 7.16, 0.0], [0, 0, 1], K.DARK);
 		}
@@ -387,7 +412,7 @@ function arcadeWall(B, side, o) {
 
 function addArcades(B) {
 
-	// north range: 9 bays, a raised loggia over the middle three
+	// north range: 7 bays, a raised loggia over the middle three
 	const loggiaArches = [-1, 0, 1].map((k) => {
 		const c = G.cx + k * 1.7;
 		return {
@@ -415,10 +440,10 @@ function addArcades(B) {
 		],
 		walk: (B) => {
 			// ceiling and back wall of the north walk
-			box(B, G.westBack, CEIL, G.northCol + T, G.eastBack, CEIL + 0.2, G.northBack, K.PLASTER);
-			box(B, G.westBack, 0, G.northBack, G.eastBack, CEIL, G.northBack + 0.3, K.PLASTER);
+			box(B, YARD.x0, CEIL, G.northCol + T, YARD.x1, CEIL + 0.2, G.northBack, K.PLASTER);
+			box(B, YARD.x0, 0, G.northBack, YARD.x1, CEIL, G.northBack + 0.3, K.PLASTER);
 			// doors in the back wall
-			for (const x of [G.cx - 9.8, G.cx, G.cx + 9.8]) {
+			for (const x of [G.cx - 7.2, G.cx, G.cx + 7.2]) {
 				face(B, [x - 0.8, 0, G.northBack - 0.01], [x + 0.8, 0, G.northBack - 0.01], [x + 0.8, 2.9, G.northBack - 0.01], [x - 0.8, 2.9, G.northBack - 0.01], [0, 0, -1], [K.DARK, 0, 0]);
 				box(B, x - 0.98, 0, G.northBack - 0.06, x + 0.98, 3.12, G.northBack, K.STONE);
 				face(B, [x - 0.8, 0, G.northBack - 0.07], [x + 0.8, 0, G.northBack - 0.07], [x + 0.8, 2.9, G.northBack - 0.07], [x - 0.8, 2.9, G.northBack - 0.07], [0, 0, -1], [K.DARK, 0, 0]);
@@ -443,34 +468,37 @@ function addArcades(B) {
 	tri(B, [LOGGIA.x1 + 0.3, LOGGIA.top + 0.16, G.northCol - T - 0.42], [LOGGIA.x1 + 0.3, LOGGIA.top + 1.56, G.northCol - T + 2.58], [LOGGIA.x1 + 0.3, LOGGIA.top + 0.16, G.northCol - T + 2.58], [1, 0, 0], K.BRICK);
 	box(B, LOGGIA.x0, EAVE_N, G.northCol + T, LOGGIA.x1, LOGGIA.top, G.northCol + 2.6, K.BRICK);
 	// chimneys
-	for (const [x, z] of [[19.5, 80.6], [44.6, 80.4], [27.2, 81.0]]) {
+	for (const [x, z] of [[G.cx - 9.8, G.northBack + 0.6], [G.cx + 9.4, G.northBack + 0.4], [G.cx - 4.6, G.northBack + 1.0]]) {
 		box(B, x - 0.4, 12.5, z - 0.4, x + 0.4, 15.4, z + 0.4, K.BRICK);
 		box(B, x - 0.52, 15.4, z - 0.52, x + 0.52, 15.62, z + 0.52, K.STONE);
 	}
 
-	// west and east ranges
+	// west and east houses: plain fronts of three storeys, no walkways
 	const side = (name, back, col) => {
 		const dir = name === 'west' ? -1 : 1;
+		const extra = [];
+		SIDE_BAY.forEach((a, k) => {
+			const c = archCentre(a);
+			if (k === 1) extra.push({ c, y0: 0, y1: 2.9, w: 1.4, door: true });
+			else extra.push({ c, y0: 1.0, y1: 2.75, w: 1.05 });
+			extra.push({ c, y0: 3.85, y1: 5.45, w: 1.05 });
+		});
 		arcadeWall(B, name, {
 			u0: G.south, u1: G.northCol - T,
 			top: () => EAVE_SIDE,
-			arches: SIDE_ARCH,
-			open: OPEN_SIDE,
-			cols: SIDE_COLS,
-			oculi: true,
+			arches: [],
+			bays: SIDE_BAY,
+			cols: [],
 			win: [7.45, 8.85],
+			extraWindows: extra,
 			noEnds: true,
-			cornice: [[G.south, G.northCol - T, EAVE_SIDE]],
-			walk: (B) => {
-				box(B, back, CEIL, G.south, col + dir * T, CEIL + 0.2, G.northCol + T, K.PLASTER);
-				box(B, back + dir * 0.3, 0, G.south, back, CEIL, G.northBack, K.PLASTER);
-				box(B, back + dir * 0.3, CEIL, G.south, col + dir * T, EAVE_SIDE, G.northCol - T, K.BRICK);
-				for (const z of [G.south + SIDE_PITCH * 1.5, G.south + SIDE_PITCH * 3.5]) {
-					const x = back - dir * 0.01;
-					face(B, [x, 0, z - 0.75], [x, 0, z + 0.75], [x, 2.8, z + 0.75], [x, 2.8, z - 0.75], [-dir, 0, 0], [K.DARK, 0, 0]);
-				}
-			}
+			cornice: [[G.south, G.northCol - T, EAVE_SIDE]]
 		});
+		// the body of the house behind its front
+		box(B, back, 0, G.south, col + dir * (T + 0.12), EAVE_SIDE, G.northBack + 0.3, K.BRICK);
+		// a stone plinth along the foot of the front
+		const fx = col - dir * T;
+		box(B, fx, 0, G.south, fx - dir * 0.06, 0.55, G.northCol - T, K.STONE);
 		// roof sloping up away from the garden
 		const eaveX = col - dir * (T + 0.42);
 		roof(B, [eaveX, EAVE_SIDE + 0.16, G.south], [0, 0, G.northCol - T - G.south], [back - eaveX + dir * 0.4, 1.9, 0], K.ROOF);
@@ -479,9 +507,10 @@ function addArcades(B) {
 	side('east', G.eastBack, G.eastCol);
 
 	// the corridor seen from outside: plaster above the windows, a cornice, a roof
-	box(B, 13.65, 7.4, G.south - 0.02, 51.05, 7.62, G.south + 0.14, K.STONE);
-	box(B, 13.65, 10.4, G.south - 0.02, 51.05, 10.6, G.south + 0.38, K.STONE);
-	roof(B, [13.65, 10.6, G.south + 0.38], [37.4, 0, 0], [0, 2.2, -5.0], K.ROOF);
+	const cx1 = C.x1 + 0.7;
+	box(B, 13.65, 7.4, G.south - 0.02, cx1, 7.62, G.south + 0.14, K.STONE);
+	box(B, 13.65, 10.4, G.south - 0.02, cx1, 10.6, G.south + 0.38, K.STONE);
+	roof(B, [13.65, 10.6, G.south + 0.38], [cx1 - 13.65, 0, 0], [0, 2.2, -5.0], K.ROOF);
 }
 
 function tri(B, a, b, c, n, kind) {
@@ -759,7 +788,12 @@ function buildSolid() {
 	addWellhead(B);
 	addPots(B);
 	addTrunks(B);
+	// the basilica was laid out for a garden centred at (32.35, 67.7) with
+	// its arcade at z = 77; keep it in the same place relative to the garden
+	B.save();
+	B.translate(BASILICA_SHIFT[0], 0, BASILICA_SHIFT[1]);
 	addBasilica(B);
+	B.restore();
 	addSky(B);
 	return { position, normal, elements, attr };
 }
@@ -771,12 +805,12 @@ function buildSolid() {
  */
 
 const BOXES = [
-	[[13.65, 0, 47.65], [51.05, 10.6, G.south]],                                // the corridor
+	[[13.65, 0, C.z0 - 0.7], [C.x1 + 0.7, 10.6, G.south]],                         // the corridor
 	[[G.westBack, CEIL, G.northCol - T], [G.eastBack, EAVE_N, G.northBack + 3.4]],  // north range
 	[[LOGGIA.x0, EAVE_N, G.northCol - T], [LOGGIA.x1, LOGGIA.top, G.northCol + 2.6]],
-	[[G.westBack - 0.3, CEIL, G.south], [G.westCol + T, EAVE_SIDE, G.northCol]],   // west range
-	[[G.eastCol - T, CEIL, G.south], [G.eastBack + 0.3, EAVE_SIDE, G.northCol]],   // east range
-	[[14, 0, 104], [52, 26, 150]]
+	[[G.westBack, 0, G.south], [G.westCol + T, EAVE_SIDE, G.northBack + 0.3]],        // west house
+	[[G.eastCol - T, 0, G.south], [G.eastBack, EAVE_SIDE, G.northBack + 0.3]],        // east house
+	[[14 + BASILICA_SHIFT[0], 0, 104 + BASILICA_SHIFT[1]], [52 + BASILICA_SHIFT[0], 26, 150 + BASILICA_SHIFT[1]]]
 ];
 
 function rayBox(o, d, a, b) {
@@ -926,7 +960,18 @@ function buildFoliage() {
 		}
 	}
 
-	return { center, corner, par, light, tint, bloom, elements };
+	// shuffle the clusters, so drawing only some of them thins every
+	// plant evenly instead of leaving some out
+	const groups = elements.length / 6;
+	const order = Array.from({ length: groups }, (_, i) => i);
+	for (let i = groups - 1; i > 0; i--) {
+		const j = Math.floor(rnd() * (i + 1));
+		[order[i], order[j]] = [order[j], order[i]];
+	}
+	const shuffled = [];
+	for (const g of order) for (let k = 0; k < 6; k++) shuffled.push(elements[g * 6 + k]);
+
+	return { center, corner, par, light, tint, bloom, elements: shuffled };
 }
 
 
@@ -1066,8 +1111,8 @@ float sunVisible(vec3 p, vec3 n) {
 	vec3 ro = p + n * 0.03;
 	${boxTests}
 	${arcadeTest('z', G.northCol, G.westCol, NORTH_PITCH, NORTH_BAYS, T + CORNER, T + CORNER, OPEN_NORTH, 'ro.z > ' + f(G.northCol - T))}
-	${arcadeTest('x', G.westCol, G.south, SIDE_PITCH, SIDE_BAYS, 0.32, T + CORNER, OPEN_SIDE, 'ro.x < ' + f(G.westCol + T))}
-	${arcadeTest('x', G.eastCol, G.south, SIDE_PITCH, SIDE_BAYS, 0.32, T + CORNER, OPEN_SIDE, 'true')}
+	// on lighter settings only the buildings cast shadows
+	if (gardenDetail < 0.5) return 1.0;
 	${cylTests}
 	if (ro.y < ${f(HEDGE_H)} && ro.x > ${f(YARD.x0)} && ro.x < ${f(YARD.x1)}) {
 		for (int i = 1; i <= 4; i++) {
@@ -1086,7 +1131,7 @@ float sunVisible(vec3 p, vec3 n) {
 const SOLID_FRAG = `
 precision highp float;
 varying vec3 v_pos, v_normal, v_attr, v_eye;
-uniform float time;
+uniform float time, gardenDetail;
 ${COMMON}
 ${SHADOW_GLSL}
 
@@ -1098,7 +1143,7 @@ vec3 skyColor(vec3 d) {
 	float s = max(dot(d, SUN), 0.0);
 	c += vec3(1.0, 0.9, 0.7) * (pow(s, 8.0) * 0.25 + pow(s, 200.0) * 2.0);
 	// clouds on a high plane
-	if (d.y > 0.02) {
+	if (d.y > 0.02 && gardenDetail > 0.5) {
 		vec2 uv = d.xz / d.y * 0.9 + vec2(time * 0.004, 0.0);
 		float cl = fbm(uv * 0.55 + 3.0);
 		cl = smoothstep(0.44, 0.78, cl) * smoothstep(0.02, 0.25, d.y);
@@ -1383,7 +1428,8 @@ module.exports = (regl) => {
 	const leaves = buildFoliage();
 	const tex = loadTexture(regl, 'res/garden/foliage.png', [0, 0, 0, 0]);
 	const start = Date.now();
-	const clock = () => (window.__streetClock !== undefined ? window.__streetClock : (Date.now() - start) / 1000);
+	const clock = () => (!quality.motion ? 20.0 :
+		window.__streetClock !== undefined ? window.__streetClock : (Date.now() - start) / 1000);
 
 	const drawSolid = regl({
 		frag: SOLID_FRAG,
@@ -1394,7 +1440,7 @@ module.exports = (regl) => {
 			attr: solid.attr
 		},
 		elements: new Uint32Array(solid.elements),
-		uniforms: { time: clock }
+		uniforms: { time: clock, gardenDetail: () => quality.gardenDetail }
 	});
 
 	const drawLeaves = regl({
@@ -1410,7 +1456,9 @@ module.exports = (regl) => {
 		},
 		elements: new Uint32Array(leaves.elements),
 		uniforms: { leaves: tex, time: clock },
-		cull: { enable: false }
+		cull: { enable: false },
+		// fewer leaf clusters on lighter settings (they are in random order)
+		count: () => Math.floor(leaves.elements.length * quality.leafShare / 6) * 6
 	});
 
 	return function () {

@@ -4,6 +4,8 @@ const texture = require('./image');
 
 const mat4 = require('gl-mat4');
 
+const wing = require('./wing');
+
 const dynamicResPeriod =
 	3000;
 
@@ -25,11 +27,11 @@ const RIGHT_X =
 	13.64;
 
 const END_Z =
-	57.64;
+	wing.C.z1 - 0.01;
 
 // the painting wall of the new corridor (faces +z)
 const CORR_Z =
-	48.36;
+	wing.C.z0 + 0.01;
 
 
 const LABEL_X_LEFT =
@@ -39,10 +41,10 @@ const LABEL_X_RIGHT =
 	13.644;
 
 const LABEL_Z_END =
-	57.644;
+	wing.C.z1 - 0.006;
 
 const LABEL_Z_CORR =
-	48.356;
+	wing.C.z0 + 0.006;
 
 
 const PAINTING_DEPTH =
@@ -94,6 +96,9 @@ const MAX_WIDTH =
  * 4 = Between Grief and Acceptance
  * 5 = Uncertainty
  * 6 = Everything Else Was Easier To Perform
+ * 7 = Longing
+ * 8 = Holding On To What Never Was
+ * 9 = But I Gave You Comfort!
  *
  * ===========================================================
  */
@@ -238,7 +243,83 @@ Only she knows they didn't.
 
 That's the ache underneath all of it. Not that she hides, but that the hiding costs her nothing on the surface. She gets to be close to people, liked by people, comfortable in front of people, and still keep the one part of herself that actually could be hurt somewhere no one thinks to look. It isn't a wall anyone can see. It's just a very convincing kind of openness, one that gives everything except the one thing that was never really safe to give.
 
-Maybe that's the most human thing about her. Not that she hides something, we all do that. But that she's learned how to hide it so well that even the people closest to her never notice there was a door there at all.`
+Maybe that's the most human thing about her. Not that she hides something, we all do that. But that she's learned how to hide it so well that even the people closest to her never notice there was a door there at all.`,
+
+
+/* -----------------------------------------------------------
+   7
+   LONGING
+----------------------------------------------------------- */
+
+`I was reading this book called On Earth We're Briefly Gorgeous, and there was this line that really hit me: "I miss you more than I remember you." And I guess it stuck with me, and while painting this, I immediately knew what I wanted to name it.
+
+I think "longing" is such a weirdly beautiful word because it doesn't have a single meaning. It's like a mirror that reflects whatever is missing in you. Some people would say that longing means to want something. But I think longing is not just wanting; it's wanting while you're also losing hope. It's not just about missing someone it's about carrying them inside you even though you know that you might not see them again.
+
+All our lives, we long for certain things: some long for a certain kind of love, some for a different life, and some long for a version of themselves they once were or hope to become. And sometimes, we do get all those things. But then life, being life, takes them away. And then we find ourselves at the bottom with not just longing but mourning, because longing, after all, is mourning in silence.
+
+So one might wonder, wouldn't it be better if one had never gotten to experience that? Unfulfilled dreams leave behind the pain of "What could've been?" But the memory of a beautiful life once lived is more haunting than the absence of it ever was.
+
+Bahadur Shah Zafar wrote in one of his poems:
+
+ان حسرتوں سے کہہ دو کہیں اور جا بسیں
+اتنی جگہ کہاں ہے دل داغدار میں
+
+"Tell these longings to settle somewhere else,
+For how much room remains in this scarred chest?"`,
+
+
+/* -----------------------------------------------------------
+   8
+   HOLDING ON TO WHAT NEVER WAS
+----------------------------------------------------------- */
+
+`Sometimes we hold on to things, people, memories, and even places, not because we believe they’ll return, but because the idea of letting them go feels like admitting they never mattered in the first place. As long as holding on isn’t weighing us down, it reminds us of our capacity to love and how strong we are.
+
+But sometimes, we hold on to what never truly existed and I believe that’s one of the most painful forms of grief one can experience. Because in your mind, it all feels so real that it becomes your reality. I think it's human nature to stay in our comfort zones, and holding on to just the idea of something gives us comfort. Sometimes, fantasy feels safer than reality.
+
+Yet fantasy often arises from something that was once real, a moment of connection, a kind word spoken at the right time and a right place, someone who made you feel seen or valued. It’s not always about the event itself, but the spark it ignited within you. Because in the end, fantasy is a reflection of the reality you wished for.
+
+The problem begins when reality no longer breathes life into that fantasy. With time, we come to realize that what we’ve been holding on to, whether it’s a person, a memory, a place, or a moment, is merely a possibility. And so we find ourselves asking:
+
+"Was it ever real, or just beautiful enough to believe in?"`,
+
+
+/* -----------------------------------------------------------
+   9
+   BUT I GAVE YOU COMFORT!
+----------------------------------------------------------- */
+
+`I wasn’t looking, but these words found me and they stayed:
+
+"دھوپ سہہ کر جو سایہ دیا
+وہ سایہ زخم سا لگتا ہے"
+
+"The shade you offered after the scorching sun—
+now feels like a wound itself."
+
+“But I gave you comfort” is not a neutral statement rather a very defensive one.
+It’s something said to dismiss your pain.
+It turns love into currency, care into justification, and ignores the sword entirely.
+
+There’s a certain kind of pain that doesn’t come from strangers. It comes from people who were close, those who claimed love, friendship, care. And when you finally gather the strength to speak, to say, “You hurt me…”
+they look at you, confused or angry, and say:
+“But I gave you comfort.”
+As if that cancels everything.
+As if kind gestures undo sharp words.
+As if staying makes the silence less cruel.
+As if buying gifts erases the control.
+As if providing shelter means the home wasn’t suffocating.
+And somehow, you're left being the one who feels guilty.
+For naming the pain.
+For remembering the things they pretend never happened.
+For bleeding in a place that looked like love.
+
+It’s the voice of a parent who says “I gave you everything” when reminded of emotional neglect.
+The partner who says “I loved you” when reminded of how they made you feel small.
+The friend who says “I was there for you” when they weren’t, at least not in the way it mattered.
+
+Sometimes the softest words leave the deepest wounds and the hardest part isn’t the pain itself,
+but the loneliness of having no one willing to admit it happened.`
 
 ];
 
@@ -337,14 +418,14 @@ const layouts = [
 
 	/*
 	 * Artworks VIII, IX and X
-	 * The new corridor's painting wall, one in each of three bays.
-	 * The corridor is lower than the main hall, so these hang a
-	 * little lower and are a little smaller.
+	 * The new corridor's painting wall: the first, middle and last
+	 * bays, with the two statue niches between them. Each is two
+	 * thirds the height of the masterpiece at the end of the hall.
 	 */
 
-	{ side: 'corridor', x: 21.0, cy: 3.05, maxW: 3.1, maxH: 3.5 },
-	{ side: 'corridor', x: 29.8, cy: 3.05, maxW: 3.1, maxH: 3.5 },
-	{ side: 'corridor', x: 38.6, cy: 3.05, maxW: 3.1, maxH: 3.5 }
+	{ side: 'corridor', x: wing.PAINTING_X[0], cy: 3.0, maxW: 3.3, maxH: 3.73 },
+	{ side: 'corridor', x: wing.PAINTING_X[1], cy: 3.0, maxW: 3.3, maxH: 3.73 },
+	{ side: 'corridor', x: wing.PAINTING_X[2], cy: 3.0, maxW: 3.3, maxH: 3.73 }
 ];
 
 

@@ -6,7 +6,8 @@
  * At the far end of the main hall an opening on the left leads into a
  * long corridor (an L). Along it:
  *
- *   - on the left, a plaster wall for three paintings
+ *   - on the left, a plaster wall for three paintings, with two arched
+ *     niches between them holding black polished statues
  *   - on the right, tall arched windows in black metal onto a cloister
  *     garden (garden.js)
  *   - overhead, a shallow barrel vault with a stone rib springing from
@@ -24,12 +25,14 @@ const entrance = require('./entrance');
 const HEIGHT = 8;              // main hall ceiling
 const WALL = 0.35;             // half wall thickness
 
+// the main hall ends just past its last pair of pillars; the corridor
+// opens off its left wall right there, flush with the end wall
 const C = {
 	x0: 13.65,                 // where the corridor meets the main hall
-	x1: 50.35,                 // the far door's wall
-	z0: 48.35,                 // painting wall
-	z1: 57.65,                 // window wall
-	zc: 53.0,
+	x1: 38.12,                 // the far door's wall
+	z0: 41.0,                  // painting wall
+	z1: 47.2,                  // window wall (in line with the hall's end wall)
+	zc: 44.1,
 	spring: 5.6,               // the vault springs from the walls here
 	crown: HEIGHT              // and rises to the main hall's ceiling height
 };
@@ -46,14 +49,20 @@ function vaultY(z) {
 }
 
 // windows on the garden side
-const WIN = { first: 16.6, pitch: 4.4, count: 8, halfW: 1.2, sill: 0.75, spring: 4.3 };
+// five bays: windows in all of them on the garden side; on the painting
+// side a painting, a niche, a painting, a niche, a painting
+const WIN = { first: 17.43, pitch: 4.4, count: 5, halfW: 1.2, sill: 0.75, spring: 4.3 };
 const winCentres = Array.from({ length: WIN.count }, (_, k) => WIN.first + k * WIN.pitch);
 
 // piers between the windows; a rib springs from each
 const piers = winCentres.slice(1).map((x) => x - WIN.pitch / 2);
 
-// the three painting positions, centred in bays on the painting wall
-const PAINTING_X = [winCentres[1], winCentres[3], winCentres[5]];
+// the three painting positions and the two niches, centred in the bays
+const PAINTING_X = [winCentres[0], winCentres[2], winCentres[4]];
+const NICHE_X = [winCentres[1], winCentres[3]];
+
+// an arched niche, semicircular in plan with a shell-like half dome
+const NICHE = { r: 1.3, sill: 0.62, spring: 3.3 };
 
 const STONE = [0, 0, 0];
 const PLASTER = [11, 0, 0];
@@ -151,6 +160,7 @@ function wallWithHoles(B, o) {
 
 	// reveals of each hole
 	for (const h of holes) {
+		if (h.noReveal) continue;
 		const rm = h.mat || o.revealMat || mat;
 		const ya0 = Math.max(0, botOf(h, h.u0 + 1e-7)), yb0 = Math.max(0, botOf(h, h.u1 - 1e-7));
 		const yl = Math.min(h.head(h.u0 + 1e-7), top(h.u0));
@@ -188,6 +198,90 @@ const archHead = (c, r, spring) => (u) => {
 
 
 /* ===========================================================
+ * THE NICHES
+ * ===========================================================
+ */
+
+function addNiche(B, x) {
+	const r = NICHE.r, y0 = NICHE.sill, ys = NICHE.spring, z = C.z0;
+	const seg = 24;
+	const P = (a, rr, y) => [x + Math.cos(a) * rr, y, z - Math.sin(a) * rr];
+
+	// the curved back, from the sill up to the springing
+	for (let i = 0; i < seg; i++) {
+		const a0 = Math.PI * i / seg, a1 = Math.PI * (i + 1) / seg;
+		const n0 = [-Math.cos(a0), 0, Math.sin(a0)], n1 = [-Math.cos(a1), 0, Math.sin(a1)];
+		const v = [B.vert(P(a0, r, y0), n0, STONE), B.vert(P(a1, r, y0), n1, STONE),
+			B.vert(P(a1, r, ys), n1, STONE), B.vert(P(a0, r, ys), n0, STONE)];
+		B.tri(v[0], v[1], v[2]);
+		B.tri(v[0], v[2], v[3]);
+	}
+
+	// the half dome
+	const rings = 12;
+	const D = (a, e) => [x + Math.cos(a) * Math.cos(e) * r, ys + Math.sin(e) * r, z - Math.sin(a) * Math.cos(e) * r];
+	const Dn = (a, e) => [-Math.cos(a) * Math.cos(e), -Math.sin(e), Math.sin(a) * Math.cos(e)];
+	for (let i = 0; i < seg; i++) {
+		for (let j = 0; j < rings; j++) {
+			const a0 = Math.PI * i / seg, a1 = Math.PI * (i + 1) / seg;
+			const e0 = (Math.PI / 2) * j / rings, e1 = (Math.PI / 2) * (j + 1) / rings;
+			// shallow flutes like a scallop shell
+			const v = [B.vert(D(a0, e0), Dn(a0, e0), CREAM), B.vert(D(a1, e0), Dn(a1, e0), CREAM),
+				B.vert(D(a1, e1), Dn(a1, e1), CREAM), B.vert(D(a0, e1), Dn(a0, e1), CREAM)];
+			B.tri(v[0], v[1], v[2]);
+			B.tri(v[0], v[2], v[3]);
+		}
+	}
+	// radial ribs of the shell
+	for (let k = 1; k < 8; k++) {
+		const a = Math.PI * k / 8;
+		const pts = [];
+		for (let j = 0; j <= 10; j++) {
+			const e = (Math.PI / 2) * j / 10 * 0.97;
+			pts.push(D(a, e).map((c, q) => c - Dn(a, e)[q] * 0.02));
+		}
+		B.tube(pts, (u) => 0.035 * (1 - u * 0.6), 12, 6, { mat: () => CREAM });
+	}
+
+	// the floor of the niche, a half disc, with a moulded lip at the front
+	const c = B.vert([x, y0, z], [0, 1, 0], STONE);
+	for (let i = 0; i < seg; i++) {
+		const a0 = Math.PI * i / seg, a1 = Math.PI * (i + 1) / seg;
+		B.tri(c, B.vert(P(a0, r, y0), [0, 1, 0], STONE), B.vert(P(a1, r, y0), [0, 1, 0], STONE));
+	}
+	box(B, x - r - 0.12, y0 - 0.1, z, x + r + 0.12, y0 + 0.02, z + 0.12, STONE);
+	box(B, x - r - 0.16, y0 - 0.2, z, x + r + 0.16, y0 - 0.1, z + 0.07, STONE);
+
+	// a stone archivolt round the opening, with a keystone
+	const ring = 0.16;
+	for (let i = 0; i < seg; i++) {
+		const a0 = Math.PI * i / seg, a1 = Math.PI * (i + 1) / seg;
+		const q = (a, rr, zz) => [x + Math.cos(a) * rr, ys + Math.sin(a) * rr, zz];
+		face(B, q(a0, r, z + 0.05), q(a1, r, z + 0.05), q(a1, r + ring, z + 0.05), q(a0, r + ring, z + 0.05), [0, 0, 1], STONE);
+		face(B, q(a0, r + ring, z), q(a1, r + ring, z), q(a1, r + ring, z + 0.05), q(a0, r + ring, z + 0.05),
+			[Math.cos((a0 + a1) / 2), Math.sin((a0 + a1) / 2), 0], STONE);
+		face(B, q(a0, r, z), q(a1, r, z), q(a1, r, z + 0.05), q(a0, r, z + 0.05),
+			[-Math.cos((a0 + a1) / 2), -Math.sin((a0 + a1) / 2), 0], STONE);
+	}
+	// pilaster strips down each side of the opening
+	for (const sd of [-1, 1]) {
+		const xa = x + sd * r, xb = x + sd * (r + ring);
+		box(B, xa, y0, z, xb, ys, z + 0.05, STONE);
+		// impost block at the springing
+		box(B, xa - sd * 0.02, ys - 0.12, z, xb + sd * 0.06, ys, z + 0.09, STONE);
+	}
+	box(B, x - 0.11, ys + r - 0.04, z, x + 0.11, ys + r + ring + 0.1, z + 0.09, STONE);
+
+	// a low round plinth for the statue
+	B.lathe([[0.66, y0, 1], [0.66, y0 + 0.06, 1], [0.62, y0 + 0.1], [0.6, y0 + 0.3], [0.64, y0 + 0.34, 1], [0.64, y0 + 0.4, 1], [0, y0 + 0.4]],
+		x, z - 0.62, 40, { mat: () => STONE });
+}
+
+const NICHE_PLINTH_TOP = NICHE.sill + 0.4;
+const NICHE_STATUE_Z = C.z0 - 0.62;
+
+
+/* ===========================================================
  * THE SHELL
  * ===========================================================
  */
@@ -198,9 +292,24 @@ function addShell(B) {
 	face(B, [14, 0, C.z0 - WALL], [C.x1 + WALL, 0, C.z0 - WALL], [C.x1 + WALL, 0, C.z1 + WALL], [14, 0, C.z1 + WALL],
 		[0, 1, 0], STONE);
 
-	// painting wall
+	// painting wall, with the two niches cut into it
+	// local u = x, w = z (front at w = z0, facing +z)
 	B.curMat = PLASTER;
-	box(B, 14 + WALL, 0, C.z0 - 2 * WALL, C.x1 + 2 * WALL, C.spring, C.z0, PLASTER);
+	wallWithHoles(B, {
+		u0: 14 + WALL,
+		u1: C.x1 + 2 * WALL,
+		w0: C.z0 - 2 * WALL,
+		w1: C.z0,
+		top: () => C.spring,
+		holes: NICHE_X.map((x) => ({
+			u0: x - NICHE.r, u1: x + NICHE.r, bottom: NICHE.sill,
+			head: archHead(x, NICHE.r, NICHE.spring),
+			noReveal: true
+		})),
+		mat: PLASTER,
+		cuts: [C.x1]
+	});
+	for (const x of NICHE_X) addNiche(B, x);
 
 	// window wall, seen from inside: u = x, w = z (front = inside, towards -z)
 	B.save();
@@ -554,6 +663,27 @@ function windowLightGLSL() {
 		return open * ndl;
 	}
 
+	// a small hidden lamp in the crown of each niche, lighting the
+	// statue and the curved back from above and slightly in front
+	vec3 nicheLamp(vec3 p) {
+		float best = 1e3;
+		vec3 lamp = vec3(0.0);
+		${NICHE_X.map((x) => `{ float d = abs(p.x - ${f4(x)}); if (d < best) { best = d; lamp = vec3(${f4(x)}, ${f4(NICHE.spring + 0.55)}, ${f4(C.z0 - 0.15)}); } }`).join('\n\t\t')}
+		return lamp;
+	}
+
+	float nicheLight(vec3 p, vec3 n) {
+		if (p.z > ${f4(C.z0 + 1.6)} || p.z < ${f4(C.z0 - NICHE.r - 0.1)} || p.x < ${f4(C.x0)}) return 0.0;
+		vec3 lamp = nicheLamp(p);
+		vec3 d = lamp - p;
+		float dist = length(d);
+		vec3 L = d / dist;
+		// a cone pointing down into the niche
+		float cone = smoothstep(0.35, 0.75, dot(-L, normalize(vec3(0.0, -1.0, 0.35))));
+		float inside = 1.0 - smoothstep(${f4(NICHE.r)}, ${f4(NICHE.r + 0.5)}, abs(p.x - lamp.x));
+		return max(dot(n, L), 0.0) * cone * inside / (1.0 + 0.35 * dist * dist);
+	}
+
 	// soft general daylight in the corridor, strongest near the glass
 	float corridorGlow(vec3 p) {
 		if (p.x < ${f4(C.x0 - 1.0)}) return 0.0;
@@ -571,6 +701,10 @@ module.exports = {
 	farDoorGlass,
 	vaultY,
 	C,
+	NICHE_X,
+	NICHE,
+	NICHE_PLINTH_TOP,
+	NICHE_STATUE_Z,
 	WIN,
 	winCentres,
 	piers,

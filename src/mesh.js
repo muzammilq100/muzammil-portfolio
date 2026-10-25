@@ -19,11 +19,13 @@ const MAX_LIGHTS = 8;
 const ROOM_BRIGHTNESS = 0.6;
 
 // How strongly the picture lights wash the wall around each painting.
-const PICTURE_LIGHT = 0.95;
+const PICTURE_LIGHT = 0.78;
 
 const { doorLightGLSL } = require('./entrance');
 const { skylightGLSL } = require('./skylight');
-const { windowLightGLSL } = require('./wing');
+const { windowLightGLSL, C: WING } = require('./wing');
+const { alcoveLightGLSL } = require('./alcove');
+const g4 = (x) => x.toFixed(4);
 
 // light falling through the door, pointing from the floor towards the
 // bright street outside: down from above, from slightly to the left
@@ -132,6 +134,8 @@ module.exports = (regl, data, useReflexion) => {
 
     ${windowLightGLSL()}
 
+    ${alcoveLightGLSL()}
+
     vec3 skyAbove(vec3 dir) {
       float h = clamp(dir.y, 0.0, 1.0);
       vec3 col = mix(vec3(0.80, 0.86, 0.92), vec3(0.42, 0.60, 0.86), smoothstep(0.55, 1.0, h));
@@ -225,7 +229,7 @@ module.exports = (regl, data, useReflexion) => {
       float isShell = clamp(
         step(abs(v_pos.x - 0.35), 0.02) * step(0.5, N.x) +
         step(abs(v_pos.x - 13.65), 0.02) * step(0.5, -N.x) +
-        step(abs(v_pos.z - 57.65), 0.02) * step(0.5, -N.z) +
+        step(abs(v_pos.z - ${g4(WING.z1)}), 0.02) * step(0.5, -N.z) +
         step(abs(v_pos.z - 0.35), 0.02) * step(0.5, N.z) +
         step(10.5, matId) * step(matId, 11.5),
         0.0, 1.0);
@@ -359,15 +363,17 @@ module.exports = (regl, data, useReflexion) => {
       vec3 lightDirection = normalize(vec3(-0.32, 0.92, -0.40));
       float diffuse = max(dot(N, lightDirection), 0.0);
 
-      float light = 0.62 + diffuse * 0.26;
+      // the room's own lamps are kept low: most of the light is daylight
+      // from the skylight, the windows, the door and the oculus
+      float light = 0.47 + diffuse * 0.2;
 
       // Light from the bar above each painting
       float pic = 0.0;
       ${lightCalls}
 
       // Corridor glow and the end wall light
-      light += (1.0 - smoothstep(7.0, 35.0, abs(v_pos.z - 29.0))) * 0.06;
-      light += (1.0 - smoothstep(2.0, 16.0, abs(v_pos.z - 56.0))) * 0.14 * (1.0 - smoothstep(14.5, 18.0, v_pos.x));
+      light += (1.0 - smoothstep(7.0, 35.0, abs(v_pos.z - 29.0))) * 0.04;
+      light += (1.0 - smoothstep(2.0, 16.0, abs(v_pos.z - ${g4(WING.z1 - 1.6)}))) * 0.09 * (1.0 - smoothstep(14.5, 18.0, v_pos.x));
 
       // Walls fall into shadow towards the ceiling
       light *= mix(0.80, 1.0, min(1.0, fadeFar(4.5, 8.0, v_pos.y) + isFloor));
@@ -422,18 +428,32 @@ module.exports = (regl, data, useReflexion) => {
       // Soft window shapes from the garden windows on the floor and
       // the painting wall, and a gentle glow throughout.
       // ---------------------------------------------------------
+      // ---------------------------------------------------------
+      // THE TREE ALCOVE: a shaft of sun through the oculus and a soft
+      // daylight glow in the little court
+      // ---------------------------------------------------------
+      float aSun = alcoveSun(v_pos, N);
+      float aGlow = alcoveGlow(v_pos);
+      light += aSun * 1.7 + aGlow * 0.24 * (1.0 - 0.3 * isCeiling);
+      light += isCream * aGlow * 0.18 * smoothstep(8.0, 10.5, v_pos.y);
+      sun = max(sun, aSun);
+
       float winL = windowLight(v_pos, N);
       float cg = corridorGlow(v_pos);
       light += winL * 0.48 + cg * 0.16 * (1.0 - 0.4 * isCeiling);
+
+      // the little lamps in the statue niches
+      float nl = nicheLight(v_pos, N);
+      light += nl * 1.1;
 
       // soft contact shadows where pillars, statues and plants meet the floor
       if (isFloor > 0.5) {
         float ao = 1.0;
         ${aoGLSL}
         // and a little darker along the foot of the walls
-        float wallD = min(v_pos.x - 0.35, 57.65 - v_pos.z);
-        if (v_pos.z < 48.35) wallD = min(wallD, 13.65 - v_pos.x);
-        if (v_pos.x > 13.65) wallD = min(min(wallD, v_pos.z - 48.35), 50.35 - v_pos.x);
+        float wallD = min(v_pos.x - 0.35, ${g4(WING.z1)} - v_pos.z);
+        if (v_pos.z < ${g4(WING.z0)} && v_pos.x < 14.0) wallD = min(wallD, 13.65 - v_pos.x);
+        if (v_pos.x > 13.65 && v_pos.z > ${g4(WING.z0 - 1.0)}) wallD = min(min(wallD, v_pos.z - ${g4(WING.z0)}), ${g4(WING.x1)} - v_pos.x);
         ao *= mix(0.72, 1.0, smoothstep(0.0, 0.55, wallD));
         light *= ao;
       }
@@ -468,6 +488,15 @@ module.exports = (regl, data, useReflexion) => {
         float fres = 0.18 + 0.82 * pow(1.0 - max(dot(N, V), 0.0), 3.0);
         float hot = pow(max(dot(R, normalize(vec3(-0.30, 0.90, -0.30))), 0.0), 70.0);
         finalColour += (env * fres * 0.70 + vec3(1.0, 0.97, 0.92) * hot * 0.80) * ${ROOM_BRIGHTNESS.toFixed(3)};
+
+        // black statues in the niches: crisp highlights from the niche lamp
+        // and a soft sheen of the lit niche wall around them
+        if (v_pos.z < ${g4(WING.z0 + 0.3)} && v_pos.x > ${g4(WING.x0)}) {
+          vec3 Lp = normalize(nicheLamp(v_pos) - v_pos);
+          float spec = pow(max(dot(R, Lp), 0.0), 60.0);
+          float sheen = pow(max(dot(R, Lp), 0.0), 8.0);
+          finalColour += vec3(1.0, 0.95, 0.86) * (spec * 1.6 + sheen * 0.22) + vec3(0.62, 0.58, 0.52) * fres * 0.25;
+        }
       }
 
 

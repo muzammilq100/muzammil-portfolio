@@ -28,6 +28,18 @@ const images = [
     {
         file: 'everything-else-was-easier-to-perform.jpg',
         title: 'Everything Else Was Easier To Perform'
+    },
+    {
+        file: 'longing.jpg',
+        title: 'Longing'
+    },
+    {
+        file: 'holding-on-to-what-never-was.jpg',
+        title: 'Holding On To What Never Was'
+    },
+    {
+        file: 'but-i-gave-you-comfort.jpg',
+        title: 'But I Gave You Comfort!'
     }
 ];
 

@@ -13,9 +13,13 @@
  * - animated story overlay
  */
 
-// the polished floor reflects the room; switched off automatically
-// if the device turns out to be too slow for it
-var useReflexion = true;
+// phones get a lighter version of the gallery, laptops get everything,
+// and any device that struggles steps down a notch (see quality.js)
+const quality = require('./quality');
+
+// the polished floor reflects the room; off on phones, and switched off
+// automatically if a laptop turns out to be too slow for it
+var useReflexion = quality.reflection;
 var showStats = false;
 
 
@@ -94,7 +98,8 @@ regl = require('regl')({
 	],
 	attributes: {
 		alpha: false
-	}
+	},
+	pixelRatio: quality.pixelRatio
 });
 
 
@@ -123,6 +128,9 @@ const drawGarden = require('./garden')(regl);
 
 // the Florence street beyond the corridor's far door
 const drawFlorence = require('./florence')(regl);
+
+// the tree in the alcove by the entrance
+const drawTree = require('./tree')(regl);
 
 fps = require('./fps')(
 	map,
@@ -860,15 +868,15 @@ regl.frame(
 
 		stats.begin();
 
-		// after a few seconds, check the frame rate once
-		if (useReflexion) {
-			perfFrames++;
-			if (perfFrames === 30) perfStart = time;
-			if (perfFrames === 150) {
-				const fpsMeasured = 120 / Math.max(time - perfStart, 0.001);
-				if (fpsMeasured < 32) {
-					useReflexion = false;
-				}
+		// after a few seconds, check the frame rate; if it is low, step
+		// down one notch and check again
+		perfFrames++;
+		if (perfFrames === 60) perfStart = time;
+		if (perfFrames === 180) {
+			const fpsMeasured = 120 / Math.max(time - perfStart, 0.001);
+			if (fpsMeasured < 32 && quality.stepDown()) {
+				useReflexion = quality.reflection;
+				perfFrames = 0;
 			}
 		}
 
@@ -915,6 +923,8 @@ regl.frame(
 
 							drawStatues();
 
+							drawTree();
+
 							drawPainting(
 								placement.batch()
 							);
@@ -934,6 +944,8 @@ regl.frame(
 				drawMap();
 
 				drawStatues();
+
+				drawTree();
 
 				drawPainting(
 					placement.batch()

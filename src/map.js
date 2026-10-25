@@ -5,6 +5,7 @@ const { addFlutedColumn, addStatue, addPlant } = require('./decor');
 const entrance = require('./entrance');
 const skylight = require('./skylight');
 const wing = require('./wing');
+const alcove = require('./alcove');
 
 /*
  * RENAISSANCE ART GALLERY
@@ -31,7 +32,7 @@ const wing = require('./wing');
 // ============================================================
 
 const WIDTH = 14;
-const LENGTH = 58;          // extended: the new wing opens off the far end
+const LENGTH = 47.55;       // the corridor opens off the left wall just past the last pillars
 const HEIGHT = 8;
 
 const WALL = 0.35;
@@ -140,10 +141,21 @@ const ARCH_COL_X = ARCH_R_IN + ARCH_COL_R;
 // They are real 3D scans (res/venus.bin, res/david.bin) placed on
 // the pedestals by statues.js. height = statue height in metres.
 // They are close to the height of the paintings (about 5.2 m).
+//
+// The others have their own bases: the Pietà lies on a long marble
+// plinth by the entrance, and the two black statues stand on round
+// plinths inside the corridor's niches. mat 1 = white marble like the
+// walls, mat 3 = polished black.
 const STATUES = [
-    { file: 'venus.bin', x: 1.85, z: 56.2, yaw: 2.67, height: 5.2 },
-    { file: 'david.bin', x: WIDTH - 2.1, z: 56.2, yaw: -2.67, height: 5.2 }
+    { file: 'venus.bin', x: 1.85, z: LENGTH - 1.6, yaw: 2.67, height: 5.2, pedestal: true, mat: 1 },
+    { file: 'david.bin', x: WIDTH - 2.1, z: LENGTH - 1.6, yaw: -2.67, height: 5.2, pedestal: true, mat: 1 },
+    { file: 'pieta.bin', x: 1.75, z: 5.9, yaw: Math.PI / 2, height: 3.6, base: 1.0, mat: 1 },
+    { file: 'spinario.bin', x: wing.NICHE_X[0], z: wing.NICHE_STATUE_Z, yaw: -0.35, height: 1.85, base: wing.NICHE_PLINTH_TOP, mat: 3 },
+    { file: 'charioteer.bin', x: wing.NICHE_X[1], z: wing.NICHE_STATUE_Z + 0.1, yaw: 0, height: 2.95, base: wing.NICHE_PLINTH_TOP, mat: 3 }
 ];
+
+// the Pietà's plinth against the right wall (as you walk in)
+const PIETA_PLINTH = { x0: WALL, x1: 3.15, z0: 3.6, z1: 8.2, top: 1.0 };
 
 // low round pedestal under each statue
 const PEDESTAL_TOP = 0.8;
@@ -180,7 +192,7 @@ for (const sgn of [-1, 1]) {
     );
 }
 
-for (const st of STATUES) {
+for (const st of STATUES.filter((s) => s.pedestal)) {
     obstacleSegments.push(...boxSegments(st.x, st.z, PEDESTAL_R * 1.1, PEDESTAL_R * 1.1));
 }
 
@@ -1294,21 +1306,8 @@ module.exports = function () {
     );
 
 
-    addBox(
-
-        position,
-        normal,
-        elements,
-
-        WIDTH - WALL,
-        0,
-        0,
-
-        WIDTH + WALL,
-        HEIGHT,
-        wing.C.z0
-
-    );
+    // the left wall (as you walk in) is built by alcove.js, with the
+    // tree alcove's arch cut into it
 
 
     // ========================================================
@@ -1316,8 +1315,6 @@ module.exports = function () {
     // ========================================================
     addBox(position, normal, elements, WALL, 0, 0, WALL + 0.12, 0.42, LENGTH - WALL);
     addBox(position, normal, elements, WALL, 0.42, 0, WALL + 0.07, 0.50, LENGTH - WALL);
-    addBox(position, normal, elements, WIDTH - WALL - 0.12, 0, 0, WIDTH - WALL, 0.42, wing.C.z0);
-    addBox(position, normal, elements, WIDTH - WALL - 0.07, 0.42, 0, WIDTH - WALL, 0.50, wing.C.z0);
     addBox(position, normal, elements, WALL, 0, LENGTH - WALL - 0.12, WIDTH - WALL, 0.42, LENGTH - WALL);
     addBox(position, normal, elements, WALL, 0.42, LENGTH - WALL - 0.07, WIDTH - WALL, 0.50, LENGTH - WALL);
 
@@ -1491,9 +1488,7 @@ module.exports = function () {
         9,
         34,
         39,
-        44,
-        49,
-        54
+        44
 
     ];
 
@@ -1527,9 +1522,26 @@ module.exports = function () {
     // STATUES (far corners)
     // ========================================================
 
-    for (const st of STATUES) {
+    for (const st of STATUES.filter((s) => s.pedestal)) {
         addStatue(builder, st.x, st.z, PEDESTAL_R, PEDESTAL_TOP);
     }
+
+    // the Pietà's long plinth: a base, a plain block, a moulded top
+    {
+        const p = PIETA_PLINTH;
+        builder.curMat = [0, 0, 0];
+        builder.box(p.x0, 0, p.z0 - 0.08, p.x1 + 0.08, 0.16, p.z1 + 0.08, [0, 0, 0]);
+        builder.box(p.x0, 0.16, p.z0 + 0.04, p.x1 - 0.04, p.top - 0.14, p.z1 - 0.04, [0, 0, 0]);
+        builder.box(p.x0, p.top - 0.14, p.z0 - 0.02, p.x1 + 0.03, p.top - 0.06, p.z1 + 0.02, [0, 0, 0]);
+        builder.box(p.x0, p.top - 0.06, p.z0 - 0.06, p.x1 + 0.07, p.top, p.z1 + 0.06, [0, 0, 0]);
+    }
+
+
+    // ========================================================
+    // THE TREE ALCOVE (left wall, before the arch)
+    // ========================================================
+
+    alcove.addAlcove(builder);
 
 
     // ========================================================
@@ -1701,7 +1713,7 @@ module.exports = function () {
             ...COLUMN_Z.flatMap((z) => [[1.25, z, 0.78], [WIDTH - 1.25, z, 0.78]]),
             [WIDTH / 2 - ARCH_COL_X, ARCH_Z, 0.86],
             [WIDTH / 2 + ARCH_COL_X, ARCH_Z, 0.86],
-            ...STATUES.map((st) => [st.x, st.z, PEDESTAL_R * 1.12]),
+            ...STATUES.filter((st) => st.pedestal).map((st) => [st.x, st.z, PEDESTAL_R * 1.12]),
             ...PLANTS.map((pl) => [pl.x, pl.z, 0.34])
         ],
 
