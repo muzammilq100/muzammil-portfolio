@@ -3,8 +3,9 @@
 /*
  * SCANNED STATUES
  * ---------------
- * Loads the two real statue scans (Venus de Milo and Michelangelo's
- * David, from Scan the World) and stands them on their pedestals.
+ * Loads the real statue scans (Venus de Milo, Michelangelo's David
+ * and Pietà, the Spinario and the Charioteer of Delphi) and stands
+ * them on their bases.
  *
  * The scans were slimmed down for phones and packed into small
  * binary files in res/:
@@ -18,7 +19,8 @@
  * Each model is 1 unit tall, standing on y = 0, facing +z. Here it
  * is scaled, turned and placed using the STATUES list in map.js,
  * then drawn with the same shader as the rest of the gallery, in the
- * wall-coloured statue material (material id 1).
+ * wall-coloured statue material (material id 1) or polished black
+ * (material id 3, the same finish as the plant pots).
  */
 
 const mesh = require('./mesh');
@@ -76,7 +78,7 @@ module.exports = (regl, map) => {
 		const s = st.height;
 		const c = Math.cos(st.yaw);
 		const sn = Math.sin(st.yaw);
-		const y0 = map.pedestalTop;
+		const y0 = st.base !== undefined ? st.base : map.pedestalTop;
 
 		for (let i = 0; i < m.nV; i++) {
 
@@ -101,7 +103,7 @@ module.exports = (regl, map) => {
 				-sn * nx + c * nz
 			);
 
-			mat.push(1, 0, 0);
+			mat.push(st.mat || 1, 0, 0);
 		}
 
 		for (let i = 0; i < m.nI; i++) {
@@ -122,7 +124,11 @@ module.exports = (regl, map) => {
 				normal,
 				mat,
 				elements,
-				lights: map.lights
+				lights: map.lights,
+				// the shader picks the picture lights nearest the visitor
+				get viewer() {
+					return map.viewer;
+				}
 			},
 			false
 		);

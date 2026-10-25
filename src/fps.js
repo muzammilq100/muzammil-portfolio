@@ -67,10 +67,12 @@ const CENTRE_X = 7.0;           // middle of the 14 m wide hall
  * The walk is an L: down the middle of the main hall, then left
  * along the middle of the new corridor. Points are [x, z].
  */
+const WING = require('./wing').C;
+
 const PATH = [
-	[7.0, 1.6],      // just inside the entrance
-	[7.0, 53.0],     // the turn, in line with the corridor
-	[47.4, 53.0]     // a few steps short of the far door
+	[7.0, 1.6],                       // just inside the entrance
+	[7.0, WING.zc],                   // the turn, in line with the corridor
+	[WING.x1 - 2.95, WING.zc]         // a few steps short of the far door
 ];
 
 const SEGS = PATH.slice(1).map((p, i) => {

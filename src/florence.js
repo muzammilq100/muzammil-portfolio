@@ -16,23 +16,27 @@
  * anywhere along the corridor the picture lines up, and as you walk
  * towards the door the near houses slide past the far ones.
  *
- * Gallery coordinates: the door's outer face is at x = 50.7, the street
- * runs on in +x, centred on z = 53.
+ * Gallery coordinates: the street starts at the door's outer face and
+ * runs on in +x, centred on the corridor's middle line.
  */
 
 const geom = require('./geom');
+const { C } = require('./wing');
+
+// the door's outer face, and the corridor's middle line
+const DOOR_X = C.x1 + 0.35;
+const ZC = C.zc;
 
 // where the photo was taken, and how it was held
-const CAM = [43.4, 2.0, 53.0];
+const CAM = [DOOR_X - 7.3, 2.0, ZC];
 const PITCH = 5.2 * Math.PI / 180;      // tilted up a little
 const F = 2100, PCX = 725, PCY = 1288, PW = 1450, PH = 2576;
 
 // the street (gallery metres)
-const DOOR_X = 50.7;
-const LEFT_Z = 49.8;                    // houses on the left (seen from the corridor)
-const RIGHT_Z = 56.3;                   // houses on the right
-const STEPS_X0 = 55.7, STEPS_X1 = 62.4, STEPS_H = 3.9;
-const END_X = 73.4;
+const LEFT_Z = ZC - 3.2;                // houses on the left (seen from the corridor)
+const RIGHT_Z = ZC + 3.3;               // houses on the right
+const STEPS_X0 = DOOR_X + 5.0, STEPS_X1 = DOOR_X + 11.7, STEPS_H = 3.9;
+const END_X = DOOR_X + 22.7;
 const TOP = 40;
 
 function buildStreet() {
