@@ -33,6 +33,7 @@ const C = {
 	z0: 41.0,                  // painting wall
 	z1: 47.2,                  // window wall (in line with the hall's end wall)
 	zc: 44.1,
+	hallEnd: 50.65,            // inside face of the main hall's end wall, a little past the corridor
 	spring: 5.6,               // the vault springs from the walls here
 	crown: HEIGHT              // and rises to the main hall's ceiling height
 };

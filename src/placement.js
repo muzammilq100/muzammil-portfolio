@@ -27,7 +27,7 @@ const RIGHT_X =
 	13.64;
 
 const END_Z =
-	wing.C.z1 - 0.01;
+	wing.C.hallEnd - 0.01;
 
 // the painting wall of the new corridor (faces +z)
 const CORR_Z =
@@ -41,7 +41,7 @@ const LABEL_X_RIGHT =
 	13.644;
 
 const LABEL_Z_END =
-	wing.C.z1 - 0.006;
+	wing.C.hallEnd - 0.006;
 
 const LABEL_Z_CORR =
 	wing.C.z0 + 0.006;
