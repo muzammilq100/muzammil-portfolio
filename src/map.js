@@ -1404,24 +1404,11 @@ module.exports = function () {
 
     // ========================================================
     // WALL PANELS
+    // (none where the tree alcove, the Pietà and the corridor opening are)
     // ========================================================
 
-    addWallPanel(
-        position,
-        normal,
-        elements,
-        5,
-        'left'
-    );
 
 
-    addWallPanel(
-        position,
-        normal,
-        elements,
-        9,
-        'right'
-    );
 
 
     addWallPanel(
@@ -1469,13 +1456,6 @@ module.exports = function () {
     );
 
 
-    addWallPanel(
-        position,
-        normal,
-        elements,
-        44,
-        'right'
-    );
 
 
     // ========================================================

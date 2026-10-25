@@ -73,7 +73,13 @@ function loadTexture(regl, url, opts, fallback) {
 			if (!r.ok) throw new Error('Could not load ' + url);
 			return r.blob();
 		})
-		.then((b) => createImageBitmap(b, { premultiplyAlpha: 'none' }))
+		// some phones refuse the options, so fall back to a plain image
+		.then((b) => createImageBitmap(b, { premultiplyAlpha: 'none' }).catch(() => new Promise((ok, fail) => {
+			const img = new Image();
+			img.onload = () => ok(img);
+			img.onerror = fail;
+			img.src = URL.createObjectURL(b);
+		})))
 		.then((img) => tex({ data: img, flipY: false, min: 'mipmap', mipmap: 'nice', mag: 'linear', ...opts }))
 		.catch((e) => console.error(e));
 	return tex;
