@@ -424,7 +424,9 @@ module.exports = (regl, quality) => {
 		// depth of field: blend towards the soft picture away from the subject
 		if (aperture > 0.0 && hasDepth > 0.5) {
 			float z = linearDepth(texture2D(depthTex, p).r);
-			float coc = clamp(abs(z - focus) / max(z, 0.5) * aperture, 0.0, 1.0);
+			// (things nearer than the subject soften a little less, so a leaf
+			// drifting before a painting still reads)
+			float coc = clamp(abs(z - focus) / max(max(z, focus), 0.5) * aperture, 0.0, 1.0);
 			c = mix(c, texture2D(soft, p).rgb, smoothstep(0.0, 1.0, coc));
 		}
 

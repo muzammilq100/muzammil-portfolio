@@ -54,7 +54,10 @@ The gallery now opens with a guided, cinematic tour instead of dropping the visi
 5. **Its story** – the camera eases aside and the title writes itself in, followed by the description.
 6. **Footsteps** – down at the leaf on the floor; the artist's shoes walk into a close, letterboxed shot, and as he passes, his step lifts the leaf back into the air.
 7. **The corridor** – the leaf drifts into the window corridor and hangs before the first painting, then the second (a little lower), each with its story, turning gently while you read.
-8. **The door** – it sinks and comes to rest on the floor before the far door, where the tour ends.
+8. **The third painting and the door** – it hangs low before the third painting, then sinks to rest on the floor before the far door.
+9. **The gust** – the door bursts open; the wind flings the leaf back up the corridor past the windows and the garden, into the main hall.
+10. **The hall** – it stops before each painting on one wall, curls out round the grand arch between its column and the wall, comes back in on the other side and stops before each painting on the other wall.
+11. **The end** – it falls into the sunlight under the skylight; the camera looks down on it lying in the pattern of the glazing, dust turning in the light.
 
 The camera only moves while you scroll or swipe, easing to a stop when you stop, and settling onto a shot (with its words) when you stop near one. Arrow keys, Space and taps glide on to the next shot. "Explore freely" (top right) or Escape hands over to the normal walking mode at any time, from wherever the tour is.
 
@@ -65,5 +68,6 @@ Where it lives:
 - `src/leaf.js` – the falling leaf, lit by the same sun as the room.
 - `src/avatar.js` – also has the artist's walk (a gait cycle for hips, knees, ankles and toes, with the stance foot kept on the floor), used for the footsteps shot.
 - `src/dust.js` – dust motes that glint only inside the sunbeams.
+- `src/fardoor.js` – the corridor's far door, built as two hinged leaves so the gust can throw them open.
 
 The overall darkness and the strength of the effects are set in `LOOK` at the top of `src/post.js`; each shot's own exposure, depth of field and letterbox are in `SHOTS` in `src/tour.js`.

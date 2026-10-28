@@ -165,12 +165,103 @@ const LEAF_LAND = [
 	LEAF_DOOR
 ];
 
+
+// the third act: the third painting, the door, the gust, and the hall
+const P3 = [PAINTING_X[2], 3.0, WING.z0];            // the corridor's third painting
+const LEAF_P3 = [34.8, 1.35, 46.0];                  // low now, about to settle
+const LEAF_REST = [7.89, 0.03, 19.03];              // its last rest, in a patch of sun under the skylight
+
+// the main hall's paintings: three on the x = 0 wall, three on the x = 14
+// wall (as they hang in placement.js)
+const LEFT_X = 0.36, RIGHT_X = 13.64;
+const HALL = [
+	{ side: 'left', z: 34.5 },     // Between Grief and Acceptance
+	{ side: 'left', z: 23.5 },     // A Private Eulogy
+	{ side: 'left', z: 14.6 },     // Everything Else Was Easier To Perform
+	{ side: 'right', z: 14.6 },    // Uncertainty
+	{ side: 'right', z: 23.5 },    // The Hardest Gift I Gave
+	{ side: 'right', z: 34.5 }     // Love me like I am Already Dead
+];
+
+// where the leaf hangs before a hall painting (to the painting's side of
+// the picture on a laptop, nearer the middle on a phone)
+function hallLeaf(h) {
+	const s = h.side === 'left' ? 1 : -1;
+	return mix3([7 - s * 1.0, 3.0, h.z + s * 0.2], [7 - s * 0.6, 3.25, h.z + s * 0.13], wideness());
+}
+
+// the camera before a hall painting: the painting on the left and the
+// words on the right on a laptop; the painting above the words on a phone
+function hallCam(h) {
+	if (h.side === 'left') {
+		return framed(
+			cam([8.6, 3.9, h.z], [LEFT_X, 1.45, h.z], 76),
+			cam([8.0, 3.6, h.z + 0.7], [LEFT_X, 3.95, h.z - 2.0], 46, -0.008)
+		);
+	}
+	return framed(
+		cam([5.4, 3.9, h.z], [RIGHT_X, 1.45, h.z], 76),
+		cam([6.0, 3.6, h.z - 0.7], [RIGHT_X, 3.95, h.z + 2.0], 46, -0.008)
+	);
+}
+
+// the gust's path: off the floor, back up the corridor past the windows,
+// out into the hall and round to the first painting on the far wall
+const leafGust = () => [
+	LEAF_DOOR,
+	[35.6, 0.5, 44.6],
+	[33.2, 1.5, 45.6],
+	[29.0, 2.3, 46.1],
+	[23.5, 2.7, 45.9],
+	[18.5, 2.9, 45.4],
+	[14.8, 3.1, 44.3],
+	[11.0, 3.3, 41.8],
+	[7.4, 3.4, 38.8],
+	[5.4, 3.3, 36.6],
+	hallLeaf(HALL[0])
+];
+
+// from the near wall round the arch to the far wall: out between the
+// arch's left column and the wall, across in front of the arch on the
+// entrance side, and back in between its right column and the other wall
+const leafArch = () => [
+	hallLeaf(HALL[2]),
+	[3.0, 3.2, 13.2],
+	[1.7, 3.0, 12.0],
+	[2.6, 3.2, 10.0],
+	[5.0, 3.6, 8.9],
+	[7.0, 3.8, 8.6],
+	[9.0, 3.6, 8.9],
+	[11.4, 3.2, 10.0],
+	[12.3, 3.0, 12.0],
+	[11.0, 3.1, 13.4],
+	hallLeaf(HALL[3])
+];
+
+// the last fall, to the floor under the skylight
+const leafSettle = () => [
+	hallLeaf(HALL[5]),
+	[9.0, 3.4, 31.0],
+	[7.8, 2.8, 27.5],
+	[6.8, 1.9, 24.5],
+	[7.4, 1.0, 21.0],
+	[7.75, 0.35, 19.6],
+	LEAF_REST
+];
+
 // a leaf that hangs in the air at a shot, turning slowly while you read
 const HOVER = {
 	2: { pos: () => LEAF_SKY, amp: [0.18, 0.07, 0.12], tumble: 0.5 },
 	7: { pos: () => LEAF_FLOAT, amp: [0.12, 0.09, 0.1], tumble: 0.55 },
 	8: { pos: () => LEAF_P1, amp: [0.1, 0.08, 0.08], tumble: 0.5 },
-	9: { pos: () => LEAF_P2, amp: [0.09, 0.06, 0.07], tumble: 0.45 }
+	9: { pos: () => LEAF_P2, amp: [0.09, 0.06, 0.07], tumble: 0.45 },
+	10: { pos: () => LEAF_P3, amp: [0.07, 0.04, 0.06], tumble: 0.35 },
+	12: { pos: () => hallLeaf(HALL[0]), amp: [0.12, 0.08, 0.1], tumble: 0.5 },
+	13: { pos: () => hallLeaf(HALL[1]), amp: [0.12, 0.08, 0.1], tumble: 0.5 },
+	14: { pos: () => hallLeaf(HALL[2]), amp: [0.12, 0.08, 0.1], tumble: 0.5 },
+	15: { pos: () => hallLeaf(HALL[3]), amp: [0.12, 0.08, 0.1], tumble: 0.5 },
+	16: { pos: () => hallLeaf(HALL[4]), amp: [0.12, 0.08, 0.1], tumble: 0.5 },
+	17: { pos: () => hallLeaf(HALL[5]), amp: [0.12, 0.08, 0.1], tumble: 0.5 }
 };
 
 
@@ -346,18 +437,66 @@ const SHOTS = [
 		}
 	},
 
-	// 10  THE DOOR: the leaf at rest on the floor, the street light beyond
+	// 10  THE THIRD PAINTING, the leaf low now, about to settle
+	{
+		name: 'painting3',
+		ui: 'p3',
+		look: { letterbox: 0.55, exposure: 1.0, focus: 5.8, aperture: 0.7, vignette: 0.32, shafts: 0.9 },
+		cam(tt) {
+			const breathe = [Math.sin(tt * 0.15) * 0.04, Math.sin(tt * 0.25) * 0.015, 0];
+			const base = framed(
+				cam([P3[0], 1.4, 46.85], [P3[0], 0.6, P3[2]], 74),
+				cam([P3[0] - 0.6, 1.45, 46.85], [P3[0] + 1.9, 2.0, P3[2]], 46, 0.008)
+			);
+			base.eye = add3(base.eye, breathe);
+			return base;
+		}
+	},
+
+	// 11  AT REST BEFORE THE DOOR, seen from down on the floor
 	{
 		name: 'door',
-		ui: 'end',
-		look: { letterbox: 0.8, exposure: 1.05, focus: 3.0, aperture: 0.8, vignette: 0.35, shafts: 1.0 },
+		ui: 'door',
+		look: { letterbox: 0.8, exposure: 1.05, focus: 1.45, aperture: 1.1, vignette: 0.35, shafts: 1.0 },
 		cam(tt) {
-			const push = 0.5 * (1 - Math.exp(-tt / 14));
+			const breathe = [Math.sin(tt * 0.2) * 0.02, Math.sin(tt * 0.3) * 0.006, 0];
 			const base = framed(
-				cam([33.9, 1.2, 44.1], [36.9, 0.3, 44.0], 66),
-				cam([34.55, 0.95, 44.35], [37.2, 0.32, 44.0], 46)
+				cam([34.75, 0.5, 44.15], [WING.x1, 0.8, 43.95], 66),
+				cam([34.75, 0.45, 44.3], [WING.x1, 0.35, 43.95], 50)
 			);
-			base.eye = add3(base.eye, [push, 0, 0]);
+			base.eye = add3(base.eye, breathe);
+			return base;
+		}
+	},
+
+	// 12 – 17  THE HALL'S PAINTINGS, one by one, the leaf before each
+	...HALL.map((h, i) => ({
+		name: 'hall' + i,
+		ui: 'h' + i,
+		look: { letterbox: 0.55, exposure: 1.0, focus: 7.6, aperture: 0.7, vignette: 0.35, shafts: 0.7 },
+		cam(tt) {
+			const breathe = [Math.sin(tt * 0.15) * 0.04, Math.sin(tt * 0.25) * 0.015, Math.sin(tt * 0.11) * 0.04];
+			const base = hallCam(h);
+			base.eye = add3(base.eye, breathe);
+			return base;
+		}
+	})),
+
+	// 18  THE END: looking down on the leaf at rest in the sunlight, the
+	// shadows of the skylight's glazing on the floor, dust turning in the air
+	{
+		name: 'rest',
+		ui: 'end',
+		look: { letterbox: 0.55, exposure: 1.05, focus: 2.4, aperture: 0.5, vignette: 0.4, shafts: 1.15 },
+		cam(tt) {
+			const turn = tt * 0.025;
+			const base = framed(
+				cam([7.75, 2.6, 18.6], [7.89, 0.0, 19.08], 60),
+				cam([7.75, 2.3, 18.45], [7.89, 0.0, 19.08], 46)
+			);
+			// very slowly circling overhead
+			const dx = base.eye[0] - LEAF_REST[0], dz = base.eye[2] - LEAF_REST[2];
+			base.eye = [LEAF_REST[0] + dx * Math.cos(turn) - dz * Math.sin(turn), base.eye[1], LEAF_REST[2] + dx * Math.sin(turn) + dz * Math.cos(turn)];
 			return base;
 		}
 	}
@@ -373,6 +512,35 @@ const SHOTS = [
  */
 
 const WHITE = [1.0, 0.96, 0.88];
+
+// from one hall painting to the next along the same wall: the camera
+// glides along, the leaf drifts out from the wall and back in
+function hallMove(i, dur) {
+	return {
+		dur,
+		cam(u, from, to) {
+			const k = sineInOut(u);
+			const c = mixCam(from, to, k);
+			const out = HALL[i].side === 'left' ? 1 : -1;
+			c.eye = add3(c.eye, [out * 0.6 * Math.sin(Math.PI * k), 0.15 * Math.sin(Math.PI * k), 0]);
+			return c;
+		},
+		look(u, a, b) {
+			const o = {};
+			for (const key in b) if (typeof b[key] === 'number') o[key] = lerp(a[key], b[key], u);
+			o.aperture = lerp(a.aperture, b.aperture, u) * (1 - 0.5 * Math.sin(Math.PI * u));
+			return o;
+		},
+		leaf(u) {
+			const k = sineInOut(u);
+			const A = hallLeaf(HALL[i]), B = hallLeaf(HALL[i + 1]);
+			const out = HALL[i].side === 'left' ? 1 : -1;
+			const mid = add3(mix3(A, B, 0.5), [out * 1.2, 0.5, 0]);
+			const p = spline([A, mix3(A, mid, 0.6), mid, mix3(B, mid, 0.6), B], k);
+			return { phase: 'fly', pos: add3(p, [0, Math.sin(u * Math.PI * 5) * 0.07 * Math.sin(Math.PI * u), 0]), tumble: 0.5 + 0.35 * Math.sin(Math.PI * u) };
+		}
+	};
+}
 
 const MOVES = [
 
@@ -664,12 +832,34 @@ const MOVES = [
 		}
 	},
 
-	// 9 → 10  DOWN TO REST BEFORE THE DOOR
+	// 9 → 10  ALONG TO THE THIRD PAINTING, the leaf sinking
 	{
-		dur: 8.0,
+		dur: 6.5,
+		cam(u, from, to) {
+			const k = sineInOut(u);
+			const c = mixCam(from, to, k);
+			c.eye = add3(c.eye, [0, 0.1 * Math.sin(Math.PI * k), 0.1 * Math.sin(Math.PI * k)]);
+			return c;
+		},
+		look(u, a, b) {
+			const o = {};
+			for (const key in b) if (typeof b[key] === 'number') o[key] = lerp(a[key], b[key], u);
+			o.aperture = lerp(a.aperture, b.aperture, u) * (1 - 0.5 * Math.sin(Math.PI * u));
+			return o;
+		},
+		leaf(u) {
+			const k = sineInOut(u);
+			const p = add3(spline([LEAF_P2, [29.2, 1.75, 45.5], [32.2, 1.5, 45.4], LEAF_P3], k), [0, Math.sin(u * Math.PI * 4) * 0.06 * Math.sin(Math.PI * u), 0]);
+			return { phase: 'fly', pos: p, tumble: 0.45 + 0.25 * Math.sin(Math.PI * u) };
+		}
+	},
+
+	// 10 → 11  DOWN TO REST BEFORE THE DOOR
+	{
+		dur: 6.0,
 		cam(u, from, to, leaf) {
 			const k = sineInOut(u);
-			const eye = spline([from.eye, [29.0, 1.9, 46.2], [31.4, 1.0, 45.2], to.eye], k);
+			const eye = spline([from.eye, [34.2, 1.15, 45.6], [34.5, 0.7, 44.8], to.eye], k);
 			const atLeaf = smooth(0.05, 0.3, u) * (1 - smooth(0.8, 1, u));
 			const target = mix3(mix3(from.target, to.target, smooth(0.6, 1, u)), leaf.pos, atLeaf);
 			return cam(eye, target, lerp(from.fov, to.fov, smooth(0.2, 1, u)), lerp(from.roll, to.roll, k));
@@ -687,10 +877,135 @@ const MOVES = [
 		},
 		leaf(u) {
 			// it sinks in slow swings, smaller and smaller, and lies down
-			const p = spline(LEAF_LAND, smooth(0, 0.85, u));
-			const swing = Math.sin(u * Math.PI * 7) * 0.28 * (1 - smooth(0.4, 0.82, u));
+			const p = spline([LEAF_P3, [35.3, 0.9, 45.2], [35.75, 0.4, 44.4], [36.0, 0.08, 44.05], LEAF_DOOR], smooth(0, 0.85, u));
+			const swing = Math.sin(u * Math.PI * 6) * 0.25 * (1 - smooth(0.35, 0.82, u));
 			const settle = smooth(0.78, 0.88, u);
-			return { phase: 'fly', pos: add3(p, [0, Math.abs(Math.cos(u * Math.PI * 7)) * 0.08 * (1 - settle), swing]), tumble: 0.8 * (1 - settle), swing };
+			return { phase: 'fly', pos: add3(p, [0, Math.abs(Math.cos(u * Math.PI * 6)) * 0.07 * (1 - settle), swing]), tumble: 0.7 * (1 - settle), swing };
+		}
+	},
+
+	// 11 → 12  THE GUST: the door bursts open, the leaf is flung back up
+	// the corridor past the windows and round into the hall
+	{
+		dur: 12.0,
+		door(u) {
+			const k = clamp01((u - 0.02) / 0.09);
+			// thrown open, swinging a little past and settling back
+			return easeOut(k) + 0.07 * Math.sin(clamp01((u - 0.08) / 0.18) * Math.PI) * (1 - clamp01((u - 0.08) / 0.3));
+		},
+		cam(u, from, to, leaf) {
+			// a jolt as the door slams back, then the camera swings round to
+			// travel alongside the leaf, the windows and the garden behind it
+			const shake = Math.sin(u * 340) * 0.012 * smooth(0.02, 0.05, u) * (1 - smooth(0.08, 0.16, u));
+			const run = smooth(0.06, 1, u);
+			let eye = spline([
+				from.eye,
+				[34.3, 1.0, 43.6],
+				[31.5, 1.9, 43.4],
+				[26.5, 2.4, 43.6],
+				[21.0, 2.6, 43.6],
+				[16.5, 2.8, 43.2],
+				[12.6, 3.1, 41.2],
+				[9.6, 3.4, 38.0],
+				to.eye
+			], run * 0.55 + sineInOut(run) * 0.45);
+			// along the corridor it rides beside the leaf, a little behind it
+			// and towards the painting wall, so the windows are behind the leaf
+			const beside = add3(leaf.pos, [1.0, -0.2, -1.45]);
+			eye = mix3(eye, beside, smooth(0.1, 0.22, u) * (1 - smooth(0.52, 0.72, u)));
+			const atLeaf = smooth(0.06, 0.16, u) * (1 - smooth(0.86, 1, u));
+			let target = mix3(from.target, leaf.pos, atLeaf);
+			target = mix3(target, to.target, smooth(0.86, 1, u));
+			const fov = lerp(from.fov, to.fov, smooth(0.1, 1, u)) + 6 * Math.sin(Math.PI * smooth(0.08, 0.9, u));
+			const roll = lerp(from.roll, to.roll, u) + 0.06 * Math.sin(Math.PI * 2 * smooth(0.1, 0.9, u)) + shake;
+			return cam(add3(eye, [0, shake, 0]), target, fov, roll);
+		},
+		look(u, a, b, leaf, eye) {
+			const d = Math.hypot(leaf.pos[0] - eye[0], leaf.pos[1] - eye[1], leaf.pos[2] - eye[2]);
+			// a burst of daylight as the door flies open
+			const burst = smooth(0.02, 0.06, u) * (1 - smooth(0.08, 0.3, u));
+			return {
+				letterbox: lerp(a.letterbox, b.letterbox, smooth(0.1, 0.4, u)),
+				exposure: lerp(a.exposure, b.exposure, u) * (1 + 0.8 * burst),
+				focus: lerp(d, b.focus, smooth(0.86, 1, u)),
+				aperture: lerp(0.8, b.aperture, smooth(0.86, 1, u)),
+				vignette: lerp(a.vignette, b.vignette, u),
+				shafts: lerp(a.shafts, b.shafts, u) + burst
+			};
+		},
+		leaf(u) {
+			const k = clamp01((u - 0.05) / 0.95);
+			if (k <= 0) return { phase: 'floor' };
+			// faster this time, carried on the wind
+			const p = spline(leafGust(), k * 0.6 + sineInOut(k) * 0.4);
+			const flutter = Math.sin(u * Math.PI * 9) * 0.12 * Math.sin(Math.PI * k);
+			return { phase: 'fly', pos: add3(p, [0, flutter * 0.6, flutter]), tumble: 1.4 - 0.8 * k };
+		}
+	},
+
+	// 12 → 13, 13 → 14  ALONG THE NEAR WALL
+	...[0, 1].map((i) => hallMove(i, 7.5)),
+
+	// 14 → 15  ROUND THE ARCH TO THE FAR WALL
+	{
+		dur: 10.0,
+		cam(u, from, to, leaf) {
+			const k = sineInOut(u);
+			// stepping back to watch it through the arch, then round to the
+			// other wall
+			const eye = spline([from.eye, [7.6, 3.2, 16.2], [7.0, 2.9, 17.2], [6.5, 3.2, 16.0], to.eye], k);
+			const atLeaf = smooth(0.0, 0.15, u) * (1 - smooth(0.85, 1, u));
+			const target = mix3(mix3(from.target, to.target, smooth(0.5, 1, u)), leaf.pos, atLeaf);
+			return cam(eye, target, lerp(from.fov, to.fov, k) + 4 * Math.sin(Math.PI * k), lerp(from.roll, to.roll, k));
+		},
+		look(u, a, b, leaf, eye) {
+			const d = Math.hypot(leaf.pos[0] - eye[0], leaf.pos[1] - eye[1], leaf.pos[2] - eye[2]);
+			return {
+				letterbox: lerp(a.letterbox, b.letterbox, u),
+				exposure: lerp(a.exposure, b.exposure, u),
+				focus: lerp(d, b.focus, smooth(0.85, 1, u)),
+				aperture: lerp(0.6, b.aperture, smooth(0.85, 1, u)),
+				vignette: lerp(a.vignette, b.vignette, u),
+				shafts: lerp(a.shafts, b.shafts, u)
+			};
+		},
+		leaf(u) {
+			const k = sineInOut(u);
+			const p = spline(leafArch(), k);
+			return { phase: 'fly', pos: add3(p, [0, Math.sin(u * Math.PI * 6) * 0.06 * Math.sin(Math.PI * u), 0]), tumble: 0.6 + 0.4 * Math.sin(Math.PI * u) };
+		}
+	},
+
+	// 15 → 16, 16 → 17  ALONG THE FAR WALL
+	...[3, 4].map((i) => hallMove(i, 7.5)),
+
+	// 17 → 18  THE LAST FALL, INTO THE SUNLIGHT
+	{
+		dur: 10.0,
+		cam(u, from, to, leaf) {
+			const k = sineInOut(u);
+			// up and over, until the camera looks straight down on it
+			const eye = spline([from.eye, [7.6, 4.0, 30.5], [7.3, 4.4, 25.5], [7.1, 4.0, 21.8], to.eye], k);
+			const atLeaf = smooth(0.0, 0.2, u) * (1 - smooth(0.9, 1, u));
+			const target = mix3(mix3(from.target, to.target, smooth(0.5, 1, u)), leaf.pos, atLeaf);
+			return cam(eye, target, lerp(from.fov, to.fov, k), lerp(from.roll, to.roll, k));
+		},
+		look(u, a, b, leaf, eye) {
+			const d = Math.hypot(leaf.pos[0] - eye[0], leaf.pos[1] - eye[1], leaf.pos[2] - eye[2]);
+			return {
+				letterbox: lerp(a.letterbox, b.letterbox, u),
+				exposure: lerp(a.exposure, b.exposure, u),
+				focus: lerp(d, b.focus, smooth(0.85, 1, u)),
+				aperture: lerp(0.7, b.aperture, smooth(0.85, 1, u)),
+				vignette: lerp(a.vignette, b.vignette, u),
+				shafts: lerp(a.shafts, b.shafts, u)
+			};
+		},
+		leaf(u) {
+			const p = spline(leafSettle(), smooth(0, 0.86, u));
+			const swing = Math.sin(u * Math.PI * 7) * 0.3 * (1 - smooth(0.4, 0.84, u));
+			const settle = smooth(0.8, 0.9, u);
+			return { phase: 'fly', pos: add3(p, [swing, Math.abs(Math.cos(u * Math.PI * 7)) * 0.08 * (1 - settle), 0]), tumble: 0.8 * (1 - settle), swing };
 		}
 	}
 
@@ -772,18 +1087,18 @@ const CSS = `
 	bottom: max(18px, env(safe-area-inset-bottom));
 	transform: translateX(-50%);
 	display: flex;
-	gap: 7px;
+	gap: 4px;
 	pointer-events: none;
 }
 .tour-progress i {
 	display: block;
-	width: 18px;
+	width: 10px;
 	height: 2px;
 	border-radius: 1px;
 	background: rgba(244,236,223,.28);
 	transition: background .6s ease, width .6s ease;
 }
-.tour-progress i.on { background: #e9cf9a; width: 30px; }
+.tour-progress i.on { background: #e9cf9a; width: 22px; }
 
 /* the swipe hint */
 .tour-hint {
@@ -917,6 +1232,7 @@ const CSS = `
 .tour-endcard .tour-rule { margin: 16px auto 14px; background: linear-gradient(90deg, rgba(233,207,154,0), #e9cf9a, rgba(233,207,154,0)); }
 .tour-endcard.on .tour-rule { width: 160px; }
 .tour-endcard .tour-end { justify-content: center; margin-top: 22px; }
+.tour-endcard .tour-kicker { letter-spacing: .22em; }
 
 /* 4: the story, beside the painting (below it on a phone) */
 .tour-story {
@@ -1146,11 +1462,15 @@ module.exports = function createTour(opts) {
 	// 5, 6, 7: no words, just the leaf and the footsteps
 	const quiet = () => el('div', 'tour-card', '');
 
-	// 8, 9: the corridor's paintings
+	// 8, 9, 10: the corridor's paintings
 	const story1 = storyCard(() => corridorPainting(P1[0]));
 	const story2 = storyCard(() => corridorPainting(P2[0]));
+	const story3 = storyCard(() => corridorPainting(P3[0]));
 
-	// 10: the end of the tour
+	// 12 - 17: the hall's paintings
+	const hallStories = HALL.map((h) => storyCard(() => paintings().find((p) => p.side === h.side && Math.abs(p.paintingPosition[2] - h.z) < 0.5)));
+
+	// 18: the end of the tour
 	const end = el('div', 'tour-card tour-endcard', `
 		<span class="tour-line tour-kicker">Thank you for walking with me</span>
 		<span class="tour-rule"></span>
@@ -1161,8 +1481,7 @@ module.exports = function createTour(opts) {
 		</div>`);
 	stagger(end, 0.5, 0.35);
 
-	const stories = [story, story1, story2];
-	const cards = [intro, aboutCard, sky, master, story, quiet(), quiet(), quiet(), story1, story2, end];
+	const cards = [intro, aboutCard, sky, master, story, quiet(), quiet(), quiet(), story1, story2, story3, quiet(), ...hallStories, end];
 	root.append(...cards, mark, free, progress, hint);
 	document.body.appendChild(root);
 	document.body.classList.add('touring');
@@ -1170,19 +1489,13 @@ module.exports = function createTour(opts) {
 	// phones swipe, laptops scroll (or click, or press the arrow keys)
 	const fine = window.matchMedia && window.matchMedia('(pointer: fine)').matches;
 	const verb = fine ? 'Scroll' : 'Swipe';
-	const HINTS = [
-		fine ? 'Scroll to begin' : 'Swipe up to begin',
-		verb + ' to follow the leaf',
-		verb + ' to follow the light',
-		verb + ' for its story',
-		verb + ' on',
-		verb + ' on',
-		'',
-		'',
-		verb + ' on',
-		verb + ' on',
-		''
-	];
+	const HINTS = SHOTS.map((sh, i) =>
+		i === 0 ? (fine ? 'Scroll to begin' : 'Swipe up to begin')
+			: i === 1 ? verb + ' to follow the leaf'
+				: i === 2 ? verb + ' to follow the light'
+					: i === 3 ? verb + ' for its story'
+						: (i === 6 || i === 7 || i === SHOTS.length - 1) ? ''
+							: verb + ' on');
 
 
 	/* -------------------------------------------------------
@@ -1382,10 +1695,15 @@ module.exports = function createTour(opts) {
 		// the painting wall, and at the far end facing the door
 		[42.5 + PAINTING_X[0] - 7, 0],
 		[42.5 + PAINTING_X[1] - 7, 0],
-		[1e3, Math.PI / 2]
+		[42.5 + PAINTING_X[2] - 7, 0],
+		[1e3, Math.PI / 2],
+		// in the hall, on its centre line, facing each painting
+		...HALL.map((h) => [h.z - 1.6, h.side === 'left' ? -Math.PI / 2 : Math.PI / 2]),
+		[LEAF_REST[2] - 1.6, Math.PI]
 	];
 
 	let restingLeaf = null;
+	let restingDoor = 0;
 
 	function exit() {
 		if (!active || exiting) return;
@@ -1394,7 +1712,9 @@ module.exports = function createTour(opts) {
 		// the leaf stays in the tree, or on the floor where it landed
 		restingLeaf = at <= 1 ? { phase: 'home', pos: LEAF_HOME.slice() }
 			: (at >= 3 && at <= 6) ? { phase: 'floor', pos: LEAF_FLOOR.slice() }
-			: at === 10 ? { phase: 'floor', pos: LEAF_DOOR.slice() } : null;
+			: at === 11 ? { phase: 'floor', pos: LEAF_DOOR.slice() }
+			: at === 18 ? { phase: 'floor', pos: LEAF_REST.slice() } : null;
+		restingDoor = at >= 12 ? 1 : 0;
 		if (h && fps.place) fps.place(h[0], h[1]);
 		exiting = { start: now, fromCam: camNow, fromLook: Object.assign({}, look) };
 		hideUI();
@@ -1434,8 +1754,22 @@ module.exports = function createTour(opts) {
 			m = mat4.rotateZ(m, m, -1.0 + Math.sin(leafClock * 1.3) * 0.12);
 			m = mat4.rotateX(m, m, 0.4);
 		} else if (leaf.phase === 'floor') {
+			// lying on the floor, resting on its curl
 			m = mat4.rotateY(m, m, 0.65);
+			m = mat4.rotateX(m, m, 0.16);
 		} else {
+			// in the air it turns its face to the camera, more or less, and
+			// tumbles about that: wildly in flight, gently while it hangs
+			const e = camNow.eye, p = leaf.pos;
+			let n = [e[0] - p[0], e[1] - p[1], e[2] - p[2]];
+			const nl = Math.hypot(n[0], n[1], n[2]) || 1;
+			n = [n[0] / nl, n[1] / nl, n[2] / nl];
+			let x = [n[2], 0, -n[0]];
+			const xl = Math.hypot(x[0], x[2]) || 1;
+			x = [x[0] / xl, 0, x[2] / xl];
+			const z = [x[1] * n[2] - x[2] * n[1], x[2] * n[0] - x[0] * n[2], x[0] * n[1] - x[1] * n[0]];
+			const face = [x[0], x[1], x[2], 0, n[0], n[1], n[2], 0, z[0], z[1], z[2], 0, p[0], p[1], p[2], 1];
+			for (let i = 0; i < 16; i++) m[i] = face[i];
 			m = mat4.rotateY(m, m, leafClock * 0.9 * k + 0.65);
 			m = mat4.rotateX(m, m, Math.sin(leafClock * 2.3) * 0.9 * k);
 			m = mat4.rotateZ(m, m, Math.sin(leafClock * 1.7 + 1.0) * 1.1 * k + (leaf.swing || 0) * 0.9);
@@ -1460,7 +1794,7 @@ module.exports = function createTour(opts) {
 				tumble: H.tumble
 			};
 		}
-		return { phase: 'floor', pos: (i >= 10 ? LEAF_DOOR : LEAF_FLOOR).slice(), tumble: 0 };
+		return { phase: 'floor', pos: (i >= 18 ? LEAF_REST : i >= 10 ? LEAF_DOOR : LEAF_FLOOR).slice(), tumble: 0 };
 	}
 
 	let lastTime = 0;
@@ -1512,7 +1846,7 @@ module.exports = function createTour(opts) {
 		// the leaf
 		const L = M.leaf(u);
 		if (L.pos) leaf = Object.assign({}, L);
-		else leaf = Object.assign({}, L, { pos: L.phase === 'home' ? LEAF_HOME.slice() : LEAF_FLOOR.slice() });
+		else leaf = Object.assign({}, L, { pos: L.phase === 'home' ? LEAF_HOME.slice() : (idx >= 10 ? LEAF_DOOR : LEAF_FLOOR).slice() });
 		if (HOVER[near] && drift > 0) {
 			const h = leafAtShot(near, restClock);
 			leaf.pos = mix3(leaf.pos, h.pos, drift);
@@ -1579,6 +1913,8 @@ module.exports = function createTour(opts) {
 		return {
 			camera: camNow,
 			walker,
+			// the far door: shut until the gust, then open
+			door: M.door ? M.door(u) : (idx >= 12 ? 1 : 0),
 			look,
 			leaf: leafState(dt)
 		};
@@ -1609,6 +1945,8 @@ module.exports = function createTour(opts) {
 			}
 			return { from: exiting.fromCam, fromLook: exiting.fromLook, k: sineInOut(p) };
 		},
+		// the far door once the tour is over
+		restingDoor: () => restingDoor,
 		// where the leaf is once the tour is over (or null: not shown)
 		restingLeaf() {
 			if (!restingLeaf) return null;

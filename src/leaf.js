@@ -122,10 +122,14 @@ module.exports = (regl) => {
 			float through = (back + 0.35 * front) * pow(max(dot(-V, L), 0.0), 2.0);
 
 			// the room's own soft light, and a rim where it turns from you
-			vec3 col = base * (0.42 + 0.22 * max(N.y, 0.0) + 0.35 * corridorGlow(v_pos));
-			col += vec3(0.85, 0.80, 0.65) * pow(1.0 - abs(dot(N, V)), 3.0) * 0.18;
+			vec3 col = base * (0.62 + 0.25 * max(N.y, 0.0) + 0.35 * corridorGlow(v_pos));
+			col += vec3(0.85, 0.80, 0.65) * pow(1.0 - abs(dot(N, V)), 3.0) * 0.3;
 			col += base * vec3(1.15, 1.05, 0.85) * sun * (front * 1.3 + 0.2);
 			col += vec3(0.70, 0.82, 0.25) * sun * through * 3.6;
+			// in the dim hall, away from any sun, it still catches the soft
+			// light of the room (and of the picture lights) along its edges
+			float shade = 1.0 - clamp(sun * 2.0, 0.0, 1.0);
+			col += (vec3(0.13, 0.17, 0.06) + vec3(0.30, 0.27, 0.18) * pow(1.0 - abs(dot(N, V)), 2.0)) * shade;
 			// a waxy glint
 			vec3 H = normalize(L + V);
 			col += vec3(1.0, 0.95, 0.85) * sun * pow(max(dot(N, H), 0.0), 40.0) * 0.6;

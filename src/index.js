@@ -151,6 +151,9 @@ fps = require('./fps')(
 // the film camera: light shafts, glow, depth of field and the grade
 const post = require('./post')(regl, quality);
 
+// the far door's two leaves, which a gust throws open in the tour
+const drawFarDoor = require('./fardoor')(regl);
+
 // the leaf that falls from the tree, and the dust in the sunbeams
 const drawLeaf = require('./leaf')(regl);
 const drawDust = require('./dust')(regl, quality);
@@ -1067,9 +1070,11 @@ function setCamera(time) {
 		leafNow = t.leaf;
 		// the artist leaves his bench to walk past the camera
 		drawAvatar.setWalk(t.walker || null);
+		drawFarDoor.setOpen(t.door || 0);
 	} else {
 		leafNow = tour.restingLeaf();
 		drawAvatar.setWalk(null);
+		drawFarDoor.setOpen(tour.restingDoor());
 	}
 
 	if (h) {
@@ -1170,7 +1175,9 @@ regl.frame(
 									drawGarden();
 									drawFlorence();
 									drawLeaf(leafNow);
+									drawFarDoor();
 									drawGlass();
+									drawFarDoor.glass();
 								}
 							);
 						}
@@ -1192,10 +1199,12 @@ regl.frame(
 
 						// the leaf, and the dust glinting in the sunbeams
 						drawLeaf(leafNow);
+						drawFarDoor();
 						drawDust();
 
 						// glass last, over everything
 						drawGlass();
+						drawFarDoor.glass();
 					}
 				);
 			}
