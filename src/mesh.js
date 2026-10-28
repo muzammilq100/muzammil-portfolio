@@ -522,6 +522,11 @@ module.exports = (regl, data, useReflexion) => {
       if (isSky > 0.5) {
         vec3 dirUp = normalize(v_pos - v_eye);
         finalColour = skyAbove(dirUp * vec3(1.0, sign(dirUp.y), 1.0)) * 0.92;
+        // the sun itself, blazing through the glass (the dome over the
+        // tree has its own sun, a little to one side)
+        vec3 sunDir = v_pos.x > 14.0 ? SHAFT : SKY_SUN;
+        float sd = max(dot(dirUp * vec3(1.0, sign(dirUp.y), 1.0), sunDir), 0.0);
+        finalColour = finalColour * 1.08 + vec3(1.0, 0.92, 0.78) * (pow(sd, 48.0) * 1.8 + pow(sd, 6.0) * 0.3);
       }
 
       float alpha = 1.0;

@@ -245,6 +245,17 @@ function skylightGLSL() {
 		return open * (1.0 - cover * 0.9);
 	}
 
+	// the same light for the beams in the air: the whole opening glows a
+	// little, and the panes and bars show in it, softly
+	float skylightVol(vec3 p) {
+		if (p.y > ${f(HEIGHT - 0.1)}) return 0.0;
+		vec3 L = SKY_SUN;
+		vec2 q = (p + L * ((${f(GLASS_Y)} - p.y) / L.y)).xz;
+		float open = rectOpen(q, vec4(${f(X_START)}, ${f(Z_START)}, ${f(X_END)}, ${f(Z_END)}), 0.25);
+		if (open <= 0.0) return 0.0;
+		return open * (0.2 + 0.8 * skylightAt(p));
+	}
+
 	// a soft daylight glow under the lantern
 	float skylightGlow(vec3 p) {
 		float z = smoothstep(${f(Z_START - 3.0)}, ${f(Z_START + 2.0)}, p.z)

@@ -1379,6 +1379,21 @@ function (
 			},
 
 
+		// put the visitor at distance s along the walk, facing heading
+		// (used when the tour hands over to free walking)
+		place:
+			(s, heading) => {
+				pathS = Math.max(0, Math.min(PATH_LEN, s));
+				const p = pathPoint(pathS);
+				pos[0] = p[0];
+				pos[2] = p[1];
+				mouse[1] = heading;
+				fmouse[1] = heading;
+				turnAccum = 0;
+				lastTowards = 1;
+			},
+
+
 		view:
 			() => view,
 

@@ -1,0 +1,39 @@
+name: Cinematic preview
+# Builds this branch and publishes it to the gh-pages branch under /preview,
+# so it can be tried at https://muzammilq100.github.io/muzammil-portfolio/preview/
+# without touching master or the live Cloudflare site.
+permissions:
+  contents: write
+on:
+  push:
+    branches:
+      - cinematic-preview
+  workflow_dispatch:
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '12.x'
+      - name: Install dependencies
+        run: npm ci
+      - name: Build
+        run: npm run build
+      - name: Gather the site
+        run: |
+          mkdir -p preview-site
+          mv build.html preview-site/index.html
+          cp -r res images preview-site/
+      - name: Publish under /preview
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          branch: gh-pages
+          folder: preview-site
+          target-folder: preview
+          clean: true
+          token: ${{ secrets.GITHUB_TOKEN }}

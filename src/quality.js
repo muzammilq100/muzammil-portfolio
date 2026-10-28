@@ -15,6 +15,8 @@
  *     worked out live
  *   - all the garden's leaves       - about two thirds of them
  *   - swaying leaves, moving clouds - still leaves and clouds
+ *   - light shafts in fine detail,  - light shafts in less detail,
+ *     depth of field                  no depth of field
  *
  * After loading, the frame rate is measured. If a laptop struggles it
  * steps down one notch at a time (first the floor shine, then the
@@ -50,6 +52,9 @@ const Q = {
 	gardenDetail: isPhone ? 0 : 1,
 	leafShare: isPhone ? 0.65 : 1,
 	motion: !isPhone,
+	// the film camera (post.js): 2 everything, 1 lighter light shafts and
+	// no depth of field, 0 no light shafts
+	post: isPhone ? 1 : 2,
 
 	level: isPhone ? 1 : 0
 };
@@ -62,6 +67,8 @@ Q.stepDown = () => {
 		Q.gardenDetail = 0;
 		Q.motion = false;
 		Q.leafShare = Math.min(Q.leafShare, 0.65);
+	} else if (Q.post > 0) {
+		Q.post--;
 	} else {
 		return false;
 	}
