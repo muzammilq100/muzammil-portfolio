@@ -135,7 +135,7 @@ const SHOTS = [
 		ui: 'intro',
 		look: { letterbox: 1, exposure: 1.0, focus: 14, aperture: 0.25, vignette: 0.1 },
 		cam(tt) {
-			const push = 2.2 * (1 - Math.exp(-tt / 14));
+			const push = 0.9 * (1 - Math.exp(-tt / 14));
 			const sway = [0, Math.sin(tt * 0.37) * 0.025, Math.sin(tt * 0.23) * 0.06];
 			const base = framed(
 				cam([WING.x0 + 0.9, 1.85, WING.zc + 0.25], [WING.x1, 2.85, WING.zc - 0.1], 64),
@@ -818,19 +818,49 @@ module.exports = function createTour(opts) {
 
 	/* -------------------------------------------------------
 	 * STATE
+	 *
+	 * The whole tour is one strip of film, `scroll` seconds long: each
+	 * move takes up its own length of it (MOVES[i].dur), and the shots
+	 * sit at the joins. Scrolling or swiping winds the film on or back,
+	 * and the camera only moves while the visitor does; it eases to a
+	 * stop when they stop. Resting near a shot, it settles onto it and
+	 * the words appear.
 	 * ----------------------------------------------------- */
 
+	// where each shot sits on the strip
+	const AT = [0];
+	MOVES.forEach((m) => AT.push(AT[AT.length - 1] + m.dur));
+	const END = AT[AT.length - 1];
+
+	// how far a scroll wheel or a finger winds the film
+	const WHEEL_PX_PER_SEC = 150;       // pixels of scrolling per second of film
+	const TOUCH_PX_PER_SEC = 70;        // pixels of finger travel per second of film
+	const EASE = 4.2;                   // how quickly the camera catches up
+	const MAX_LEAD = 2.2;               // the camera never lags more than this behind
+	const SETTLE_AFTER = 0.7;           // seconds of stillness before settling on a shot
+	const SETTLE_NEAR = 0.9;            // ...if it is within this much film of one
+
 	let active = true;
-	let current = 0;          // the shot we are at (or leaving)
-	let move = null;          // { from, to, dir, start, fromCam, fromLeaf }
-	let arrived = 0;          // when we arrived at `current`
+	let scroll = 0;            // where the camera is on the strip
+	let target = 0;            // where the visitor has wound it to
+	let lastInput = -10;       // when they last scrolled or swiped
+	let auto = false;          // a key, click or tap: glide to the next shot
+	let shown = -1;            // the shot whose words are on screen
+	let restShot = 0;          // the shot the drift belongs to
+	let restClock = 0;         // how long we have rested there
 	let now = 0;
-	let exiting = null;       // { start, fromCam }
+	let exiting = null;        // { start, fromCam }
 
 	const look = Object.assign({}, lookOf(0));
 	let camNow = SHOTS[0].cam(0);
 	let leaf = { phase: 'home', pos: LEAF_HOME.slice(), tumble: 0 };
 	let leafClock = 0;
+
+	const nearestShot = (s) => {
+		let best = 0;
+		for (let i = 1; i < AT.length; i++) if (Math.abs(AT[i] - s) < Math.abs(AT[best] - s)) best = i;
+		return best;
+	};
 
 	function showUI(i) {
 		if (i === 4) {
@@ -840,7 +870,6 @@ module.exports = function createTour(opts) {
 			void story.offsetWidth;
 		}
 		cards.forEach((c, k) => c.classList.toggle('on', k === i));
-		progress.querySelectorAll('i').forEach((e, k) => e.classList.toggle('on', k === i));
 		hintText.textContent = HINTS[i] || '';
 		hint.classList.toggle('on', !!HINTS[i]);
 	}
@@ -849,47 +878,27 @@ module.exports = function createTour(opts) {
 		hint.classList.remove('on');
 	}
 
-	function go(dir, fromWheel) {
+	// wind the film on (or back) by `secs`
+	function wind(secs) {
 		if (!active || exiting) return;
-		if (move) {
-			// (a scroll wheel keeps sending for a while after one flick:
-			// it never changes a move already under way)
-			if (fromWheel) return;
-			if (dir === move.dir) {
-				// impatient: the same way again plays the move faster
-				move.speed = Math.min(3, move.speed + 1.2);
-			} else {
-				// changed their mind: turn round from right where we are
-				move.dir = dir;
-				move.p = 1 - move.p;
-				const t = move.from;
-				move.from = move.to;
-				move.to = t;
-				move.fromCam = null;
-				move.fromLeaf = null;
-				move.speed = 1.6;
-				progress.querySelectorAll('i').forEach((e, k) => e.classList.toggle('on', k === move.to));
-			}
-			return;
-		}
-		const to = current + dir;
-		if (to < 0 || to >= SHOTS.length) return;
-		hideUI();
-		// the move that joins the two shots (played backwards when going back)
-		const idx = dir > 0 ? current : to;
-		move = {
-			idx,
-			dir,
-			from: current,
-			to,
-			start: now,
-			p: 0,
-			speed: 1,
-			fromCam: camNow,
-			fromLook: Object.assign({}, look),
-			fromLeaf: leaf.pos.slice()
-		};
-		progress.querySelectorAll('i').forEach((e, k) => e.classList.toggle('on', k === to));
+		auto = false;
+		lastInput = now;
+		target = Math.max(0, Math.min(END, target + secs));
+		// never let the camera fall too far behind a fast flick
+		target = Math.max(scroll - MAX_LEAD, Math.min(scroll + MAX_LEAD, target));
+	}
+
+	// a key, click or tap: glide on to the next shot (or back to the last)
+	function go(dir) {
+		if (!active || exiting) return;
+		const here = auto ? target : scroll;
+		let i;
+		if (dir > 0) i = AT.findIndex((a) => a > here + 0.05);
+		else { i = -1; for (let k = AT.length - 1; k >= 0; k--) if (AT[k] < here - 0.05) { i = k; break; } }
+		if (i < 0) return;
+		target = AT[i];
+		auto = true;
+		lastInput = now;
 	}
 
 
@@ -897,34 +906,46 @@ module.exports = function createTour(opts) {
 	 * INPUT: swipes, scrolling, keys, clicks
 	 * ----------------------------------------------------- */
 
-	let down = null;
-	let wheelLock = 0;
+	let drag = null;
 
 	const stop = (e) => e.stopPropagation();
 	['touchstart', 'touchmove', 'touchend', 'mousedown', 'mouseup', 'click', 'contextmenu'].forEach((t) => root.addEventListener(t, stop));
 
+	// a finger (or a mouse dragged like one) winds the film as it moves:
+	// up or left = onwards, down or right = back
 	root.addEventListener('pointerdown', (e) => {
 		e.stopPropagation();
 		if (e.target.closest('button') || e.target.closest('.tour-body')) return;
-		down = { x: e.clientX, y: e.clientY, t: performance.now() };
+		drag = { x: e.clientX, y: e.clientY, lx: e.clientX, ly: e.clientY, t: performance.now(), moved: 0, v: 0, lt: performance.now() };
+		try { root.setPointerCapture(e.pointerId); } catch (err) { /* not needed */ }
 	});
-	root.addEventListener('pointerup', (e) => {
-		e.stopPropagation();
-		const d = down;
-		down = null;
+	root.addEventListener('pointermove', (e) => {
+		if (!drag) return;
+		const dx = e.clientX - drag.lx, dy = e.clientY - drag.ly;
+		drag.lx = e.clientX; drag.ly = e.clientY;
+		const d = Math.abs(dy) >= Math.abs(dx) ? -dy : -dx;
+		drag.moved += Math.abs(d);
+		const t = performance.now();
+		const secs = d / TOUCH_PX_PER_SEC;
+		// keep a running speed, for the glide after the finger lifts
+		drag.v = drag.v * 0.6 + (secs / Math.max(0.008, (t - drag.lt) / 1000)) * 0.4;
+		drag.lt = t;
+		if (drag.moved > 6) wind(secs);
+	});
+	const endDrag = (e) => {
+		const d = drag;
+		drag = null;
 		if (!d) return;
-		const dx = e.clientX - d.x, dy = e.clientY - d.y;
-		const dist = Math.hypot(dx, dy);
-		if (dist > 40) {
-			// up or left = onwards, down or right = back
-			const onwards = Math.abs(dy) > Math.abs(dx) ? dy < 0 : dx < 0;
-			go(onwards ? 1 : -1);
-		} else if (dist < 10 && performance.now() - d.t < 500) {
-			// a tap or click moves on too
+		if (d.moved < 10 && performance.now() - d.t < 500) {
+			// a tap or click: on to the next shot
 			go(1);
+		} else if (performance.now() - d.lt < 120) {
+			// a flick carries on a little, like a page
+			wind(Math.max(-1.6, Math.min(1.6, d.v * 0.22)));
 		}
-	});
-	root.addEventListener('pointercancel', () => { down = null; });
+	};
+	root.addEventListener('pointerup', (e) => { e.stopPropagation(); endDrag(e); });
+	root.addEventListener('pointercancel', () => { drag = null; });
 
 	root.addEventListener('wheel', (e) => {
 		if (e.target.closest('.tour-body')) {
@@ -934,13 +955,8 @@ module.exports = function createTour(opts) {
 			if (!atEnd && !atTop) return;
 		}
 		e.preventDefault();
-		if (performance.now() < wheelLock || Math.abs(e.deltaY) < 8) {
-			// still scrolling from the last flick: wait for it to calm down
-			wheelLock = Math.max(wheelLock, performance.now() + 250);
-			return;
-		}
-		wheelLock = performance.now() + 1200;
-		go(e.deltaY > 0 ? 1 : -1, true);
+		const px = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaMode === 2 ? e.deltaY * window.innerHeight : e.deltaY;
+		wind(px / WHEEL_PX_PER_SEC);
 	}, { passive: false });
 
 	window.addEventListener('keydown', (e) => {
@@ -995,7 +1011,7 @@ module.exports = function createTour(opts) {
 
 	function exit() {
 		if (!active || exiting) return;
-		const at = move ? move.to : current;
+		const at = nearestShot(scroll);
 		const h = HANDOVER[at];
 		// the leaf stays in the tree, or on the floor where it landed
 		restingLeaf = at <= 1 ? { phase: 'home', pos: LEAF_HOME.slice() } : at >= 3 ? { phase: 'floor', pos: LEAF_FLOOR.slice() } : null;
@@ -1008,13 +1024,13 @@ module.exports = function createTour(opts) {
 	}
 
 	function replay() {
-		current = 0;
-		move = null;
-		arrived = now;
+		scroll = target = 0;
+		auto = false;
+		shown = -1;
+		restShot = 0;
+		restClock = 0;
 		leaf = { phase: 'home', pos: LEAF_HOME.slice(), tumble: 0 };
-		Object.assign(look, lookOf(0), { fade: 1, fadeColor: [0, 0, 0] });
 		fadeIn = { start: now };
-		showUI(0);
 	}
 
 	// the very first frame fades up from black
@@ -1051,91 +1067,116 @@ module.exports = function createTour(opts) {
 		for (const k in DEFAULT_LOOK) look[k] = l[k] !== undefined ? l[k] : DEFAULT_LOOK[k];
 	}
 
+	// the leaf where a shot leaves it
+	function leafAtShot(i, tt) {
+		if (i <= 1) return { phase: 'home', pos: LEAF_HOME.slice(), tumble: 0 };
+		if (i === 2) {
+			// hovering and turning in the sun
+			return {
+				phase: 'fly',
+				pos: add3(LEAF_SKY, [Math.sin(tt * 0.55) * 0.18, Math.sin(tt * 0.8) * 0.07, (1 - Math.cos(tt * 0.45)) * 0.12]),
+				tumble: 0.5
+			};
+		}
+		return { phase: 'floor', pos: LEAF_FLOOR.slice(), tumble: 0 };
+	}
+
 	let lastTime = 0;
 
 	function update(time) {
 		const dt = Math.min(0.1, Math.max(0, time - lastTime));
 		lastTime = time;
 		now = time;
-		if (!started) { started = true; fadeIn.start = time; arrived = time; showUI(0); }
+		if (!started) { started = true; fadeIn.start = time; }
 
 		if (exiting) {
 			return null;
 		}
 
-		if (move) {
-			const M = MOVES[move.idx];
-			move.p = clamp01(move.p + dt * move.speed / M.dur);
-			const p = move.p;
-			// u runs forwards along the move, or backwards when going back
-			const u = move.dir > 0 ? p : 1 - p;
-			const A = SHOTS[move.idx], B = SHOTS[move.idx + 1];
-			const aCam = A.cam(0), bCam = B.cam(0);
+		// resting near a shot: settle onto it
+		if (!auto && !drag && now - lastInput > SETTLE_AFTER) {
+			const i = nearestShot(target);
+			if (Math.abs(AT[i] - target) < SETTLE_NEAR) target = AT[i];
+		}
 
-			// the leaf
-			const L = M.leaf(u);
-			if (L.pos) {
-				// blend from wherever the leaf really was when the move began
-				const w = move.fromLeaf ? 1 - smooth(0, 0.25, p) : 0;
-				const startPos = move.dir > 0 ? M.leaf(0).pos : M.leaf(1).pos;
-				const off = startPos && move.fromLeaf ? sub3(move.fromLeaf, startPos) : [0, 0, 0];
-				leaf = Object.assign({}, L, { pos: add3(L.pos, scale3(off, w)) });
-			} else {
-				leaf = Object.assign({}, L, { pos: L.phase === 'home' ? LEAF_HOME.slice() : LEAF_FLOOR.slice() });
-			}
-
-			// the camera, joined smoothly to where it really was
-			let c = M.cam(u, aCam, bCam, leaf);
-			const startCam = move.dir > 0 ? M.cam(0, aCam, bCam, leaf) : M.cam(1, aCam, bCam, leaf);
-			const w = move.fromCam ? 1 - sineInOut(clamp01(p / 0.35)) : 0;
-			if (w > 0) c = cam(
-				add3(c.eye, scale3(sub3(move.fromCam.eye, startCam.eye), w)),
-				add3(c.target, scale3(sub3(move.fromCam.target, startCam.target), w)),
-				c.fov + (move.fromCam.fov - startCam.fov) * w,
-				c.roll + (move.fromCam.roll - startCam.roll) * w
-			);
-			camNow = c;
-
-			const la = lookOf(move.idx), lb = lookOf(move.idx + 1);
-			const l = M.look(u, la, lb, leaf, c.eye);
-			setLook(Object.assign({}, la, l));
-
-			if (p >= 1) {
-				current = move.to;
-				move = null;
-				arrived = time;
-				showUI(current);
-				wheelLock = performance.now() + 450;
-			}
+		// the camera catches up with where the visitor has wound the film:
+		// smoothly, so it glides on a little after a swipe and eases to a stop
+		const gap = target - scroll;
+		if (auto) {
+			// a key or tap: play the move at its natural pace
+			const step = Math.sign(gap) * Math.min(Math.abs(gap), dt * (0.35 + 0.65 * smooth(0, 0.6, Math.abs(gap))) * 1.0);
+			scroll += step;
+			if (Math.abs(target - scroll) < 1e-4) { scroll = target; auto = false; }
 		} else {
-			const tt = time - arrived;
-			camNow = SHOTS[current].cam(tt);
-			if (current === 4 && !storyFilled) {
-				// the painting's words arrived late (slow connection)
-				fillStory();
-				if (storyFilled) {
-					story.classList.remove('on');
-					void story.offsetWidth;
-					story.classList.add('on');
-				}
+			scroll += gap * (1 - Math.exp(-dt * EASE));
+			if (Math.abs(gap) < 1e-4) scroll = target;
+		}
+
+		// which move we are in, and how far along it
+		let idx = 0;
+		while (idx < MOVES.length - 1 && scroll >= AT[idx + 1]) idx++;
+		const M = MOVES[idx];
+		const u = clamp01((scroll - AT[idx]) / M.dur);
+		const A = SHOTS[idx], B = SHOTS[idx + 1];
+
+		// the slow drift of the shot we rest at (or have just left)
+		const near = nearestShot(scroll);
+		if (near !== restShot) { restShot = near; restClock = 0; }
+		const resting = Math.abs(scroll - AT[near]) < 0.02;
+		if (resting) restClock += dt;
+		const drift = 1 - smooth(0, 1.2, Math.abs(scroll - AT[near]));
+
+		// the leaf
+		const L = M.leaf(u);
+		if (L.pos) leaf = Object.assign({}, L);
+		else leaf = Object.assign({}, L, { pos: L.phase === 'home' ? LEAF_HOME.slice() : LEAF_FLOOR.slice() });
+		if (near === 2 && drift > 0) {
+			const h = leafAtShot(2, restClock);
+			leaf.pos = mix3(leaf.pos, h.pos, drift);
+		}
+
+		// the camera: the move's path, plus the resting shot's drift
+		let c = M.cam(u, A.cam(0), B.cam(0), leaf);
+		if (drift > 0 && restClock > 0) {
+			const S = SHOTS[near];
+			const d0 = S.cam(0), d1 = S.cam(restClock);
+			c = cam(
+				add3(c.eye, scale3(sub3(d1.eye, d0.eye), drift)),
+				add3(c.target, scale3(sub3(d1.target, d0.target), drift)),
+				c.fov + (d1.fov - d0.fov) * drift,
+				c.roll + (d1.roll - d0.roll) * drift
+			);
+		}
+		camNow = c;
+
+		const la = lookOf(idx), lb = lookOf(idx + 1);
+		setLook(Object.assign({}, la, M.look(u, la, lb, leaf, c.eye)));
+
+		// the words: only once the camera has come to rest on a shot
+		const settled = resting && Math.abs(target - scroll) < 0.02;
+		const want = settled ? near : -1;
+		if (want !== shown) {
+			shown = want;
+			if (want >= 0) showUI(want);
+			else hideUI();
+		}
+		progress.querySelectorAll('i').forEach((e, k) => e.classList.toggle('on', k === near));
+
+		if (shown === 4 && !storyFilled) {
+			// the painting's words arrived late (slow connection)
+			fillStory();
+			if (storyFilled) {
+				story.classList.remove('on');
+				void story.offsetWidth;
+				story.classList.add('on');
 			}
-			setLook(lookOf(current));
-			if (current <= 1) leaf = { phase: 'home', pos: LEAF_HOME.slice(), tumble: 0 };
-			else if (current === 2) {
-				// hovering and turning in the sun
-				leaf = {
-					phase: 'fly',
-					pos: add3(LEAF_SKY, [Math.sin(tt * 0.55) * 0.18, Math.sin(tt * 0.8) * 0.07, (1 - Math.cos(tt * 0.45)) * 0.12]),
-					tumble: 0.5
-				};
-			} else leaf = { phase: 'floor', pos: LEAF_FLOOR.slice(), tumble: 0 };
 		}
 
 		// fading up from black at the start (and on replay)
 		const fi = clamp01((time - fadeIn.start) / 2.6);
 		if (fi < 1) {
 			look.fade = Math.max(look.fade, 1 - smooth(0, 1, fi));
-			look.fadeColor = look.fade > 0 && !(move && move.idx === 0) ? [0, 0, 0] : look.fadeColor;
+			look.fadeColor = [0, 0, 0];
 		}
 
 		if (DEBUG && window.__camOverride) camNow = window.__camOverride;
@@ -1150,11 +1191,12 @@ module.exports = function createTour(opts) {
 	// test hooks (only with ?tourdebug in the address)
 	if (DEBUG) {
 		window.__tour = {
-			go, exit,
-			jump(i) { current = i; move = null; arrived = now; fadeIn.start = now - 10; started = true; showUI(i); },
-			state: () => ({ current, move, camNow, leaf, look })
+			go, exit, wind,
+			jump(i) { scroll = target = AT[i]; auto = false; restClock = 0; lastInput = now; fadeIn.start = now - 10; started = true; },
+			state: () => ({ current: nearestShot(scroll), scroll: +scroll.toFixed(3), target: +target.toFixed(3), shown, move: Math.abs(target - scroll) > 0.02 ? { p: scroll } : null, camNow, leaf, look })
 		};
 	}
+
 
 	return {
 		update,
