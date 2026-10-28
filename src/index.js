@@ -158,8 +158,8 @@ const drawDust = require('./dust')(regl, quality);
 // the cinematic tour the visit opens with (see tour.js)
 const tour = require('./tour')({
 	fps,
-	// the masterpiece at the end of the hall, once it has loaded
-	masterpiece: () => placement.interactables().find((p) => p.side === 'end'),
+	// the paintings (with their titles and words), once they have loaded
+	paintings: () => placement.interactables(),
 	onExit: () => fps.setPaused(false)
 });
 fps.setPaused(true);
@@ -1065,8 +1065,11 @@ function setCamera(time) {
 		c = t.camera;
 		look = t.look;
 		leafNow = t.leaf;
+		// the artist leaves his bench to walk past the camera
+		drawAvatar.setWalk(t.walker || null);
 	} else {
 		leafNow = tour.restingLeaf();
+		drawAvatar.setWalk(null);
 	}
 
 	if (h) {

@@ -52,14 +52,18 @@ The gallery now opens with a guided, cinematic tour instead of dropping the visi
 3. **The leaf** – a leaf lets go of the tree; the camera follows it out through the arch and up into the sunlight under the skylight.
 4. **Down the hall** – the leaf drifts down the hall and lands on the polished floor in front of the masterpiece; the camera rises to reveal it.
 5. **Its story** – the camera eases aside and the title writes itself in, followed by the description.
+6. **Footsteps** – down at the leaf on the floor; the artist's shoes walk into a close, letterboxed shot, and as he passes, his step lifts the leaf back into the air.
+7. **The corridor** – the leaf drifts into the window corridor and hangs before the first painting, then the second (a little lower), each with its story, turning gently while you read.
+8. **The door** – it sinks and comes to rest on the floor before the far door, where the tour ends.
 
-Swiping back plays the moves in reverse; swiping again during a move speeds it up. "Explore freely" (top right) or Escape hands over to the normal walking mode at any time, from wherever the tour is.
+The camera only moves while you scroll or swipe, easing to a stop when you stop, and settling onto a shot (with its words) when you stop near one. Arrow keys, Space and taps glide on to the next shot. "Explore freely" (top right) or Escape hands over to the normal walking mode at any time, from wherever the tour is.
 
 Where it lives:
 
 - `src/tour.js` – the shots, the camera moves between them, the leaf's path, the words on screen and the swipe/scroll/key handling. Each shot is framed twice, for a phone held upright and for a wide screen.
 - `src/post.js` – the "film camera": the gallery is drawn off-screen and finished with light shafts (worked out from the real skylight, dome, window and door openings, so the glazing bars show in the beams), glow, depth of field, a darker filmic grade, vignette, grain, letterbox bars and fades. It also smooths edges (FXAA). Phones get a lighter version, and it steps down automatically on slow devices (see `quality.js`).
 - `src/leaf.js` – the falling leaf, lit by the same sun as the room.
+- `src/avatar.js` – also has the artist's walk (a gait cycle for hips, knees, ankles and toes, with the stance foot kept on the floor), used for the footsteps shot.
 - `src/dust.js` – dust motes that glint only inside the sunbeams.
 
 The overall darkness and the strength of the effects are set in `LOOK` at the top of `src/post.js`; each shot's own exposure, depth of field and letterbox are in `SHOTS` in `src/tour.js`.

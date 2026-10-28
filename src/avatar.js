@@ -158,6 +158,61 @@ for (const side of ['Left', 'Right']) {
 
 
 /* ===========================================================
+ * WALKING
+ * ===========================================================
+ *
+ * In the tour he also walks past the camera, which sees only his shoes
+ * and the bottom of his trousers. The walk is a gait cycle, phase 0..1
+ * from his left heel striking the floor: the angles of hip, knee, ankle
+ * and toes follow the curves of a normal human walk, the right leg half
+ * a cycle behind the left. The pelvis turns a little with each step, the
+ * arms swing against the legs, and the whole body is lowered every frame
+ * so that whichever foot is down stands exactly on the floor.
+ */
+
+const STRIDE = 1.42;            // metres covered in one full cycle (two steps)
+
+// a smooth bump centred on c (phase wraps round)
+function bump(x, c, w) {
+	let d = x - c;
+	d -= Math.round(d);
+	return Math.exp(-(d / w) * (d / w));
+}
+
+function legAngles(f) {
+	const hip = 9 + 20 * Math.cos(2 * Math.PI * f);                       // + = thigh forward
+	const knee = 4 + 13 * bump(f, 0.14, 0.07) + 57 * bump(f, 0.72, 0.12);   // + = bent
+	const ankle = 5 * bump(f, 0.06, 0.04) - 9 * bump(f, 0.42, 0.12) + 17 * bump(f, 0.62, 0.05) - 3 * bump(f, 0.85, 0.1);  // + = toes down
+	const toe = -26 * bump(f, 0.58, 0.06);                                 // - = toes bent up
+	return { hip, knee, ankle, toe };
+}
+
+function walkPose(phase) {
+	const f = ((phase % 1) + 1) % 1;
+	const L = legAngles(f), R = legAngles(f + 0.5);
+	const c = Math.cos(2 * Math.PI * f), sn = Math.sin(2 * Math.PI * f);
+	// (in the body's own axes: x to his left, y up, z in front of him;
+	// a thigh swings forward with a negative turn about x)
+	return {
+		swing: {
+			LeftArm: [16 * c, 0, 0], RightArm: [-16 * c, 0, 0],
+			LeftForeArm: [0, -14 - 8 * Math.max(0, -c), 0], RightForeArm: [0, 14 + 8 * Math.max(0, c), 0]
+		},
+		pose: {
+			Hips: [0, 5 * sn, 1.5 * Math.cos(4 * Math.PI * f)],
+			Spine1: [3, -4 * sn, 0],
+			LeftUpLeg: [-L.hip, 0, 0], LeftLeg: [L.knee, 0, 0], LeftFoot: [L.ankle, 0, 0], LeftToeBase: [L.toe, 0, 0],
+			RightUpLeg: [-R.hip, 0, 0], RightLeg: [R.knee, 0, 0], RightFoot: [R.ankle, 0, 0], RightToeBase: [R.toe, 0, 0],
+			// arms down by his sides (they are held out straight in the model)
+			LeftArm: [0, 0, -78], RightArm: [0, 0, 78],
+			LeftHand: [0, 0, -8], RightHand: [0, 0, 8]
+		},
+		sway: 0.022 * c
+	};
+}
+
+
+/* ===========================================================
  * SHADERS
  * ===========================================================
  */
@@ -683,7 +738,57 @@ module.exports = (regl) => {
 		const skinMats = new Array(nb);
 		let lastPose = -1;
 
-		function pose(t) {
+		// standing on the gallery floor at (x, z), facing `heading` (radians
+		// about y; 0 faces +z, a quarter turn faces +x)
+		const standAt = (x, z, heading) => mmul(
+			trs([x, 0, z], qaxis([0, 1, 0], heading), [1, 1, 1]),
+			trs([0, 0, 0], [0, 0, 0, 1], [S, S, S])
+		);
+		const footBones = ['LeftFoot', 'RightFoot', 'LeftToeBase', 'RightToeBase'].map((n) => byName[n]);
+		const footRest = footBones.map((i) => restWorld[i][13] * S);
+
+		function walkingPose(w) {
+			const P = walkPose(w.phase);
+			const deltas = {};
+			const addPose = (Q) => {
+				for (const k in Q) {
+					const e = Q[k];
+					const q = qeuler(e[0], e[1], e[2]);
+					deltas[k] = deltas[k] ? qmul(deltas[k], q) : q;
+				}
+			};
+			// (the swing is added first so that it turns the arms after they
+			// have been lowered)
+			addPose(P.swing);
+			addPose(P.pose);
+			// a little side to side over the standing foot
+			const hx = Math.cos(w.heading), hz = -Math.sin(w.heading);
+			const place = standAt(w.x + hx * P.sway, w.z + hz * P.sway, w.heading);
+			const world = new Array(nb);
+			for (let i = 0; i < nb; i++) {
+				const b = bones[i];
+				let local = restLocal[i];
+				const D = deltas[b.name];
+				if (D) {
+					const W = restWorldQ[i];
+					const L = qmul(qconj(W), qmul(D, W));
+					local = trs(b.t, qmul(b.r, L), b.s);
+				}
+				world[i] = b.parent < 0 ? mmul(place, local) : mmul(world[b.parent], local);
+			}
+			// lower (or raise) him so the foot that is down rests on the floor
+			let drop = Infinity;
+			footBones.forEach((i, k) => { drop = Math.min(drop, world[i][13] - footRest[k]); });
+			for (let i = 0; i < nb; i++) {
+				world[i] = world[i].slice();
+				world[i][13] -= drop;
+				skinMats[i] = mmul(world[i], ibm[i]);
+			}
+			return { blink: 0 };
+		}
+
+		function pose(t, w) {
+			if (w) return walkingPose(w);
 			const breath = Math.sin(t * 2 * Math.PI / 4.2);
 			const blinkT = (t % 3.7);
 			const blink = blinkT < 0.16 ? Math.sin(blinkT / 0.16 * Math.PI) : 0;
@@ -776,7 +881,7 @@ module.exports = (regl) => {
 				const l = Math.hypot(qx, qy, qz) || 1;
 				outN[i * 3] = qx / l; outN[i * 3 + 1] = qy / l; outN[i * 3 + 2] = qz / l;
 			}
-			if (m.grid) drape(p);
+			if (m.grid && !walking) drape(p);
 			p.pb.subdata(outP);
 			p.nbuf.subdata(outN);
 		}
@@ -799,8 +904,11 @@ module.exports = (regl) => {
 			for (let k = 0; k < nO.length; k += 3) { nO[k] = 0; nO[k + 1] = 1; nO[k + 2] = 0; }
 		}
 
-		function update(t) {
-			const st = pose(t);
+		let walking = false;
+
+		function update(t, w) {
+			walking = !!w;
+			const st = pose(t, w);
 			const morphW = { eyeBlinkLeft: st.blink, eyeBlinkRight: st.blink };
 			for (const p of parts) skin(p, Object.keys(p.morphs).length ? morphW : null);
 			state.pose = st;
@@ -859,14 +967,20 @@ module.exports = (regl) => {
 	}
 
 	let lastT = -1;
+	let lastWalk = '';
+	// the tour sets this while he walks past the camera ({ x, z, heading,
+	// phase }); null puts him back on his bench
+	let walk = null;
 
 	function draw(ctx) {
 		if (!ready) return;
 		const t = quality.motion ? clock() : clock();
+		const wk = walk ? [walk.x, walk.z, walk.heading, walk.phase].map((v) => v.toFixed(4)).join() : '';
 		// on phones the figure is re-posed at most 30 times a second
-		if (Math.abs(t - lastT) > (quality.isPhone ? 1 / 30 : 0)) {
-			ready.update(t);
+		if (wk !== lastWalk || (!walk && Math.abs(t - lastT) > (quality.isPhone ? 1 / 30 : 0))) {
+			ready.update(t, walk);
 			lastT = t;
+			lastWalk = wk;
 		}
 		for (const p of ready.parts) {
 			if (p.blend) continue;
@@ -874,7 +988,7 @@ module.exports = (regl) => {
 		}
 		// the book over his face, and the brush floating above him
 		const st = ready.state;
-		if (st.headM) {
+		if (st.headM && !walk) {
 			drawBook({ model: bookMatrix(st) });
 			const hp = st.headPos;
 			const bob = Math.sin(t * 1.3) * 0.02;
@@ -895,6 +1009,7 @@ module.exports = (regl) => {
 
 	draw.state = state;
 	draw.place = PLACE;
+	draw.setWalk = (w) => { walk = w || null; if (walk) state.glow = 0; };
 	return draw;
 };
 

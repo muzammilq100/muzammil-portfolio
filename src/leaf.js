@@ -17,6 +17,7 @@
 
 const { skylightGLSL } = require('./skylight');
 const { oculusGLSL } = require('./alcove');
+const { windowLightGLSL } = require('./wing');
 
 const LENGTH = 0.22;   // a little larger than life, so it reads on screen
 
@@ -90,6 +91,7 @@ module.exports = (regl) => {
 
 		${skylightGLSL()}
 		${oculusGLSL()}
+		${windowLightGLSL()}
 
 		void main() {
 			if (yScale < 0.0 && v_pos.y < 0.0) discard;
@@ -110,6 +112,9 @@ module.exports = (regl) => {
 			if (v_pos.x > 14.0) dome = oculusOpen(v_pos) * treeShade(v_pos);
 			vec3 L = v_pos.x > 14.0 ? SHAFT : SKY_SUN;
 			float sun = max(sky, dome);
+			// in the corridor: daylight from the garden windows
+			float win = windowLight(v_pos, WIN_SKY);
+			if (win > sun) { sun = win * 0.8; L = WIN_SKY; }
 
 			float front = max(dot(N, L), 0.0);
 			float back = max(dot(-N, L), 0.0);
@@ -117,7 +122,7 @@ module.exports = (regl) => {
 			float through = (back + 0.35 * front) * pow(max(dot(-V, L), 0.0), 2.0);
 
 			// the room's own soft light, and a rim where it turns from you
-			vec3 col = base * (0.42 + 0.22 * max(N.y, 0.0));
+			vec3 col = base * (0.42 + 0.22 * max(N.y, 0.0) + 0.35 * corridorGlow(v_pos));
 			col += vec3(0.85, 0.80, 0.65) * pow(1.0 - abs(dot(N, V)), 3.0) * 0.18;
 			col += base * vec3(1.15, 1.05, 0.85) * sun * (front * 1.3 + 0.2);
 			col += vec3(0.70, 0.82, 0.25) * sun * through * 3.6;
