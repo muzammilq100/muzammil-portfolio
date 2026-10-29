@@ -585,12 +585,14 @@ function atFarDoor(B, fn) {
 function addFarDoor(B) {
 	atFarDoor(B, () => {
 		entrance.addSurround(B);
-		entrance.addFrames(B);
+		// (the two leaves are drawn by fardoor.js, so they can open)
+		entrance.addFrames(B, 'fixed');
 	});
 }
 
-function farDoorGlass() {
-	const local = entrance.glassPanes();
+// the fanlight's glass ('fixed'), or one leaf's ('left', 'right')
+function farDoorGlass(part) {
+	const local = entrance.glassPanes(part || 'fixed');
 	// local (x, y, z) -> world (C.x1 + WALL - z, y, C.zc - 7 + x)
 	return local.map(([x, y, z]) => [C.x1 + WALL - z, y, C.zc - 7.0 + x]);
 }
@@ -608,6 +610,14 @@ function addWing(B) {
 	addFarDoor(B);
 	B.curMat = [0, 0, 0];
 }
+
+// the far door's hinges, in gallery metres: the left leaf (as seen from
+// the corridor) hangs at the z1 side, the right one at the z0 side
+const FAR_DOOR = {
+	x: C.x1 + WALL,          // the door's plane
+	zLo: C.zc - entrance.DOOR.r,
+	zHi: C.zc + entrance.DOOR.r
+};
 
 /* ===========================================================
  * DAYLIGHT THROUGH THE WINDOWS (GLSL)
@@ -700,6 +710,8 @@ module.exports = {
 	addWing,
 	windowGlass,
 	farDoorGlass,
+	atFarDoor,
+	FAR_DOOR,
 	vaultY,
 	C,
 	NICHE_X,

@@ -176,47 +176,85 @@ function addSurround(B) {
  * ===========================================================
  */
 
-function addFrames(B) {
+// part: 'all' (the entrance), or, for the corridor's far door, whose two
+// leaves swing open in the tour: 'fixed' (frame and fanlight), 'left' or
+// 'right' (one leaf, in its closed position)
+function addFrames(B, part) {
 
+	part = part || 'all';
+	const all = part === 'all';
+	const fixed = all || part === 'fixed';
 	const za = -BAR_D / 2, zb = BAR_D / 2;
 	const st = (x0, y0, x1, y1, w = 0) => box(B, x0 - w, y0, za, x1 + w, y1, zb, STEEL);
 
 	// height of the arch above a given x
 	const archY = (x) => DOOR.spring + Math.sqrt(Math.max(0, DOOR.r * DOOR.r - (x - DOOR.xc) * (x - DOOR.xc)));
 
-	// outer frame: jambs, the arched head and the threshold
-	st(DOOR.x0, 0, DOOR.x0 + FRAME, DOOR.spring);
-	st(DOOR.x1 - FRAME, 0, DOOR.x1, DOOR.spring);
-	ring(B, DOOR.r - FRAME, DOOR.r, za, zb, STEEL, 64);
-	st(DOOR.x0, 0, DOOR.x1, 0.05);
+	// the span of the leaf being built (the whole door for 'all')
+	const lx0 = part === 'right' ? DOOR.xc : DOOR.x0;
+	const lx1 = part === 'left' ? DOOR.xc : DOOR.x1;
+	const inLeaf = (x) => all || (part === 'left' && x < DOOR.xc) || (part === 'right' && x > DOOR.xc);
+	const leafTop = all ? null : DOOR.spring - 0.06;
 
-	// the transom bar where the doors end and the fanlight begins
-	st(DOOR.x0, DOOR.spring - 0.06, DOOR.x1, DOOR.spring + 0.06);
+	if (fixed) {
+		// outer frame: jambs, the arched head and the threshold
+		st(DOOR.x0, 0, DOOR.x0 + FRAME, DOOR.spring);
+		st(DOOR.x1 - FRAME, 0, DOOR.x1, DOOR.spring);
+		ring(B, DOOR.r - FRAME, DOOR.r, za, zb, STEEL, 64);
+		st(DOOR.x0, 0, DOOR.x1, 0.05);
 
-	// bottom rails of the two leaves
-	st(DOOR.x0, 0, DOOR.x1, BOTTOM_RAIL);
+		// the transom bar where the doors end and the fanlight begins
+		st(DOOR.x0, DOOR.spring - 0.06, DOOR.x1, DOOR.spring + 0.06);
 
-	// meeting stiles in the middle, running up through the fanlight
-	st(DOOR.xc - FRAME / 2, 0, DOOR.xc + FRAME / 2, DOOR.top - FRAME * 0.5);
-
-	// vertical glazing bars, also running up through the fanlight
-	for (const x of VERTICALS) {
-		st(x - BAR / 2, BOTTOM_RAIL, x + BAR / 2, archY(x) - FRAME * 0.5);
+		// curved bars in the fanlight
+		for (const r of ARCS) {
+			ring(B, r - BAR / 2, r + BAR / 2, za, zb, STEEL, 48);
+		}
 	}
 
-	// horizontal glazing bars in the doors
-	for (const y of ROWS) {
-		st(DOOR.x0, y - BAR / 2, DOOR.x1, y + BAR / 2);
-	}
+	if (all) {
+		// bottom rails of the two leaves
+		st(DOOR.x0, 0, DOOR.x1, BOTTOM_RAIL);
 
-	// curved bars in the fanlight
-	for (const r of ARCS) {
-		ring(B, r - BAR / 2, r + BAR / 2, za, zb, STEEL, 48);
+		// meeting stiles in the middle, running up through the fanlight
+		st(DOOR.xc - FRAME / 2, 0, DOOR.xc + FRAME / 2, DOOR.top - FRAME * 0.5);
+
+		// vertical glazing bars, also running up through the fanlight
+		for (const x of VERTICALS) {
+			st(x - BAR / 2, BOTTOM_RAIL, x + BAR / 2, archY(x) - FRAME * 0.5);
+		}
+
+		// horizontal glazing bars in the doors
+		for (const y of ROWS) {
+			st(DOOR.x0, y - BAR / 2, DOOR.x1, y + BAR / 2);
+		}
+	} else if (part === 'fixed') {
+		// the bars of the fanlight only (above the transom)
+		st(DOOR.xc - FRAME / 2, DOOR.spring + 0.06, DOOR.xc + FRAME / 2, DOOR.top - FRAME * 0.5);
+		for (const x of VERTICALS) {
+			st(x - BAR / 2, DOOR.spring + 0.06, x + BAR / 2, archY(x) - FRAME * 0.5);
+		}
+	} else {
+		// one leaf: its rails, its own outer and meeting stiles, its bars
+		const outer = part === 'left' ? DOOR.x0 + FRAME : DOOR.x1 - FRAME;
+		st(Math.min(outer, outer + (part === 'left' ? FRAME * 0.8 : -FRAME * 0.8)), 0.05,
+			Math.max(outer, outer + (part === 'left' ? FRAME * 0.8 : -FRAME * 0.8)), leafTop);
+		st(lx0, 0.05, lx1, BOTTOM_RAIL);
+		st(lx0, leafTop - 0.07, lx1, leafTop);
+		const mx0 = part === 'left' ? DOOR.xc - FRAME / 2 : DOOR.xc;
+		st(mx0, 0.05, mx0 + FRAME / 2, leafTop);
+		for (const x of VERTICALS) {
+			if (inLeaf(x)) st(x - BAR / 2, BOTTOM_RAIL, x + BAR / 2, leafTop - 0.07);
+		}
+		for (const y of ROWS) {
+			st(lx0, y - BAR / 2, lx1, y + BAR / 2);
+		}
 	}
 
 	// small lever handles on the gallery side
 	for (const s of [-1, 1]) {
 		const hx = DOOR.xc + s * 0.16;
+		if (!inLeaf(hx)) continue;
 		box(B, hx - 0.02, 1.05, zb, hx + 0.02, 1.13, zb + 0.06, STEEL);
 		box(B, hx - (s > 0 ? 0 : 0.14), 1.07, zb + 0.05, hx + (s > 0 ? 0.14 : 0), 1.11, zb + 0.08, STEEL);
 	}
@@ -228,16 +266,22 @@ function addFrames(B) {
  * ===========================================================
  */
 
-function glassPanes() {
+// part as for addFrames: 'all', 'fixed' (the fanlight), 'left', 'right'
+function glassPanes(part) {
 
+	part = part || 'all';
 	const position = [];
 	const z = 0.0;
 	const { x0, x1, xc, r, spring } = DOOR;
 
-	position.push(
-		[x0, 0, z], [x1, 0, z], [x1, spring, z],
-		[x0, 0, z], [x1, spring, z], [x0, spring, z]
-	);
+	if (part !== 'fixed') {
+		const a = part === 'right' ? xc : x0, b = part === 'left' ? xc : x1;
+		position.push(
+			[a, 0, z], [b, 0, z], [b, spring, z],
+			[a, 0, z], [b, spring, z], [a, spring, z]
+		);
+		if (part !== 'all') return position;
+	}
 
 	const steps = 48;
 	for (let i = 0; i < steps; i++) {

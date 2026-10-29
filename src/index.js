@@ -94,10 +94,16 @@ regl = require('regl')({
 		'OES_standard_derivatives'
 	],
 	optionalExtensions: [
-		'EXT_texture_filter_anisotropic'
+		'EXT_texture_filter_anisotropic',
+		// lets the camera module see how far away things are (light shafts,
+		// depth of field)
+		'WEBGL_depth_texture'
 	],
 	attributes: {
-		alpha: false
+		alpha: false,
+		// the picture is finished off-screen (post.js), which smooths the
+		// edges itself
+		antialias: false
 	},
 	pixelRatio: quality.pixelRatio
 });
@@ -142,8 +148,33 @@ fps = require('./fps')(
 	fovY
 );
 
-// the shader picks the picture lights nearest the visitor
-map.viewer = fps.pos;
+// the film camera: light shafts, glow, depth of field and the grade
+const post = require('./post')(regl, quality);
+
+// the far door's two leaves, which a gust throws open in the tour
+const drawFarDoor = require('./fardoor')(regl);
+
+// the leaf that falls from the tree, and the dust in the sunbeams
+const drawLeaf = require('./leaf')(regl);
+const drawDust = require('./dust')(regl, quality);
+
+// the cinematic tour the visit opens with (see tour.js)
+const tour = require('./tour')({
+	fps,
+	// the paintings (with their titles and words), once they have loaded
+	paintings: () => placement.interactables(),
+	onExit: () => fps.setPaused(false)
+});
+fps.setPaused(true);
+if (/tourdebug/.test(location.search)) window.__post = post;
+
+// where the camera is this frame (the tour's, or the visitor's own)
+const camView = [];
+const camProj = [];
+const camEye = [7, 2, 1.6];
+
+// the shader picks the picture lights nearest the camera
+map.viewer = camEye;
 
 
 /* -----------------------------------------------------------
@@ -157,8 +188,8 @@ const context = regl({
 	},
 
 	uniforms: {
-		view: fps.view,
-		proj: fps.proj,
+		view: () => camView,
+		proj: () => camProj,
 		yScale: 1.0,
 		mirrorOn: () => (useReflexion ? 1.0 : 0.0)
 	}
@@ -838,6 +869,12 @@ function updatePlaque() {
 		return;
 	}
 
+	if (tour.active) {
+		currentPlaque = null;
+		plaque.classList.remove('visible');
+		return;
+	}
+
 	const candidates =
 		placement.interactables();
 
@@ -942,7 +979,7 @@ window.addEventListener('pointerdown', (e) => {
 window.addEventListener('pointerup', (e) => {
 	const t0 = tapStart;
 	tapStart = null;
-	if (!t0 || activePainting || !e.target || !/^(CANVAS|BODY)$/.test(e.target.tagName)) return;
+	if (!t0 || activePainting || tour.active || !e.target || !/^(CANVAS|BODY)$/.test(e.target.tagName)) return;
 	if (Math.hypot(e.clientX - t0.x, e.clientY - t0.y) > 12 || performance.now() - t0.t > 600) return;
 	const b = brushOnScreen();
 	if (!b) return;
@@ -998,6 +1035,78 @@ function applyAboutZoom(time) {
 
 
 /* ===========================================================
+   THE CAMERA FOR THIS FRAME
+   During the tour the tour moves the camera; when the visitor takes
+   over, the view glides from the tour's last shot into their own.
+=========================================================== */
+
+const FREE_LOOK = { fade: 0, fadeColor: [0, 0, 0], letterbox: 0, focus: 6, aperture: 0, exposure: 1, shafts: 1, vignette: 0 };
+let leafNow = null;
+
+function lookAtRolled(out, eye, target, roll) {
+	const f = [target[0] - eye[0], target[1] - eye[1], target[2] - eye[2]];
+	const fl = Math.hypot(f[0], f[1], f[2]) || 1;
+	// right = forward x up
+	let r = [-f[2] / fl, 0, f[0] / fl];
+	const rl = Math.hypot(r[0], r[2]) || 1;
+	r = [r[0] / rl, 0, r[2] / rl];
+	const c = Math.cos(roll), s = Math.sin(roll);
+	return glMat4.lookAt(out, eye, target, [r[0] * s, c, r[2] * s]);
+}
+
+function setCamera(time) {
+	const aspect = window.innerWidth / window.innerHeight;
+	const shot = post.shot;
+
+	const t = tour.active ? tour.update(time) : null;
+	const h = t ? null : tour.handover(time);
+
+	let c = null;
+	let look = FREE_LOOK;
+
+	if (t) {
+		c = t.camera;
+		look = t.look;
+		leafNow = t.leaf;
+		// the artist leaves his bench to walk past the camera
+		drawAvatar.setWalk(t.walker || null);
+		drawFarDoor.setOpen(t.door || 0);
+	} else {
+		leafNow = tour.restingLeaf();
+		drawAvatar.setWalk(null);
+		drawFarDoor.setOpen(tour.restingDoor());
+	}
+
+	if (h) {
+		// glide into the visitor's own view
+		const p = fps.pos, f = fps.forward;
+		const mine = tour.cam([p[0], p[1], p[2]], [p[0] + f[0], p[1] + f[1], p[2] + f[2]], fovY() * 180 / Math.PI, 0);
+		c = tour.mix(h.from, mine, h.k);
+		look = {};
+		for (const k in FREE_LOOK) {
+			look[k] = Array.isArray(FREE_LOOK[k]) ? FREE_LOOK[k] : h.fromLook[k] + (FREE_LOOK[k] - h.fromLook[k]) * h.k;
+		}
+	}
+
+	if (c) {
+		lookAtRolled(camView, c.eye, c.target, c.roll || 0);
+		glMat4.perspective(camProj, c.fov * Math.PI / 180, aspect, 0.1, 700);
+		camEye[0] = c.eye[0]; camEye[1] = c.eye[1]; camEye[2] = c.eye[2];
+	} else {
+		const v = fps.view(), pr = fps.proj();
+		for (let i = 0; i < 16; i++) { camView[i] = v[i]; camProj[i] = pr[i]; }
+		// where the eye really is (the About glide moves it off the walk)
+		const t0 = v[12], t1 = v[13], t2 = v[14];
+		camEye[0] = -(v[0] * t0 + v[1] * t1 + v[2] * t2);
+		camEye[1] = -(v[4] * t0 + v[5] * t1 + v[6] * t2);
+		camEye[2] = -(v[8] * t0 + v[9] * t1 + v[10] * t2);
+	}
+
+	for (const k in FREE_LOOK) shot[k] = look[k];
+}
+
+
+/* ===========================================================
    RENDER LOOP
 =========================================================== */
 
@@ -1005,7 +1114,7 @@ let perfFrames = 0;
 let perfStart = 0;
 
 regl.frame(
-	({ time }) => {
+	function ({ time }) {
 
 		stats.begin();
 
@@ -1039,78 +1148,69 @@ regl.frame(
 		updatePlaque();
 
 
-		regl.clear({
-			color: [
-				0,
-				0,
-				0,
-				1
-			],
+		setCamera(time);
 
-			depth: 1
-		});
-
-
-		context(
+		post.capture(
+			arguments[0],
+			{ view: camView, proj: camProj, eye: camEye },
 			() => {
+				context(
+					() => {
 
-				if (
-					useReflexion
-				) {
+						if (
+							useReflexion
+						) {
 
-					// the room upside down beneath the polished floor
-					reflexion(
-						() => {
-
-							drawMap();
-
-							drawStatues();
-
-							drawTree();
-
-							drawAvatar();
-
-							drawPainting(
-								placement.batch()
+							// the room upside down beneath the polished floor
+							reflexion(
+								() => {
+									drawMap();
+									drawStatues();
+									drawTree();
+									drawAvatar();
+									drawPainting(
+										placement.batch()
+									);
+									drawStreet();
+									drawGarden();
+									drawFlorence();
+									drawLeaf(leafNow);
+									drawFarDoor();
+									drawGlass();
+									drawFarDoor.glass();
+								}
 							);
-
-							drawStreet();
-
-							drawGarden();
-
-							drawFlorence();
-
-							drawGlass();
 						}
-					);
-				}
 
+						drawMap();
+						drawStatues();
+						drawTree();
+						drawAvatar();
+						drawPainting(
+							placement.batch()
+						);
 
-				drawMap();
+						// the street outside, seen through the door
+						drawStreet();
 
-				drawStatues();
+						// the garden and the Florence street, through the corridor glass
+						drawGarden();
+						drawFlorence();
 
-				drawTree();
+						// the leaf, and the dust glinting in the sunbeams
+						drawLeaf(leafNow);
+						drawFarDoor();
+						drawDust();
 
-				drawAvatar();
-
-				drawPainting(
-					placement.batch()
+						// glass last, over everything
+						drawGlass();
+						drawFarDoor.glass();
+					}
 				);
-
-				// the street outside, seen through the door
-				drawStreet();
-
-				// the garden and the Florence street, through the corridor glass
-				drawGarden();
-
-				drawFlorence();
-
-				// glass last, over everything
-				drawGlass();
 			}
 		);
 
+		post.present();
 
 		stats.end();
 	}
