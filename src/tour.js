@@ -1515,8 +1515,14 @@ module.exports = function createTour(opts) {
 	const END = AT[AT.length - 1];
 
 	// how far a scroll wheel or a finger winds the film
-	const WHEEL_PX_PER_SEC = 150;       // pixels of scrolling per second of film
-	const TOUCH_PX_PER_SEC = 70;        // pixels of finger travel per second of film
+	const WHEEL_PX_PER_SEC = 210;       // pixels of scrolling per second of film
+	const TOUCH_PX_PER_SEC = 95;        // pixels of finger travel per second of film
+	// one gesture (a swipe, or one run of scrolling with no pause longer
+	// than this) can never carry the camera past the next shot; to go on,
+	// the visitor stops and swipes again
+	const GESTURE_GAP = 0.35;
+	// and once at a shot, it holds for a moment so the words can come in
+	const HOLD = 1.4;
 	const EASE = 4.2;                   // how quickly the camera catches up
 	const MAX_LEAD = 2.2;               // the camera never lags more than this behind
 	const SETTLE_AFTER = 0.7;           // seconds of stillness before settling on a shot
@@ -1562,11 +1568,26 @@ module.exports = function createTour(opts) {
 	}
 
 	// wind the film on (or back) by `secs`
+	let gesture = null;        // { lo, hi }: how far this gesture may go
+	let holdUntil = -1;        // resting at a shot: no leaving before this
+
 	function wind(secs) {
 		if (!active || exiting) return;
-		auto = false;
+		const fresh = now - lastInput > GESTURE_GAP;
 		lastInput = now;
-		target = Math.max(0, Math.min(END, target + secs));
+		if (fresh || !gesture) {
+			// a new gesture may go as far as the shots either side of here
+			let lo = 0, hi = END;
+			for (let i = 0; i < AT.length; i++) {
+				if (AT[i] <= scroll - 0.02) lo = AT[i];
+				if (AT[i] >= scroll + 0.02) { hi = AT[i]; break; }
+			}
+			gesture = { lo, hi };
+		}
+		// still holding at a shot: the scrolling is felt but goes nowhere
+		if (now < holdUntil) return;
+		auto = false;
+		target = Math.max(gesture.lo, Math.min(gesture.hi, target + secs));
 		// never let the camera fall too far behind a fast flick
 		target = Math.max(scroll - MAX_LEAD, Math.min(scroll + MAX_LEAD, target));
 	}
@@ -1883,6 +1904,7 @@ module.exports = function createTour(opts) {
 		const settled = resting && Math.abs(target - scroll) < 0.02;
 		const want = settled ? near : -1;
 		if (want !== shown) {
+			if (want >= 0) holdUntil = now + HOLD;
 			shown = want;
 			if (want >= 0) showUI(want);
 			else hideUI();
