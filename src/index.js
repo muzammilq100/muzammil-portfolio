@@ -15,7 +15,13 @@
 
 // phones get a lighter version of the gallery, laptops get everything,
 // and any device that struggles steps down a notch (see quality.js)
+// the loading screen and the smaller (gzipped) downloads: first of all
+const loader = require('./loader');
+
 const quality = require('./quality');
+
+// the paintings as a plain list (no 3D): #list, or a device without WebGL
+const listView = require('./listview');
 
 // the polished floor reflects the room; off on phones, and switched off
 // automatically if a laptop turns out to be too slow for it
@@ -88,6 +94,22 @@ let placement;
 let drawPainting;
 let fps;
 
+// a device that cannot draw the gallery gets the paintings as a list
+function canDraw() {
+	try {
+		const c = document.createElement('canvas');
+		const gl = c.getContext('webgl') || c.getContext('experimental-webgl');
+		return !!(gl && gl.getExtension('OES_standard_derivatives'));
+	} catch (e) {
+		return false;
+	}
+}
+if (!canDraw()) {
+	loader.finish();
+	listView.show(true);
+	throw new Error('This device cannot draw the 3D gallery; showing the list instead.');
+}
+
 regl = require('regl')({
 	extensions: [
 		'OES_element_index_uint',
@@ -107,6 +129,9 @@ regl = require('regl')({
 	},
 	pixelRatio: quality.pixelRatio
 });
+
+if (location.hash === '#list') listView.show(false);
+window.addEventListener('hashchange', () => { if (location.hash === '#list') listView.show(false); });
 
 
 map = require('./map')();
@@ -141,6 +166,8 @@ const drawTree = require('./tree')(regl);
 // the artist himself, reading under the glass dome, and the About card
 const drawAvatar = require('./avatar')(regl);
 const about = require('./about');
+const contact = require('./contact');
+const caption = require('./caption');
 const { A: COURT } = require('./alcove');
 
 fps = require('./fps')(
@@ -355,6 +382,57 @@ canvas {
 	letter-spacing: .01em;
 }
 
+.story-meta {
+	margin: 0 0 8px;
+	font: 500 12px/1.4 Georgia, serif;
+	letter-spacing: .26em;
+	text-transform: uppercase;
+	color: rgba(255,244,222,.85);
+}
+
+.story-contact {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px 18px;
+	margin: -8px 0 18px;
+	font: normal 15px/1.4 Georgia, serif;
+}
+.story-contact[hidden], .story-meta[hidden] { display: none; }
+.story-contact a {
+	display: inline-flex;
+	align-items: center;
+	gap: 7px;
+	min-height: 32px;
+	color: #fffaf0;
+	text-decoration: underline;
+	text-decoration-color: rgba(255,250,240,.35);
+	text-underline-offset: 3px;
+}
+
+/* Instagram and email in the corner while walking freely */
+.museum-links {
+	position: fixed;
+	top: max(12px, env(safe-area-inset-top));
+	right: 14px;
+	z-index: 40;
+	display: flex;
+	gap: 8px;
+}
+body.touring .museum-links { display: none; }
+.museum-link {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 42px;
+	height: 42px;
+	border-radius: 50%;
+	border: 1px solid rgba(255,248,235,.35);
+	background: rgba(20,15,10,.32);
+	backdrop-filter: blur(6px);
+	-webkit-backdrop-filter: blur(6px);
+	color: #fffaf0;
+}
+
 .story-body {
 	margin: 0;
 	white-space: pre-line;
@@ -551,10 +629,14 @@ overlay.innerHTML = `
 			×
 		</button>
 
+		<p class="story-meta" id="story-meta"></p>
+
 		<h2
 			class="story-title"
 			id="story-title"
 		></h2>
+
+		${contact.line('story-contact')}
 
 		<p
 			class="story-body"
@@ -565,6 +647,13 @@ overlay.innerHTML = `
 `;
 
 document.body.appendChild(overlay);
+
+const museumLinks = document.createElement('div');
+museumLinks.className = 'museum-links';
+museumLinks.innerHTML = contact.icons('museum-link');
+// (clicks on the links must not grab the mouse for walking)
+['mousedown', 'pointerdown', 'click'].forEach((t) => museumLinks.addEventListener(t, (e) => e.stopPropagation()));
+document.body.appendChild(museumLinks);
 
 
 /* ===========================================================
@@ -580,6 +669,9 @@ const storyBody =
 	overlay.querySelector(
 		'#story-body'
 	);
+
+const storyMeta = overlay.querySelector('#story-meta');
+const storyContact = overlay.querySelector('.story-contact');
 
 const closeStory =
 	overlay.querySelector(
@@ -619,6 +711,12 @@ function openStory(painting) {
 
 	storyBody.textContent =
 		painting.description || '';
+
+	// "Oil on canvas · 91 × 61 cm" above a painting's title; the
+	// artist's Instagram and email on the About card
+	storyMeta.textContent = painting.isAbout ? '' : caption(painting);
+	storyMeta.hidden = !!painting.isAbout;
+	storyContact.hidden = !painting.isAbout;
 
 	overlay.classList.toggle('about-mode', !!painting.isAbout);
 

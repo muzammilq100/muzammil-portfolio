@@ -31,6 +31,8 @@
 
 const mat4 = require('gl-mat4');
 const about = require('./about');
+const contact = require('./contact');
+const caption = require('./caption');
 const { A: COURT } = require('./alcove');
 const { C: WING, PAINTING_X } = require('./wing');
 
@@ -1080,6 +1082,75 @@ const CSS = `
 .tour-free:hover { background: rgba(60,45,30,.45); border-color: rgba(244,236,223,.55); }
 .tour-free:focus-visible, .tour-btn:focus-visible { outline: 2px solid #e9cf9a; outline-offset: 3px; }
 
+/* Instagram and email, beside "Explore freely" */
+.tour-links {
+	position: absolute;
+	top: max(10px, env(safe-area-inset-top));
+	right: 14px;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+.tour-links .tour-free { position: static; }
+.tour-icon {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 44px;
+	height: 44px;
+	border: 1px solid rgba(244,236,223,.32);
+	border-radius: 50%;
+	background: rgba(20,15,10,.28);
+	backdrop-filter: blur(6px);
+	-webkit-backdrop-filter: blur(6px);
+	color: #f4ecdf;
+	transition: background .3s ease, border-color .3s ease;
+}
+.tour-icon:hover { background: rgba(60,45,30,.45); border-color: rgba(244,236,223,.55); }
+.tour-icon:focus-visible { outline: 2px solid #e9cf9a; outline-offset: 3px; }
+
+/* the same, as a line of words on the About and closing cards */
+.tour-contact {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px 18px;
+	margin: 0 0 16px;
+	pointer-events: auto;
+	font-size: 16px;
+	letter-spacing: .02em;
+}
+.tour-contact a {
+	display: inline-flex;
+	align-items: center;
+	gap: 7px;
+	min-height: 32px;
+	color: #e9cf9a;
+	text-decoration: none;
+	border-bottom: 1px solid rgba(233,207,154,.0);
+	transition: border-color .3s ease;
+}
+.tour-contact a:hover { border-bottom-color: rgba(233,207,154,.6); }
+.tour-endcard .tour-contact { justify-content: center; margin: 18px 0 0; }
+
+/* the opening words: a soft shadow behind them keeps them legible
+   against the bright door */
+.tour-intro::before {
+	content: '';
+	position: absolute;
+	left: 50%; top: 50%;
+	width: min(760px, 120vw);
+	height: 150%;
+	transform: translate(-50%, -50%);
+	background: radial-gradient(closest-side, rgba(12,9,6,.5), rgba(12,9,6,0));
+	z-index: -1;
+	pointer-events: none;
+}
+.tour-motto {
+	margin-top: 10px;
+	line-height: 1.35;
+	letter-spacing: .02em;
+}
+
 /* progress: one short line per shot */
 .tour-progress {
 	position: absolute;
@@ -1309,8 +1380,15 @@ const CSS = `
 	.tour-body p { font-size: 14px; line-height: 1.45; }
 	.tour-btn { min-height: 38px; }
 }
-@media (max-width: 370px) {
+@media (max-width: 440px) {
+	/* (on phones the corner belongs to the Instagram, email and Explore buttons) */
 	.tour-mark { display: none; }
+}
+@media (max-width: 520px) {
+	.tour-links { gap: 6px; }
+	.tour-icon { width: 40px; height: 40px; }
+	.tour-links .tour-free { padding: 0 12px; letter-spacing: .12em; }
+	.tour-contact { font-size: 15px; }
 }
 @media (prefers-reduced-motion: reduce) {
 	.tour-hint svg { animation: none; }
@@ -1363,7 +1441,8 @@ module.exports = function createTour(opts) {
 
 	const { fps } = opts;
 
-	// a nicer serif for the words, if the network allows; Georgia otherwise
+	// the serif is linked from base.html (so it arrives before the words);
+	// this only adds it if the page was opened without that link
 	if (!document.querySelector('link[data-tour-font]')) {
 		const l = document.createElement('link');
 		l.rel = 'stylesheet';
@@ -1385,6 +1464,9 @@ module.exports = function createTour(opts) {
 	const mark = el('div', 'tour-mark', esc(about.name));
 	const free = el('button', 'tour-free', 'Explore freely');
 	free.type = 'button';
+	// Instagram and email, then "Explore freely", in the top right corner
+	const links = el('div', 'tour-links', contact.icons('tour-icon'));
+	links.appendChild(free);
 
 	const progress = el('div', 'tour-progress', SHOTS.map(() => '<i></i>').join(''));
 	const hint = el('div', 'tour-hint',
@@ -1396,7 +1478,7 @@ module.exports = function createTour(opts) {
 		<span class="tour-line tour-kicker">A virtual gallery</span>
 		<span class="tour-rule"></span>
 		<h1 class="tour-line tour-title">${esc(about.name)}</h1>
-		<span class="tour-line tour-sub">Oil portraits of quiet, modern feelings</span>`);
+		<span class="tour-line tour-sub tour-motto">I don’t paint what happened.<br>I paint what remained<br>after it happened</span>`);
 	stagger(intro, 0.4, 0.35);
 
 	// 1: about him
@@ -1405,6 +1487,7 @@ module.exports = function createTour(opts) {
 		<span class="tour-line tour-kicker">The artist</span>
 		<h2 class="tour-line tour-title">${esc(about.title)}</h2>
 		<span class="tour-rule"></span>
+		${contact.line('tour-line tour-contact')}
 		${aboutParas}`);
 	stagger(aboutCard, 0.25, 0.28);
 
@@ -1421,7 +1504,7 @@ module.exports = function createTour(opts) {
 	// (filled in once the painting has loaded)
 	function storyCard(find) {
 		const card = el('div', 'tour-card tour-story', `
-			<span class="tour-line tour-kicker">Oil on canvas</span>
+			<span class="tour-line tour-kicker"></span>
 			<h2 class="tour-title tour-letters"></h2>
 			<span class="tour-rule"></span>
 			<div class="tour-body"></div>`);
@@ -1434,6 +1517,7 @@ module.exports = function createTour(opts) {
 			if (!p || card.filled) return;
 			card.filled = true;
 			const t = p.title || '';
+			card.querySelector('.tour-kicker').textContent = caption(p) || 'Oil on canvas';
 			// (letters grouped by word, so a line never breaks inside a word)
 			let n = 0;
 			title.innerHTML = t.split(' ').map((word) =>
@@ -1475,14 +1559,16 @@ module.exports = function createTour(opts) {
 		<span class="tour-line tour-kicker">Thank you for walking with me</span>
 		<span class="tour-rule"></span>
 		<span class="tour-line tour-sub">The rest of the gallery is yours to wander.</span>
+		${contact.line('tour-line tour-contact')}
 		<div class="tour-line tour-end">
 			<button type="button" class="tour-btn" data-act="free">Walk the gallery</button>
+			<button type="button" class="tour-btn quiet" data-act="list">All paintings</button>
 			<button type="button" class="tour-btn quiet" data-act="replay">Replay</button>
 		</div>`);
 	stagger(end, 0.5, 0.35);
 
 	const cards = [intro, aboutCard, sky, master, story, quiet(), quiet(), quiet(), story1, story2, story3, quiet(), ...hallStories, end];
-	root.append(...cards, mark, free, progress, hint);
+	root.append(...cards, mark, links, progress, hint);
 	document.body.appendChild(root);
 	document.body.classList.add('touring');
 
@@ -1619,7 +1705,7 @@ module.exports = function createTour(opts) {
 	// up or left = onwards, down or right = back
 	root.addEventListener('pointerdown', (e) => {
 		e.stopPropagation();
-		if (e.target.closest('button') || e.target.closest('.tour-body')) return;
+		if (e.target.closest('button, a') || e.target.closest('.tour-body')) return;
 		drag = { x: e.clientX, y: e.clientY, lx: e.clientX, ly: e.clientY, t: performance.now(), moved: 0, v: 0, lt: performance.now() };
 		try { root.setPointerCapture(e.pointerId); } catch (err) { /* not needed */ }
 	});
@@ -1694,6 +1780,7 @@ module.exports = function createTour(opts) {
 		e.stopPropagation();
 		if (b.dataset.act === 'free') exit();
 		if (b.dataset.act === 'replay') replay();
+		if (b.dataset.act === 'list') require('./listview').show(false);
 	});
 
 

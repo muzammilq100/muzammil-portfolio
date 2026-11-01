@@ -23,7 +23,7 @@
  * openings and the tree crowns, so the arches throw arch shaped light
  * on the arcade floors and the magnolia drops dappled shade.
  *
- * Trees and shrubs are clouds of small leaf clusters (res/garden/foliage.png)
+ * Trees and shrubs are clouds of small leaf clusters (res/garden/foliage.webp)
  * that always face the visitor, each one lit by where it sits in its crown.
  *
  * Gallery coordinates: x across, z along the main hall, y up, metres.
@@ -1426,7 +1426,7 @@ module.exports = (regl) => {
 
 	const solid = buildSolid();
 	const leaves = buildFoliage();
-	const tex = loadTexture(regl, 'res/garden/foliage.png', [0, 0, 0, 0]);
+	const tex = loadTexture(regl, 'res/garden/foliage.webp', [0, 0, 0, 0]);
 	const start = Date.now();
 	const clock = () => (!quality.motion ? 20.0 :
 		window.__streetClock !== undefined ? window.__streetClock : (Date.now() - start) / 1000);

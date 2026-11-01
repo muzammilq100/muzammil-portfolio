@@ -13,7 +13,7 @@
  *
  * The first vertices are the trunk and branches (bark mapped on from
  * the sides, so they need no texture coordinates); the rest are leaf
- * cards cut out of res/tree/leaves.png.
+ * cards cut out of res/tree/leaves.webp.
  *
  * It stands on the earth inside the round bench (alcove.js) and is lit
  * by the shaft of sun from the oculus, by the soft daylight in the
@@ -189,7 +189,7 @@ void main() {
 module.exports = (regl) => {
 
 	let draw = null;
-	const leaves = loadTexture(regl, 'res/tree/leaves.png', { wrapS: 'clamp', wrapT: 'clamp' }, [60, 80, 40, 0]);
+	const leaves = loadTexture(regl, 'res/tree/leaves.webp', { wrapS: 'clamp', wrapT: 'clamp' }, [60, 80, 40, 0]);
 	const bark = loadTexture(regl, 'res/tree/bark.jpg', { wrapS: 'repeat', wrapT: 'repeat' }, [90, 80, 70]);
 	const start = Date.now();
 

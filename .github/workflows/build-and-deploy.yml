@@ -5,49 +5,34 @@ on:
   push:
     branches:
       - master
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
     env:
       # set in the repository's Settings > Secrets; until they are there,
-      # the Cloudflare steps below are skipped
+      # the Cloudflare step below is skipped
       CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: '12.x'
-      - name: Install dependencies
-        run: npm ci
-      - name: Build
-        run: npm run build
-      - name: Prepare website
-        run: mv build.html index.html
-      - name: Remove build files from gitignore
-        run: |
-          sed -i '/build.html/d' .gitignore
-          sed -i '/images/images.json/d' .gitignore
-      - name: Deploy
-        uses: JamesIves/github-pages-deploy-action@v4
-        with:
-          branch: gh-pages
-          folder: .
-          token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Gather the site for Cloudflare
-        if: ${{ env.CF_TOKEN != '' && env.CF_ACCOUNT != '' }}
-        run: |
-          mkdir -p cf-site
-          cp index.html cf-site/
-          cp -r res images cf-site/
-      - name: Set up Node.js for Cloudflare
-        if: ${{ env.CF_TOKEN != '' && env.CF_ACCOUNT != '' }}
+        uses: actions/checkout@v4
+      - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Build the site into dist/
+        run: npm run build
+      - name: Publish to GitHub Pages (backup address)
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          branch: gh-pages
+          folder: dist
+          clean-exclude: preview
+          token: ${{ secrets.GITHUB_TOKEN }}
       - name: Publish to Cloudflare Pages
         if: ${{ env.CF_TOKEN != '' && env.CF_ACCOUNT != '' }}
         env:
@@ -55,4 +40,4 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           npx --yes wrangler@3 pages project create muzammil-gallery --production-branch=main || true
-          npx --yes wrangler@3 pages deploy cf-site --project-name=muzammil-gallery --branch=main --commit-dirty=true
+          npx --yes wrangler@3 pages deploy dist --project-name=muzammil-gallery --branch=main --commit-dirty=true

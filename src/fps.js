@@ -2,7 +2,7 @@
 
 const mat4 = require('gl-mat4');
 const vec3 = require('gl-vec3');
-const lock = require('pointer-lock');
+const lock = require('./pointerlock');
 
 
 /* -----------------------------------------------------------

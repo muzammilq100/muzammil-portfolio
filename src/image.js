@@ -16,11 +16,17 @@ function dynamicQual(quality) {
 	return quality;
 }
 
+// every painting is drawn into a square power-of-two picture so the
+// graphics chip can make smaller copies of it for distance (mipmaps);
+// phones get 1024 (a quarter of the memory), everything else 2048
+const quality = require('./quality');
 const resizeCanvas = document.createElement('canvas');
-resizeCanvas.width = resizeCanvas.height = 2048;
+resizeCanvas.width = resizeCanvas.height = quality.isPhone ? 1024 : 2048;
 const ctx = resizeCanvas.getContext('2d');
-ctx.mozImageSmoothingEnabled = false;
-ctx.webkitImageSmoothingEnabled = false;
+// smooth resampling (the old setting turned it off, which made the
+// paintings' fine detail shimmer)
+ctx.imageSmoothingEnabled = true;
+ctx.imageSmoothingQuality = 'high';
 let aniso = false;
 
 const emptyImage = (regl) => [
@@ -34,7 +40,6 @@ async function loadImage(regl, p, res) {
 		aniso = regl.hasExtension('EXT_texture_filter_anisotropic') ? regl._gl.getParameter(
 			regl._gl.getExtension('EXT_texture_filter_anisotropic').MAX_TEXTURE_MAX_ANISOTROPY_EXT
 		) : 0;
-		console.log(aniso);
 	}
 	
 	let image, title;
