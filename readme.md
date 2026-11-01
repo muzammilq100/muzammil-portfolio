@@ -1,36 +1,36 @@
-# [Virtual Art Gallery](https://clementcariou.github.io/virtual-art-gallery/build) [![Build Status](https://github.com/ClementCariou/virtual-art-gallery/actions/workflows/build-and-deploy.yml/badge.svg)](https://github.com/ClementCariou/virtual-art-gallery/actions/workflows/build-and-deploy.yml)
+# Muzammil · A Virtual Gallery
 
-[![screenshot](ArtGallery.png "App screenshot")](https://clementcariou.github.io/virtual-art-gallery/build)
+Oil paintings by Muzammil, hung in a Renaissance-inspired gallery you can walk through in the browser.
 
-## Description
+Live: https://muzammil-gallery.pages.dev (backup: GitHub Pages)
 
-This project simulates an art gallery in your browser using [REGL](https://github.com/regl-project/regl).
-It aims at reproducing the experience of a real art gallery.
-The architecture is generated using a 10km long 6th order [Hilbert Curve](https://en.wikipedia.org/wiki/Hilbert_curve).
-The paintings are asynchronously loaded from the [ARTIC](https://api.artic.edu) and placed on the walls.
-You can use this project to display your own artworks.
+## Working on it
 
-## Setup
-
-Installation :
 ```shell
-git clone https://github.com/ClementCariou/virtual-art-gallery.git
 npm install
-```
-Start the budo dev server : 
-```shell
-npm start
-```
-Build : 
-```shell
-npm build
+npm start          # builds into dist/ and serves it at http://localhost:8000
+npm run build      # the finished site in dist/ (what gets published)
+npm run images     # after adding or replacing a painting's photo (needs Python + Pillow)
 ```
 
-## Using it with [local images](https://clementcariou.github.io/virtual-art-gallery/build?api=local)
+Pushing to `master` builds the site and publishes it to Cloudflare Pages and GitHub Pages
+(`.github/workflows/build-and-deploy.yml`).
 
-The local api is accessible using this URI params in the address bar: ```?api=local``` (it's possible to load automatically this API by changing the default API in the [api.js](api/api.js) file). You can change the displayed images in the folder [images](images), you will need to rebuild the project (or relauch the dev server) to apply the modifications.
+## Where things are
 
-Muzammil Portfolio
+- `content/paintings.js` – every painting: photo, title, medium, real size, and its words.
+  To add a painting, put its photo in `images/`, add an entry here, run `npm run images`.
+- `src/contact.js` – Instagram and email, shown across the site.
+- `src/about.js` – the words on the About card.
+- `base.html` – the page itself: title, link preview, loading screen.
+- `static/` – icons, the link-preview picture (`og.jpg`) and Cloudflare's cache rules (`_headers`).
+- `src/painting.js` – the paintings (canvas weave, varnish, light pool) and their gilded frames.
+- `src/mesh.js` – the architecture's materials and light (marble, plaster, the floor).
+- `src/tour.js` – the cinematic tour; `src/fps.js` – free walking.
+- `src/listview.js` – all paintings as a plain list (`#list`, and the fallback without 3D).
+- `source/` – source files that are not published (e.g. the Blender wall model).
+
+Based on [Virtual Art Gallery](https://github.com/ClementCariou/virtual-art-gallery) by Clément Cariou (MIT).
 
 ## Statue credits
 

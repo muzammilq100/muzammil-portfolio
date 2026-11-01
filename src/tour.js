@@ -49,6 +49,23 @@ const add3 = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
 const sub3 = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 const scale3 = (a, s) => [a[0] * s, a[1] * s, a[2] * s];
 const smooth = (a, b, x) => { const t = clamp01((x - a) / (b - a)); return t * t * (3 - 2 * t); };
+// eases a value towards a target with momentum: no jolt at the start,
+// no overshoot at the end (the well-known critically damped "smooth damp")
+function smoothDamp(current, target, velocity, smoothTime, dt, maxSpeed) {
+	if (dt <= 0) return [current, velocity];
+	const omega = 2 / smoothTime;
+	const x = omega * dt;
+	const e = 1 / (1 + x + 0.48 * x * x + 0.235 * x * x * x);
+	const maxChange = maxSpeed * smoothTime;
+	let change = Math.max(-maxChange, Math.min(maxChange, current - target));
+	const to = current - change;
+	const temp = (velocity + omega * change) * dt;
+	let v = (velocity - omega * temp) * e;
+	let out = to + (change + temp) * e;
+	if ((target - current > 0) === (out > target)) { out = target; v = 0; }
+	return [out, v];
+}
+
 const easeInOut = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 const easeIn = (t) => t * t * t;
 const easeOut = (t) => 1 - Math.pow(1 - t, 3);
@@ -1609,13 +1626,17 @@ module.exports = function createTour(opts) {
 	const GESTURE_GAP = 0.35;
 	// and once at a shot, it holds for a moment so the words can come in
 	const HOLD = 1.4;
-	const EASE = 4.2;                   // how quickly the camera catches up
+	const FOLLOW = 0.32;                // seconds the camera takes to catch up (smooth start and stop)
+	const PACE = 1.0;                   // a key or tap: the move's natural speed (film seconds a second)
+	const PACE_ACCEL = 1.3;             // ...reached and left this gently
+	const REDUCED = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 	const MAX_LEAD = 2.2;               // the camera never lags more than this behind
 	const SETTLE_AFTER = 0.7;           // seconds of stillness before settling on a shot
 	const SETTLE_NEAR = 0.9;            // ...if it is within this much film of one
 
 	let active = true;
 	let scroll = 0;            // where the camera is on the strip
+	let vel = 0;               // how fast it is moving along it
 	let target = 0;            // where the visitor has wound it to
 	let lastInput = -10;       // when they last scrolled or swiped
 	let auto = false;          // a key, click or tap: glide to the next shot
@@ -1833,6 +1854,7 @@ module.exports = function createTour(opts) {
 
 	function replay() {
 		scroll = target = 0;
+		vel = 0;
 		auto = false;
 		shown = -1;
 		restShot = 0;
@@ -1924,17 +1946,25 @@ module.exports = function createTour(opts) {
 			if (Math.abs(AT[i] - target) < SETTLE_NEAR) target = AT[i];
 		}
 
-		// the camera catches up with where the visitor has wound the film:
-		// smoothly, so it glides on a little after a swipe and eases to a stop
+		// the camera catches up with where the visitor has wound the film.
+		// It has momentum: it gathers speed gently, glides, and eases to a
+		// stop, so the notches of a mouse wheel or the start of a swipe
+		// never jolt it.
 		const gap = target - scroll;
 		if (auto) {
-			// a key or tap: play the move at its natural pace
-			const step = Math.sign(gap) * Math.min(Math.abs(gap), dt * (0.35 + 0.65 * smooth(0, 0.6, Math.abs(gap))) * 1.0);
-			scroll += step;
-			if (Math.abs(target - scroll) < 1e-4) { scroll = target; auto = false; }
+			// a key or tap: play the move at its natural pace, easing in
+			// at the start and out at the end
+			const want = Math.sign(gap) * Math.min(PACE, Math.sqrt(2 * PACE_ACCEL * Math.abs(gap)));
+			const dv = want - vel;
+			vel += Math.sign(dv) * Math.min(Math.abs(dv), PACE_ACCEL * dt);
+			scroll += vel * dt;
+			if ((gap > 0 && scroll >= target) || (gap < 0 && scroll <= target) || Math.abs(target - scroll) < 1e-4) {
+				scroll = target; vel = 0; auto = false;
+			}
 		} else {
-			scroll += gap * (1 - Math.exp(-dt * EASE));
-			if (Math.abs(gap) < 1e-4) scroll = target;
+			const r = smoothDamp(scroll, target, vel, FOLLOW, dt, 3.0);
+			scroll = r[0]; vel = r[1];
+			if (Math.abs(target - scroll) < 1e-4 && Math.abs(vel) < 1e-3) { scroll = target; vel = 0; }
 		}
 
 		// which move we are in, and how far along it
@@ -1974,6 +2004,21 @@ module.exports = function createTour(opts) {
 				add3(c.target, scale3(sub3(d1.target, d0.target), drift)),
 				c.fov + (d1.fov - d0.fov) * drift,
 				c.roll + (d1.roll - d0.roll) * drift
+			);
+		}
+		// resting on a shot, the camera breathes a little, as if held by
+		// hand: a few millimetres, slow, never enough to notice as movement
+		if (drift > 0 && !REDUCED) {
+			const t = now;
+			const a = 0.006 * drift;
+			const n1 = Math.sin(t * 0.61) * 0.6 + Math.sin(t * 1.37 + 1.3) * 0.4;
+			const n2 = Math.sin(t * 0.47 + 2.1) * 0.6 + Math.sin(t * 1.13 + 0.4) * 0.4;
+			const n3 = Math.sin(t * 0.53 + 4.0) * 0.5 + Math.sin(t * 0.97 + 2.6) * 0.5;
+			c = cam(
+				add3(c.eye, [n1 * a, n2 * a * 0.7, n3 * a]),
+				add3(c.target, [n2 * a * 1.8, n1 * a * 1.4, 0]),
+				c.fov,
+				c.roll + n3 * 0.0012 * drift
 			);
 		}
 		camNow = c;
@@ -2033,8 +2078,8 @@ module.exports = function createTour(opts) {
 	if (DEBUG) {
 		window.__tour = {
 			go, exit, wind,
-			seek(i, u) { scroll = target = AT[i] + (AT[i + 1] - AT[i]) * u; auto = false; lastInput = now + 1e6; fadeIn.start = now - 10; started = true; },
-			jump(i) { scroll = target = AT[i]; auto = false; restClock = 0; lastInput = now; fadeIn.start = now - 10; started = true; },
+			seek(i, u) { scroll = target = AT[i] + (AT[i + 1] - AT[i]) * u; vel = 0; auto = false; lastInput = now + 1e6; fadeIn.start = now - 10; started = true; },
+			jump(i) { scroll = target = AT[i]; vel = 0; auto = false; restClock = 0; lastInput = now; fadeIn.start = now - 10; started = true; },
 			state: () => ({ current: nearestShot(scroll), scroll: +scroll.toFixed(3), target: +target.toFixed(3), shown, move: Math.abs(target - scroll) > 0.02 ? { p: scroll } : null, camNow, leaf, look })
 		};
 	}

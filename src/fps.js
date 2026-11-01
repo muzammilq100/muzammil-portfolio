@@ -359,6 +359,8 @@ function (
 	// how far along the path the visitor is, and which way they last went
 	var pathS = 0;
 	var lastTowards = 1;
+	// walking speed along the path, eased so steps start and stop softly
+	var walkV = 0;
 
 	var forward = [
 		0.707,
@@ -1490,10 +1492,15 @@ function (
 					towards = aheadDot >= backDot ? 1 : -1;
 				}
 
+				// (a short ease in and out, like a person starting and
+				// stopping, instead of jumping to full speed)
+				const wantV = paused ? 0 : -dir[2] * speed;
+				walkV += (wantV - walkV) * (1 - Math.exp(-Math.min(dt, 0.1) * 5.5));
+				if (wantV === 0 && Math.abs(walkV) < 0.01) walkV = 0;
+
 				let ds =
-					-dir[2] *
+					walkV *
 					towards *
-					speed *
 					Math.min(dt, 0.1);
 
 
@@ -1504,6 +1511,8 @@ function (
 					dir[2] = 0;
 
 					ds = 0;
+
+					walkV = 0;
 				}
 
 
