@@ -260,24 +260,37 @@ module.exports = (regl, data, useReflexion) => {
 
       // Plaster: soft mottled limestone wash
       vec3 wallMaterial = plaster;
-      if (detail) {
+      if (detail && isShell > 0.5) {
         float mott = fbm(uv * 0.9);
         float cloud = fbm(uv * 2.6 + 4.0);
         wallMaterial = mix(plaster, plasterShade, smoothstep(0.35, 0.75, mott) * 0.55);
         wallMaterial *= 0.95 + 0.10 * cloud;
+        // hand-finished plaster: broad, very gentle unevenness, a hint
+        // of trowel strokes, and a little grime along the foot of the wall
+        float broad = vnoise(uv * 0.22 + 11.0);
+        wallMaterial *= 0.955 + 0.09 * broad;
+        float trowel = vnoise(vec2(uv.x * 1.6 + uv.y * 0.5, uv.y * 7.0)) * fadeFar(4.0, 14.0, dist);
+        wallMaterial *= 0.985 + 0.03 * trowel;
+        wallMaterial *= mix(0.88, 1.0, smoothstep(0.05, 0.9, v_pos.y));
       }
 
       // Marble: warped veins with a cloudy body
       vec3 marbleMaterial = marbleBase;
-      if (detail) {
+      if (detail && isShell < 0.5 && isFloor < 0.5) {
         vec2 m = uv * 1.3;
         float warp = fbm(m * 0.8);
         float v1 = abs(sin((m.x * 0.8 + m.y * 1.7) * 2.2 + warp * 7.0));
         float v2 = abs(sin((m.x * 1.9 - m.y * 0.6) * 4.5 + warp * 11.0));
         float line1 = 1.0 - smoothstep(0.0, 0.10, v1);
         float line2 = 1.0 - smoothstep(0.0, 0.05, v2);
-        marbleMaterial = marbleBase * (0.90 + 0.18 * warp);
-        marbleMaterial = mix(marbleMaterial, marbleVein, clamp(line1 * 0.50 + line2 * 0.25, 0.0, 1.0));
+        // a soft vein, wider and lower in contrast than a crack, with a
+        // faint halo where the mineral bleeds into the stone
+        float halo1 = 1.0 - smoothstep(0.0, 0.32, v1);
+        float tone = vnoise(m * 0.35 + 7.0);
+        marbleMaterial = marbleBase * (0.92 + 0.14 * warp);
+        // warmer and cooler drifts through the block
+        marbleMaterial *= mix(vec3(1.02, 1.0, 0.96), vec3(0.97, 0.99, 1.02), tone);
+        marbleMaterial = mix(marbleMaterial, marbleVein, clamp(line1 * 0.20 + halo1 * 0.08 + line2 * 0.08, 0.0, 1.0) * fadeFar(6.0, 26.0, dist * 0.8));
       }
 
       vec3 material = mix(marbleMaterial, wallMaterial, isShell);
@@ -308,6 +321,24 @@ module.exports = (regl, data, useReflexion) => {
       float edge = min(min(tf.x, 1.0 - tf.x), min(tf.y, 1.0 - tf.y)) * tileSize;
       float grout = (1.0 - smoothstep(0.0, 0.006, edge)) * fadeFar(8.0, 30.0, dist);
       floorMaterial *= 1.0 - 0.28 * grout;
+
+      // wear: the polish is duller where people walk (down the middle of
+      // the hall and along the corridor), with fine scuffs in the
+      // direction of travel; each tile also keeps a slightly different
+      // polish of its own
+      float lane = exp(-pow((v_pos.x - 7.0) / 2.3, 2.0)) * step(v_pos.x, 13.6)
+                 + exp(-pow((v_pos.z - ${g4((WING.z0 + WING.z1) / 2)}) / 1.3, 2.0)) * step(14.0, v_pos.x);
+      float scuff = 0.0;
+      float wear = 0.0;
+      if (isFloor > 0.5) {
+        if (detail) {
+          scuff = vnoise(v_pos.xz * vec2(9.0, 1.4)) * vnoise(v_pos.xz * vec2(2.0, 0.5) + 5.0);
+          scuff *= fadeFar(3.0, 16.0, dist);
+        }
+        wear = clamp(lane * (0.55 + 0.45 * vnoise(v_pos.xz * 0.6)), 0.0, 1.0);
+      }
+      float tilePolish = 0.86 + 0.28 * hash12(tile + 17.0);
+      floorMaterial = mix(floorMaterial, floorMaterial * 0.94 + vec3(0.012, 0.011, 0.009), wear * 0.5 + scuff * 0.35);
 
       material = mix(material, floorMaterial, isFloor);
       material = mix(material, ceilingMat, isCeiling);
@@ -366,6 +397,9 @@ module.exports = (regl, data, useReflexion) => {
       // the room's own lamps are kept low: most of the light is daylight
       // from the skylight, the windows, the door and the oculus
       float light = 0.47 + diffuse * 0.2;
+      // the painting walls sit a touch darker so each picture light reads
+      // as its own pool
+      light -= 0.045 * isShell * (1.0 - isCeiling);
 
       // Light from the bar above each painting
       float pic = 0.0;
@@ -379,6 +413,10 @@ module.exports = (regl, data, useReflexion) => {
       light *= mix(0.80, 1.0, min(1.0, fadeFar(4.5, 8.0, v_pos.y) + isFloor));
 
       light += (1.0 - smoothstep(0.0, 3.5, v_pos.y)) * 0.03;
+
+      // the grand arch's fluted columns: a soft warm uplight from the
+      // floor, so the arch reads as the gallery's centrepiece
+      light += isFluted * 0.16 * (1.0 - smoothstep(0.0, 6.5, v_pos.y)) * (0.6 + 0.4 * max(N.y * -0.5 + 0.5, 0.0));
 
       // carved forms: a soft side light and a little fill so the
       // folds and features read without the statue standing out
@@ -459,10 +497,31 @@ module.exports = (regl, data, useReflexion) => {
         light *= ao;
       }
 
-      vec3 pictureTint = vec3(1.0, 0.93, 0.80);
+      // tungsten-warm picture lights against cooler daylight from the
+      // skylight, the windows and the dome: the mix of the two is what
+      // real gallery light looks like
+      vec3 pictureTint = vec3(1.0, 0.90, 0.74);
+      float daylight = glow * 0.05 + cg * 0.16 + aGlow * 0.5 + winL * 0.48;
+      float coolShare = clamp(daylight / max(light, 0.05), 0.0, 1.0) * (1.0 - clamp(sun * 2.0 + spill, 0.0, 1.0));
       vec3 spillTint = mix(vec3(1.0), vec3(1.10, 0.95, 0.78), clamp(spill * 2.0, 0.0, 1.0));
       spillTint = mix(spillTint, vec3(1.08, 1.0, 0.86), clamp(sun * 1.5, 0.0, 1.0));
+      spillTint *= mix(vec3(1.0), vec3(0.93, 0.97, 1.05), coolShare * 0.7);
       vec3 finalColour = material * (vec3(light) * spillTint + pictureTint * pic * ${PICTURE_LIGHT.toFixed(3)} * (1.0 - 0.5 * isFloor));
+
+      // light bounced off the warm floor onto the lower walls and columns
+      finalColour += material * vec3(1.0, 0.84, 0.62) * 0.05 * ${ROOM_BRIGHTNESS.toFixed(3)}
+        * (1.0 - smoothstep(0.0, 2.4, v_pos.y)) * (1.0 - isFloor) * (1.0 - abs(N.y));
+
+      // polished marble (columns, arch, skirting): a soft highlight of the
+      // daylight that drifts across the stone as you move, rougher in places
+      float isMarble = (1.0 - isShell) * (1.0 - isObj) * (1.0 - isFloor) * (1.0 - isCeiling) * (1.0 - isCream) + isFluted;
+      if (detail && isMarble > 0.5) {
+        vec3 Hm = normalize(lightDirection + V);
+        float rough = 0.55 + 0.45 * vnoise(uv * 1.7 + 3.0);
+        float gloss = pow(max(dot(N, Hm), 0.0), mix(60.0, 14.0, rough));
+        float fresM = 0.04 + 0.96 * pow(1.0 - max(dot(N, V), 0.0), 5.0);
+        finalColour += vec3(1.0, 0.96, 0.88) * (gloss * 0.07 * (1.0 - rough * 0.6) + fresM * 0.05) * (light + pic * 0.5);
+      }
 
       // a dull sheen on the black steel frames
       vec3 Hst = normalize(lightDirection + V);
@@ -510,7 +569,13 @@ module.exports = (regl, data, useReflexion) => {
       finalColour.b *= 0.955;
 
       float atmosphere = fadeFar(8.0, 60.0, dist);
-      finalColour = mix(finalColour * 0.72, finalColour, atmosphere);
+      finalColour = mix(finalColour * 0.80, finalColour, atmosphere);
+      // the far end of the gallery sinks into a faint warm haze: lower in
+      // contrast and colour, so the room feels deeper
+      float far = 1.0 - atmosphere;
+      float lum = dot(finalColour, vec3(0.299, 0.587, 0.114));
+      finalColour = mix(finalColour, vec3(lum), far * 0.22);
+      finalColour = mix(finalColour, vec3(0.30, 0.27, 0.23) * ${ROOM_BRIGHTNESS.toFixed(3)}, far * 0.16);
 
       // ---------------------------------------------------------
       // POLISHED FLOOR
@@ -537,6 +602,7 @@ module.exports = (regl, data, useReflexion) => {
         float refl = 0.16 + 0.58 * pow(1.0 - cosV, 3.0);
         refl *= mix(0.72, 1.0, checker);
         refl *= 1.0 - 0.5 * grout;
+        refl *= tilePolish * (1.0 - 0.32 * wear - 0.30 * scuff);
         alpha = 1.0 - refl * mirrorOn;
         // the bright pool of daylight washes the reflection out a little
         alpha = mix(alpha, 1.0, clamp(spill * 0.4 + sun * 0.4, 0.0, 0.45));
