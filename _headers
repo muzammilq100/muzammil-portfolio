@@ -14,3 +14,6 @@
 
 /
   Cache-Control: public, max-age=0, must-revalidate
+
+/visits/*
+  Cache-Control: public, max-age=604800
