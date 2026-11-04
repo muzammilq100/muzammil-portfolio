@@ -313,7 +313,7 @@ module.exports = (regl) => {
 				// size; it melts away where a thread is smaller than a pixel
 				vec2 T = st * canvasCm * 13.0;
 				float fw = max(fwidth(T.x), fwidth(T.y));
-				float wAmp = 1.0 - smoothstep(0.22, 0.55, fw);
+				float wAmp = 1.0 - smoothstep(0.12, 0.30, fw);
 				vec2 f = fract(T);
 				float over = mod(floor(T.x) + floor(T.y), 2.0);
 				vec2 g = vec2(cos(3.14159 * f.x) * mix(0.55, 1.0, over),
@@ -325,9 +325,10 @@ module.exports = (regl) => {
 				// ---- the paint itself: a gentle relief that follows the
 				// brushwork in the photograph (kept low so it never looks
 				// embossed)
-				float lx = luma(texture2D(tex, st + vec2(texel, 0.0)).rgb) - luma(texture2D(tex, st - vec2(texel, 0.0)).rgb);
-				float ly = luma(texture2D(tex, st + vec2(0.0, texel)).rgb) - luma(texture2D(tex, st - vec2(0.0, texel)).rgb);
-				g += vec2(lx, ly) * 1.6;
+				float tx = texel * 2.0;
+				float lx = luma(texture2D(tex, st + vec2(tx, 0.0)).rgb) - luma(texture2D(tex, st - vec2(tx, 0.0)).rgb);
+				float ly = luma(texture2D(tex, st + vec2(0.0, tx)).rgb) - luma(texture2D(tex, st - vec2(0.0, tx)).rgb);
+				g += vec2(lx, ly) * 0.75;
 
 				N = normalize(v_n - v_t * g.x - v_b * g.y);
 
@@ -336,7 +337,7 @@ module.exports = (regl) => {
 				vec3 Lw = normalize(v_lamp - v_world);
 				float flatL = max(dot(v_n, Lw), 0.05);
 				float lit = max(dot(N, Lw), 0.0) / flatL;
-				col *= mix(1.0, clamp(lit, 0.7, 1.3), 0.55);
+				col *= mix(1.0, clamp(lit, 0.8, 1.2), 0.35);
 				col *= 1.0 - 0.05 * wAmp * (1.0 - abs(f.x - 0.5) * 2.0) * (1.0 - abs(f.y - 0.5) * 2.0);
 
 				// ---- the varnish: a soft satin highlight of the lamp that

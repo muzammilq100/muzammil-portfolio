@@ -13,6 +13,9 @@
  *   size         real size in centimetres, [height, width]; it also sets
  *                how fine the canvas weave is drawn
  *   description  the words, one blank line between paragraphs
+ *   visit        (optional) a short film of the painting coming to life,
+ *                offered on laptops and desktops as "Visit what remained":
+ *                { video: 'visits/<slug>.mp4' } (the file goes in static/visits/)
  *
  * To add a painting: put its photo in images/ and add an entry here.
  */
@@ -21,6 +24,7 @@ module.exports = [
 	{
 		file: "IMG_20250717_102753.jpg",
 		slug: "love-me-like-i-am-already-dead",
+		visit: { video: 'visits/love-me-like-i-am-already-dead.mp4' },
 		title: "Love me like I am Already Dead",
 		medium: 'Oil on canvas',
 		size: [61, 91],

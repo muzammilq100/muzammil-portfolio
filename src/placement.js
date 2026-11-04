@@ -914,6 +914,12 @@ module.exports =
 			medium:
 				p.medium,
 
+			slug:
+				p.slug,
+
+			visit:
+				p.visit,
+
 			size:
 				p.size,
 
@@ -1086,6 +1092,12 @@ module.exports =
 
 						medium:
 							p.medium,
+
+						slug:
+							p.slug,
+
+						visit:
+							p.visit,
 
 						size:
 							p.size,

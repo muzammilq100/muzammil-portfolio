@@ -168,6 +168,7 @@ const drawAvatar = require('./avatar')(regl);
 const about = require('./about');
 const contact = require('./contact');
 const caption = require('./caption');
+const visit = require('./visit');
 const { A: COURT } = require('./alcove');
 
 fps = require('./fps')(
@@ -638,6 +639,8 @@ overlay.innerHTML = `
 
 		${contact.line('story-contact')}
 
+		<div class="visit-row story-visit"></div>
+
 		<p
 			class="story-body"
 			id="story-body"
@@ -672,6 +675,10 @@ const storyBody =
 
 const storyMeta = overlay.querySelector('#story-meta');
 const storyContact = overlay.querySelector('.story-contact');
+const storyVisit = overlay.querySelector('.story-visit');
+storyVisit.addEventListener('click', (e) => {
+	if (e.target.closest('.visit-btn') && activePainting) visit.open(activePainting);
+});
 
 const closeStory =
 	overlay.querySelector(
@@ -717,6 +724,11 @@ function openStory(painting) {
 	storyMeta.textContent = painting.isAbout ? '' : caption(painting);
 	storyMeta.hidden = !!painting.isAbout;
 	storyContact.hidden = !painting.isAbout;
+
+	// laptops and desktops: "Visit what remained", for a painting with a film
+	storyVisit.innerHTML = painting.isAbout ? '' : visit.button(painting);
+	storyVisit.hidden = !storyVisit.innerHTML;
+	if (!storyVisit.hidden) visit.warm(painting);
 
 	overlay.classList.toggle('about-mode', !!painting.isAbout);
 
@@ -1213,6 +1225,13 @@ let perfStart = 0;
 
 regl.frame(
 	function ({ time }) {
+
+		// a visit's film is playing over everything: stop drawing the
+		// gallery so the film has the machine to itself
+		if (document.body.classList.contains('visiting')) {
+			perfFrames = 0;
+			return;
+		}
 
 		stats.begin();
 

@@ -33,6 +33,7 @@ const mat4 = require('gl-mat4');
 const about = require('./about');
 const contact = require('./contact');
 const caption = require('./caption');
+const visit = require('./visit');
 const { A: COURT } = require('./alcove');
 const { C: WING, PAINTING_X } = require('./wing');
 
@@ -1524,6 +1525,7 @@ module.exports = function createTour(opts) {
 			<span class="tour-line tour-kicker"></span>
 			<h2 class="tour-title tour-letters"></h2>
 			<span class="tour-rule"></span>
+			<span class="tour-line visit-row"></span>
 			<div class="tour-body"></div>`);
 		const title = card.querySelector('.tour-title');
 		const body = card.querySelector('.tour-body');
@@ -1535,6 +1537,15 @@ module.exports = function createTour(opts) {
 			card.filled = true;
 			const t = p.title || '';
 			card.querySelector('.tour-kicker').textContent = caption(p) || 'Oil on canvas';
+			// laptops and desktops: "Visit what remained", for a painting with a film
+			const row = card.querySelector('.visit-row');
+			row.innerHTML = visit.button(p);
+			row.hidden = !row.innerHTML;
+			const vb = row.querySelector('.visit-btn');
+			if (vb) {
+				vb.addEventListener('click', (e) => { e.stopPropagation(); visit.open(p); });
+				card.warm = () => visit.warm(p);
+			}
 			// (letters grouped by word, so a line never breaks inside a word)
 			let n = 0;
 			title.innerHTML = t.split(' ').map((word) =>
@@ -1666,6 +1677,7 @@ module.exports = function createTour(opts) {
 			void c.offsetWidth;
 		}
 		cards.forEach((c, k) => c.classList.toggle('on', k === i));
+		if (c && c.warm) c.warm();
 		hintText.textContent = HINTS[i] || '';
 		hint.classList.toggle('on', !!HINTS[i]);
 	}
@@ -1771,7 +1783,7 @@ module.exports = function createTour(opts) {
 	}, { passive: false });
 
 	window.addEventListener('keydown', (e) => {
-		if (!active || exiting) return;
+		if (!active || exiting || document.body.classList.contains('visiting')) return;
 		const k = e.key;
 		if (['ArrowDown', 'ArrowRight', 'PageDown', ' ', 'Enter'].indexOf(k) >= 0) {
 			// (Enter and Space on a focused button press the button)
