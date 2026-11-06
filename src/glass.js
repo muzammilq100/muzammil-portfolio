@@ -1,5 +1,7 @@
 'use strict';
 
+const NIGHT_GLSL = require('./env').GLSL;   // moonlit by night (see env.js)
+
 /*
  * GLASS
  * -----
@@ -35,6 +37,7 @@ module.exports = (regl) => {
 	const draw = regl({
 		frag: `
 		precision highp float;
+		${NIGHT_GLSL}
 		varying vec3 v_pos;
 		varying vec3 v_eye;
 		varying vec3 v_n;
@@ -48,7 +51,7 @@ module.exports = (regl) => {
 			            + smoothstep(0.08, 0.0, abs(fract(d * 0.22 + 0.17) - 0.5)) * 0.04;
 			float a = 0.05 + 0.32 * fres + sheen;
 			vec3 col = mix(vec3(0.80, 0.86, 0.90), vec3(1.0, 0.95, 0.86), 0.4);
-			gl_FragColor = vec4(col, a);
+			gl_FragColor = vec4(toNight(col, 0.35), a);
 		}`,
 		vert: `
 		precision highp float;

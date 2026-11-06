@@ -1132,6 +1132,7 @@ const CSS = `
 	transition: background .3s ease, border-color .3s ease;
 }
 .tour-icon:hover { background: rgba(60,45,30,.45); border-color: rgba(244,236,223,.55); }
+button.tour-icon { padding: 0; cursor: pointer; font: inherit; }
 .tour-icon:focus-visible { outline: 2px solid #e9cf9a; outline-offset: 3px; }
 
 /* the same, as a line of words on the About and closing cards */
@@ -1491,6 +1492,8 @@ module.exports = function createTour(opts) {
 	free.type = 'button';
 	// Instagram and email, then "Explore freely", in the top right corner
 	const links = el('div', 'tour-links', contact.icons('tour-icon'));
+	// Day / Night, first in the row
+	links.insertBefore(require('./lighttoggle')('tour-icon'), links.firstChild);
 	if (CAN_WALK) links.appendChild(free);
 
 	const progress = el('div', 'tour-progress', SHOTS.map(() => '<i></i>').join(''));

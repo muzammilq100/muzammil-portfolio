@@ -1,5 +1,7 @@
 'use strict';
 
+const NIGHT_GLSL = require('./env').GLSL;   // moonlit by night (see env.js)
+
 /*
  * THE FALLING LEAF
  * ----------------
@@ -84,6 +86,7 @@ module.exports = (regl) => {
 		}`,
 		frag: `
 		precision highp float;
+		${NIGHT_GLSL}
 		uniform float yScale, visible;
 		varying vec3 v_pos, v_normal;
 		varying vec2 v_uv;
@@ -134,7 +137,7 @@ module.exports = (regl) => {
 			vec3 H = normalize(L + V);
 			col += vec3(1.0, 0.95, 0.85) * sun * pow(max(dot(N, H), 0.0), 40.0) * 0.6;
 
-			gl_FragColor = vec4(col * visible, 1.0);
+			gl_FragColor = vec4(toNight(col * visible, 0.55), 1.0);
 		}`,
 		attributes: { position: g.pos, normal: g.nrm, uv: g.uv },
 		elements: g.idx,

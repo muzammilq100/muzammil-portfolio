@@ -1,5 +1,7 @@
 'use strict';
 
+const NIGHT_GLSL = require('./env').GLSL;   // moonlit by night (see env.js)
+
 /*
  * THE TREE IN THE ALCOVE
  * ----------------------
@@ -137,6 +139,7 @@ void main() {
 
 const FRAG = `
 precision highp float;
+${NIGHT_GLSL}
 uniform sampler2D leaves, bark;
 varying vec3 v_pos, v_n;
 varying vec2 v_uv;
@@ -183,7 +186,7 @@ void main() {
 	vec3 col = base * light * vec3(1.03, 1.0, 0.94);
 	// leaves glow a little where the sun comes through them
 	col += v_leaf * base * vec3(0.55, 0.65, 0.25) * oculusSun(v_pos) * v_shade * 0.35;
-	gl_FragColor = vec4(col, 1.0);
+	gl_FragColor = vec4(toNight(col, 1.15), 1.0);
 }`;
 
 module.exports = (regl) => {

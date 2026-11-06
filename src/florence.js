@@ -1,5 +1,7 @@
 'use strict';
 
+const NIGHT_GLSL = require('./env').GLSL;   // moonlit by night (see env.js)
+
 /*
  * THE FLORENCE STREET
  * -------------------
@@ -82,6 +84,7 @@ const f = (x) => x.toFixed(5);
 
 const FRAG = `
 precision highp float;
+${NIGHT_GLSL}
 uniform sampler2D photo;
 varying vec3 v_pos;
 
@@ -102,7 +105,7 @@ void main() {
 	col = mix(col, soft, smoothstep(0.0, 0.06, outside));
 	// the photo is a little dark for a sunny day
 	col = pow(col, vec3(0.9)) * 1.08;
-	gl_FragColor = vec4(col, 1.0);
+	gl_FragColor = vec4(toNight(col, 0.22), 1.0);
 }`;
 
 const VERT = `

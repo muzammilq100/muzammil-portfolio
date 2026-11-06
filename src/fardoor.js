@@ -1,5 +1,7 @@
 'use strict';
 
+const NIGHT_GLSL = require('./env').GLSL;   // moonlit by night (see env.js)
+
 /*
  * THE FAR DOOR'S LEAVES
  * ---------------------
@@ -119,6 +121,7 @@ module.exports = (regl) => {
 		vert: VERT,
 		frag: `
 		precision highp float;
+		${NIGHT_GLSL}
 		varying vec3 v_pos, v_n, v_eye;
 		void main() {
 			vec3 N = normalize(v_n);
@@ -129,7 +132,7 @@ module.exports = (regl) => {
 			vec3 col = vec3(0.045, 0.045, 0.048) * (0.35 + 0.5 * d);
 			vec3 H = normalize(L + V);
 			col += vec3(0.30, 0.29, 0.27) * pow(max(dot(N, H), 0.0), 24.0) * 0.18;
-			gl_FragColor = vec4(col, 1.0);
+			gl_FragColor = vec4(toNight(col, 0.22), 1.0);
 		}`,
 		attributes: { position: regl.prop('pos'), normal: regl.prop('nrm') },
 		elements: regl.prop('el'),
@@ -141,6 +144,7 @@ module.exports = (regl) => {
 		vert: VERT,
 		frag: `
 		precision highp float;
+		${NIGHT_GLSL}
 		varying vec3 v_pos, v_n, v_eye;
 		void main() {
 			vec3 V = normalize(v_eye - v_pos);
@@ -149,7 +153,7 @@ module.exports = (regl) => {
 			float d = (v_pos.x + v_pos.z) * 0.55 + v_pos.y * 0.85;
 			float sheen = smoothstep(0.35, 0.0, abs(fract(d * 0.22) - 0.5)) * 0.05;
 			float a = 0.05 + 0.32 * fres + sheen;
-			gl_FragColor = vec4(mix(vec3(0.80, 0.86, 0.90), vec3(1.0, 0.95, 0.86), 0.4), a);
+			gl_FragColor = vec4(toNight(mix(vec3(0.80, 0.86, 0.90), vec3(1.0, 0.95, 0.86), 0.4), 0.22), a);
 		}`,
 		attributes: { position: regl.prop('pos'), normal: regl.prop('nrm') },
 		count: regl.prop('count'),

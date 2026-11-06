@@ -241,8 +241,9 @@ const amat = 'mat3(' + [0, 1, 2].map((c) => [0, 1, 2].map((r) => A[r][c].toFixed
 const FRAG = `
 precision highp float;
 
-uniform sampler2D photo, photoMask, pinkTex, yellowTex, creamTex, cobbleTex;
+uniform sampler2D photo, photoNight, photoMask, pinkTex, yellowTex, creamTex, cobbleTex;
 uniform float time;
+uniform float night;   // 0 by day, 1 at night
 
 varying vec3 v_pos;
 varying vec3 v_normal;
@@ -341,7 +342,10 @@ vec4 photoAt(vec3 p, vec3 n, vec3 eye) {
 	float eyeCos = abs(dot(normalize(p - eye), n));
 	float stretch = eyeCos / max(camCos, 0.001);
 	w *= 1.0 - smoothstep(2.2, 3.6, stretch);
-	return vec4(texture2D(photo, uv).rgb, w);
+	// by night, the same street after rain (res/street/photo_night.jpg)
+	vec3 c = texture2D(photo, uv).rgb;
+	if (night > 0.0) c = mix(c, texture2D(photoNight, uv).rgb, night);
+	return vec4(c, w);
 }
 
 vec3 skyColour(vec3 dir) {
@@ -367,7 +371,12 @@ void main() {
 	float dist = length(V);
 
 	if (kind > 5.5) {
-		gl_FragColor = vec4(skyColour(normalize(V)), 1.0);
+		vec3 sk = skyColour(normalize(V));
+		// the night sky: deep blue with a few stars
+		vec3 nd = normalize(V);
+		vec3 ns = mix(vec3(0.03, 0.045, 0.085), vec3(0.01, 0.016, 0.035), smoothstep(0.0, 0.7, nd.y));
+		ns += vec3(0.8, 0.85, 0.95) * step(0.997, hash(floor(nd.xz / max(nd.y, 0.1) * 70.0)));
+		gl_FragColor = vec4(mix(sk, ns, night), 1.0);
 		return;
 	}
 
@@ -394,9 +403,15 @@ void main() {
 	// the yellow building ends at its real roofline
 	if (kind > 2.5 && kind < 3.5 && v_pos.y > 15.0 && photoSky(v_pos)) discard;
 
+	float photoW = 0.0;
 	if (projectable) {
 		vec4 ph = photoAt(v_pos, N, v_eye);
+		// (the painted facades go to night on their own: dark, cold)
+		base = mix(base, base * vec3(0.16, 0.2, 0.3), night);
 		base = mix(base, ph.rgb, ph.a);
+		photoW = ph.a;
+	} else {
+		base = mix(base, base * vec3(0.16, 0.2, 0.3), night);
 	}
 
 	// ---------- golden afternoon ----------
@@ -410,6 +425,29 @@ void main() {
 
 	// warm haze with distance
 	col = mix(col, vec3(1.0, 0.86, 0.68), (1.0 - exp(-dist / 140.0)) * 0.35);
+
+	// ---------- after rain, at night ----------
+	if (night > 0.0) {
+		// the night photograph already holds its light: no sun on it
+		// (lifted a little: seen from inside the gallery it reads darker)
+		vec3 nc = base * 2.3;
+		if (kind < 0.5) {
+			// wet stone: the lamp reflections shimmer as the water moves
+			float warmth = clamp((nc.r - nc.b) * 4.0, 0.0, 1.0);
+			float ripple = vnoise(vec2(v_pos.x * 7.0, v_pos.z * 1.6 - time * 0.9))
+			             * vnoise(vec2(v_pos.x * 2.3 + time * 0.25, v_pos.z * 4.0));
+			nc *= 1.0 + warmth * (ripple * 1.5 - 0.4);
+			// little glints coming and going on the cobbles
+			float g = hash(floor(v_pos.xz * 38.0) + floor(time * 3.0));
+			nc += vec3(1.0, 0.75, 0.45) * warmth * step(0.985, g) * 0.5;
+		}
+		// a thin mist hanging low over the street, drifting
+		float mist = vnoise(vec2(v_pos.x * 0.35 + time * 0.08, v_pos.z * 0.25 - time * 0.03)) * (1.0 - smoothstep(0.0, 3.0, v_pos.y));
+		nc = mix(nc, vec3(0.10, 0.12, 0.17), mist * 0.35);
+		// cold, damp distance
+		nc = mix(nc, vec3(0.025, 0.035, 0.06), (1.0 - exp(-dist / 90.0)) * 0.5);
+		col = mix(col, nc, night);
+	}
 
 	gl_FragColor = vec4(col, 1.0);
 }`;
@@ -437,6 +475,8 @@ void main() {
  * ===========================================================
  */
 
+const env = require('./env');
+
 module.exports = (regl) => {
 
 	const data = buildStreet();
@@ -446,6 +486,7 @@ module.exports = (regl) => {
 	const repeatOpts = { wrapS: 'repeat', wrapT: 'repeat', flipY: false };
 
 	const photo = loadTexture(regl, 'res/street/photo.jpg', clampOpts, [190, 160, 120]);
+	const photoNight = loadTexture(regl, 'res/street/photo_night.jpg', clampOpts, [12, 14, 22]);
 	const photoMask = loadTexture(regl, 'res/street/photo_mask.png', clampOpts, [255, 255, 255]);
 	const pinkTex = loadTexture(regl, 'res/street/facade_pink.jpg', mirrorOpts, [200, 150, 135]);
 	const yellowTex = loadTexture(regl, 'res/street/facade_yellow.jpg', mirrorOpts, [225, 180, 95]);
@@ -470,6 +511,8 @@ module.exports = (regl) => {
 			yellowTex,
 			creamTex,
 			cobbleTex,
+			photoNight,
+			night: () => env.night,
 			time: () => (Date.now() - start) / 1000
 		}
 	});
