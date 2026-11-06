@@ -34,6 +34,13 @@ const about = require('./about');
 const contact = require('./contact');
 const caption = require('./caption');
 const visit = require('./visit');
+const quality = require('./quality');
+
+// Free walking ("Explore freely", "Walk the gallery", Esc) is offered on
+// laptops and desktops only: phones and tablets get the guided tour.
+// The walking code is all still here; to offer it everywhere again, make
+// this true.
+const CAN_WALK = !quality.isPhone && !!(window.matchMedia && window.matchMedia('(pointer: fine)').matches);
 const { A: COURT } = require('./alcove');
 const { C: WING, PAINTING_X } = require('./wing');
 
@@ -1398,8 +1405,8 @@ const CSS = `
 	.tour-body p { font-size: 14px; line-height: 1.45; }
 	.tour-btn { min-height: 38px; }
 }
-@media (max-width: 440px) {
-	/* (on phones the corner belongs to the Instagram, email and Explore buttons) */
+@media (max-width: 340px) {
+	/* (very narrow screens: the corner belongs to the Instagram and email buttons) */
 	.tour-mark { display: none; }
 }
 @media (max-width: 520px) {
@@ -1484,7 +1491,7 @@ module.exports = function createTour(opts) {
 	free.type = 'button';
 	// Instagram and email, then "Explore freely", in the top right corner
 	const links = el('div', 'tour-links', contact.icons('tour-icon'));
-	links.appendChild(free);
+	if (CAN_WALK) links.appendChild(free);
 
 	const progress = el('div', 'tour-progress', SHOTS.map(() => '<i></i>').join(''));
 	const hint = el('div', 'tour-hint',
@@ -1586,10 +1593,10 @@ module.exports = function createTour(opts) {
 	const end = el('div', 'tour-card tour-endcard', `
 		<span class="tour-line tour-kicker">Thank you for walking with me</span>
 		<span class="tour-rule"></span>
-		<span class="tour-line tour-sub">The rest of the gallery is yours to wander.</span>
+		<span class="tour-line tour-sub">${CAN_WALK ? 'The rest of the gallery is yours to wander.' : 'Swipe back to return to any painting.'}</span>
 		${contact.line('tour-line tour-contact')}
 		<div class="tour-line tour-end">
-			<button type="button" class="tour-btn" data-act="free">Walk the gallery</button>
+			${CAN_WALK ? '<button type="button" class="tour-btn" data-act="free">Walk the gallery</button>' : ''}
 			<button type="button" class="tour-btn quiet" data-act="list">All paintings</button>
 			<button type="button" class="tour-btn quiet" data-act="replay">Replay</button>
 		</div>`);
@@ -1847,7 +1854,7 @@ module.exports = function createTour(opts) {
 	let restingDoor = 0;
 
 	function exit() {
-		if (!active || exiting) return;
+		if (!active || exiting || !CAN_WALK) return;
 		const at = nearestShot(scroll);
 		const h = HANDOVER[at];
 		// the leaf stays in the tree, or on the floor where it landed

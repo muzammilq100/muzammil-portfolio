@@ -24,7 +24,6 @@ module.exports = [
 	{
 		file: "IMG_20250717_102753.jpg",
 		slug: "love-me-like-i-am-already-dead",
-		visit: { video: 'visits/love-me-like-i-am-already-dead.mp4' },
 		title: "Love me like I am Already Dead",
 		medium: 'Oil on canvas',
 		size: [61, 91],
