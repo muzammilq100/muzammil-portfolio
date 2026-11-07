@@ -1,0 +1,19 @@
+# Cloudflare Pages: how long browsers may keep each kind of file.
+# The code changes name with every build (app.js?v=...), so it can be kept
+# a long time; the 3D models and pictures a week; the page itself is
+# always checked for a newer version.
+
+/app.js
+  Cache-Control: public, max-age=31536000, immutable
+
+/res/*
+  Cache-Control: public, max-age=604800
+
+/images/*
+  Cache-Control: public, max-age=604800
+
+/
+  Cache-Control: public, max-age=0, must-revalidate
+
+/visits/*
+  Cache-Control: public, max-age=604800
