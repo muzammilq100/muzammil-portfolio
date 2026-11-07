@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <title>Muzammil · Oil Paintings · A Virtual Gallery</title>
+    <meta name="description" content="Oil paintings by Muzammil, hung in a Renaissance-inspired virtual gallery. I don’t paint what happened. I paint what remained after it happened.">
+    <meta name="author" content="Muzammil">
+    <meta name="theme-color" content="#14100c">
+    <link rel="canonical" href="https://muzammil-gallery.pages.dev/">
+
+    <!-- how the link looks when shared (WhatsApp, Instagram, LinkedIn, X...) -->
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Muzammil · Virtual Gallery">
+    <meta property="og:title" content="Muzammil · Oil Paintings">
+    <meta property="og:description" content="I don’t paint what happened. I paint what remained after it happened. Walk through the gallery.">
+    <meta property="og:url" content="https://muzammil-gallery.pages.dev/">
+    <meta property="og:image" content="https://muzammil-gallery.pages.dev/og.jpg">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="A sunlit Renaissance gallery corridor with oil paintings on the walls">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Muzammil · Oil Paintings">
+    <meta name="twitter:description" content="I don’t paint what happened. I paint what remained after it happened.">
+    <meta name="twitter:image" content="https://muzammil-gallery.pages.dev/og.jpg">
+
+    <link rel="icon" href="favicon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="apple-touch-icon.png">
+
+    <!-- the serif for the words, asked for early so it is there before they are -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" data-tour-font href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&display=swap">
+
+    <style>
+      html, body { margin: 0; background: #0d0a08; }
+      /* the loading screen, shown until the gallery's files have arrived */
+      #loader {
+        position: fixed; inset: 0; z-index: 1000;
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        background: #0d0a08; color: #f4ecdf; text-align: center; padding: 24px;
+        font-family: 'Cormorant Garamond', Georgia, 'Times New Roman', serif;
+        transition: opacity 1.2s ease, visibility 0s linear 1.2s;
+      }
+      #loader.done { opacity: 0; visibility: hidden; }
+      #loader .loader-kicker { font: 500 12px/1.4 Georgia, serif; letter-spacing: .38em; text-transform: uppercase; color: #e9cf9a; }
+      #loader h1 { margin: 14px 0 0; font-weight: 500; font-size: clamp(40px, 7vw, 76px); letter-spacing: .01em; line-height: 1; }
+      #loader p { margin: 16px 0 0; font-style: italic; font-size: clamp(17px, 2vw, 22px); line-height: 1.4; opacity: .85; }
+      #loader .loader-bar { width: 160px; height: 1px; margin-top: 30px; background: rgba(244,236,223,.15); overflow: hidden; }
+      #loader .loader-bar i { display: block; height: 100%; background: #e9cf9a; transform: scaleX(.04); transform-origin: left; transition: transform .6s ease; }
+      @media (prefers-reduced-motion: reduce) { #loader, #loader .loader-bar i { transition: none; } }
+    </style>
+  </head>
+  <body>
+    <div id="loader" role="status" aria-live="polite">
+      <span class="loader-kicker">A virtual gallery</span>
+      <h1>Muzammil</h1>
+      <p>I don’t paint what happened.<br>I paint what remained<br>after it happened</p>
+      <div class="loader-bar" aria-hidden="true"><i></i></div>
+    </div>
+    <noscript>
+      <style>#loader { display: none; }</style>
+      <p style="color:#f4ecdf;font:18px Georgia,serif;text-align:center;padding:40px">
+        This gallery needs JavaScript. You can find Muzammil on
+        <a style="color:#e9cf9a" href="https://instagram.com/muzammil_qureshi">Instagram</a>.
+      </p>
+    </noscript>
+    <script src="app.js?v=ffae1a258a"></script>
+  </body>
+</html>
