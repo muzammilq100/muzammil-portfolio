@@ -253,7 +253,7 @@ module.exports = (regl) => {
 	uniform float detail;    // 1: canvas weave, varnish and relief
 	uniform float yScale;    // -1 in the mirrored floor
 	uniform float night, time;
-	${require('./candles').candleGLSL()}
+	${require('./lanterns').lanternGLSL()}
 	varying vec3 uv;
 	varying vec3 v_world;
 	varying vec3 v_eye;
@@ -362,12 +362,12 @@ module.exports = (regl) => {
 
 			col *= mix(1.0, lamp, frontMask);
 			col += vec3(1.0, 0.93, 0.80) * sheen * frontMask;
-			// at night: the picture light low and candle-yellow, so the
+			// at night: the picture light low and lantern-yellow, so the
 			// painting glows softly instead of shining
 			vec3 paint = col;
 			col *= mix(vec3(1.0), vec3(0.58, 0.50, 0.36), night);
-			// and the candles nearby warm it, flickering
-			col += paint * candleLight(v_world, N) * 0.9 * frontMask;
+			// and the lanterns nearby warm it
+			col += paint * lanternLight(v_world, N) * 1.1 * frontMask;
 
 			// ---- the frame's inner lip: its shadow falls on the canvas,
 			// deepest along the top where the light comes from

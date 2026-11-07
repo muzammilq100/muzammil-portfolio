@@ -85,7 +85,7 @@ module.exports = (regl, data, useReflexion) => {
     uniform float mirrorOn;
     uniform float night;   // 0 by day, 1 at night
     uniform float time;
-    ${require('./candles').candleGLSL()}
+    ${require('./lanterns').lanternGLSL()}
 
     varying vec3 v_pos;
     varying vec3 v_relativepos;
@@ -515,8 +515,8 @@ module.exports = (regl, data, useReflexion) => {
       // tungsten-warm picture lights against cooler daylight from the
       // skylight, the windows and the dome: the mix of the two is what
       // real gallery light looks like
-      // (at night the picture lights burn lower and yellower, like candles,
-      // so the moon and the candles carry the room)
+      // (at night the picture lights burn lower and yellower, like lanterns,
+      // so the moon and the lanterns carry the room)
       vec3 pictureTint = mix(vec3(1.0, 0.90, 0.74), vec3(1.0, 0.80, 0.46) * 0.52, night);
       float daylight = glow * 0.05 + cg * 0.16 + aGlow * 0.5 + winL * 0.48;
       float coolShare = clamp(daylight / max(light, 0.05), 0.0, 1.0) * (1.0 - clamp(sun * 2.0 + spill, 0.0, 1.0));
@@ -529,8 +529,8 @@ module.exports = (regl, data, useReflexion) => {
       spillTint *= mix(vec3(1.0), mix(vec3(0.66, 0.76, 0.98), vec3(1.05, 0.86, 0.62), clamp(spill * 2.0, 0.0, 1.0)), night);
       vec3 finalColour = material * (vec3(light) * spillTint + pictureTint * pic * ${PICTURE_LIGHT.toFixed(3)} * (1.0 - 0.5 * isFloor));
 
-      // candlelight, flickering, at night
-      finalColour += material * candleLight(v_pos, N);
+      // lantern light, patterned by the leaded glass, at night
+      finalColour += material * lanternLight(v_pos, N);
 
       // light bounced off the warm floor onto the lower walls and columns
       finalColour += material * vec3(1.0, 0.84, 0.62) * 0.05 * mix(1.0, 0.3, night) * ${ROOM_BRIGHTNESS.toFixed(3)}

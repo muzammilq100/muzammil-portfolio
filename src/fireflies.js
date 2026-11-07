@@ -18,7 +18,7 @@ const X0 = 15.3, X1 = 37.1;
 const Z0 = WING.z1 + 0.9, Z1 = WING.z1 + 0.7 + 16.0 - 0.6;
 
 module.exports = (regl, quality) => {
-	const COUNT = quality.isPhone ? 28 : 56;
+	const COUNT = quality.isPhone ? 36 : 80;
 	let seed = 11;
 	const rnd = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
 	const pts = [];
@@ -28,13 +28,22 @@ module.exports = (regl, quality) => {
 		pts.push([X0 + rnd() * (X1 - X0), y, Z0 + rnd() * (Z1 - Z0), rnd()]);
 	}
 
+	// each firefly is a small camera-facing card (more dependable than
+	// points, whose size some phones limit)
+	const corner = [], seedA = [];
+	pts.forEach((pt) => {
+		[[-1, -1], [1, -1], [1, 1], [-1, -1], [1, 1], [-1, 1]].forEach((c) => { corner.push(c[0], c[1]); seedA.push(...pt); });
+	});
+
 	const draw = regl({
 		vert: `
 		precision highp float;
 		uniform mat4 proj, view;
-		uniform float time, pixelScale;
+		uniform float time, yScale;
+		attribute vec2 corner;
 		attribute vec4 seed;
 		varying float v_glow;
+		varying vec2 v_uv;
 		void main() {
 			float s = seed.w * 6.2831;
 			// a slow wandering path, different for each
@@ -45,31 +54,32 @@ module.exports = (regl, quality) => {
 			// glowing, then dark for a while: each on its own rhythm
 			float period = 3.5 + seed.w * 4.0;
 			float ph = fract(time / period + seed.w * 7.31);
-			v_glow = smoothstep(0.0, 0.12, ph) * (1.0 - smoothstep(0.22, 0.5, ph));
-			vec4 vp = view * vec4(p, 1.0);
-			float dist = max(-vp.z, 0.1);
-			gl_Position = proj * vp;
-			gl_PointSize = v_glow > 0.01 ? clamp(pixelScale * 9.0 / dist, 4.0, 28.0) : 0.0;
-			if (v_glow <= 0.01) gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+			v_glow = 0.06 + 0.94 * smoothstep(0.0, 0.1, ph) * (1.0 - smoothstep(0.45, 0.75, ph));
+			vec3 right = vec3(view[0][0], view[1][0], view[2][0]);
+			vec3 up = vec3(view[0][1], view[1][1], view[2][1]);
+			float size = 0.17;
+			p += (right * corner.x + up * corner.y) * size;
+			v_uv = corner;
+			p.y *= yScale;
+			gl_Position = proj * view * vec4(p, 1.0);
 		}`,
 		frag: `
 		precision highp float;
 		uniform float night;
 		varying float v_glow;
+		varying vec2 v_uv;
 		void main() {
-			float r = length(gl_PointCoord - 0.5) * 2.0;
+			float r = length(v_uv);
 			// a bright little core and a soft halo
-			float core = 1.0 - smoothstep(0.0, 0.18, r);
-			float halo = pow(max(1.0 - r, 0.0), 2.4);
-			vec3 col = vec3(0.80, 1.0, 0.42) * (core * 2.2 + halo * 0.8);
+			float core = 1.0 - smoothstep(0.0, 0.22, r);
+			float halo = pow(max(1.0 - r, 0.0), 2.2);
+			vec3 col = vec3(0.80, 1.0, 0.42) * (core * 4.0 + halo * 1.3);
 			gl_FragColor = vec4(col * v_glow * night, 1.0);
 		}`,
-		attributes: { seed: pts },
-		count: pts.length,
-		primitive: 'points',
+		attributes: { corner, seed: seedA },
+		count: corner.length / 2,
 		uniforms: {
 			time: regl.context('time'),
-			pixelScale: (ctx) => ctx.viewportHeight * 0.006,
 			night: () => env.night
 		},
 		depth: { enable: true, mask: false },

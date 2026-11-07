@@ -187,7 +187,7 @@ const drawFarDoor = require('./fardoor')(regl);
 const drawLeaf = require('./leaf')(regl);
 const drawDust = require('./dust')(regl, quality);
 const drawFireflies = require('./fireflies')(regl, quality);
-const drawCandles = require('./candles')(regl);
+const drawLanterns = require('./lanterns')(regl);
 
 // the cinematic tour the visit opens with (see tour.js)
 const tour = require('./tour')({
@@ -1295,7 +1295,7 @@ regl.frame(
 								() => {
 									drawMap();
 									drawStatues();
-									drawCandles();
+									drawLanterns();
 									drawTree();
 									drawAvatar();
 									drawPainting(
@@ -1314,7 +1314,7 @@ regl.frame(
 
 						drawMap();
 						drawStatues();
-						drawCandles();
+						drawLanterns();
 						drawTree();
 						drawAvatar();
 						drawPainting(
