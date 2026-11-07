@@ -86,7 +86,7 @@ function HandWriter(canvas, G, opts) {
 					const add = (pts, dot) => {
 						let L = 0;
 						for (let k = 1; k < pts.length; k++) L += Math.hypot(pts[k][0] - pts[k - 1][0], pts[k][1] - pts[k - 1][1]);
-						const dur = Math.max(dot ? 0.06 : 0.07, L / (opts.speed * xh));
+						const dur = Math.max(opts.minDur || (dot ? 0.06 : 0.07), L / (opts.speed * xh));
 						out.push({ pts, L, start: t, dur, dot });
 						t += dur;
 					};
@@ -187,6 +187,13 @@ function HandWriter(canvas, G, opts) {
 			const cssW = canvas.parentElement.clientWidth;
 			const L = layout(text, cssW);
 			strokes = L.strokes; total = L.total;
+			// a time limit: the same writing, just quicker
+			const limit = typeof opts.maxTime === 'function' ? opts.maxTime(text) : opts.maxTime;
+			if (limit && total > limit) {
+				const k = limit / total;
+				strokes.forEach((s) => { s.start *= k; s.dur *= k; });
+				total = limit;
+			}
 			strokes.forEach((s, i) => { s.i = i; });
 			drawn = [];
 			size(cssW, L.height);

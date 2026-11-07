@@ -1591,12 +1591,15 @@ module.exports = function createTour(opts) {
 					ink: 'rgba(244,236,223,0.93)',
 					shadow: 'rgba(0,0,0,0.55)', shadowBlur: 7,
 					xh: Math.max(8.5, fs * 0.56), width: 0.14,
+					// quick: a whole story in a few seconds
+					speed: 80, pace: 0.12, minDur: 0.022,
+					maxTime: (txt) => 3.5 + txt.length / 420,
 					seed: 3 + t.length,
 					// keep the pen in view as it goes down the page
 					onPen: (y) => {
 						if (manual) return;
 						const want = y - body.clientHeight * 0.55;
-						if (want > body.scrollTop + 4) body.scrollTop += Math.min(6, want - body.scrollTop);
+						if (want > body.scrollTop + 4) body.scrollTop += Math.min(16, want - body.scrollTop);
 					}
 				});
 				// a tap shows the rest at once
@@ -1606,7 +1609,7 @@ module.exports = function createTour(opts) {
 					manual = false;
 					if (wrote) { pen.write(text, true); return; }
 					pen.write('', true);
-					timer = setTimeout(() => { wrote = true; pen.write(text); }, (after + 0.4) * 1000);
+					timer = setTimeout(() => { wrote = true; pen.write(text); }, (after * 0.6) * 1000);
 				};
 				card.stopWrite = () => { clearTimeout(timer); pen.stop(); };
 				let rz = 0;
