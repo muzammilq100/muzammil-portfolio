@@ -55,12 +55,12 @@ const CSS = `
 .conf-ui { position: absolute; inset: 0; pointer-events: none; z-index: 6; font-family: 'Cormorant Garamond', Georgia, serif; color: #f4ecdf; }
 .conf-ui > * { position: absolute; left: 50%; transform: translateX(-50%); opacity: 0; visibility: hidden; transition: opacity 1s ease, visibility 0s linear 1s; }
 .conf-ui > .on { opacity: 1; visibility: visible; transition: opacity 1.1s ease; pointer-events: auto; }
-.conf-write { bottom: max(7vh, 52px); width: min(560px, calc(100vw - 32px)); padding: 22px 24px 18px; box-sizing: border-box;
+.conf-write { bottom: max(6vh, 44px); width: min(500px, calc(100vw - 32px)); padding: 18px 22px 14px; box-sizing: border-box;
 	background: linear-gradient(180deg, rgba(14,10,8,.55), rgba(14,10,8,.78)); border: 1px solid rgba(233,207,154,.22); border-radius: 3px;
 	backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); text-shadow: 0 1px 12px rgba(0,0,0,.6); }
 .conf-kicker { margin: 0; font: 500 11px/1.4 Georgia, serif; letter-spacing: .32em; text-transform: uppercase; color: #e9cf9a; }
 .conf-lead { margin: 8px 0 12px; font-style: italic; font-size: clamp(17px, 1.6vw, 20px); line-height: 1.4; opacity: .9; }
-.conf-write textarea { display: block; width: 100%; box-sizing: border-box; min-height: 120px; max-height: 34vh; resize: none;
+.conf-write textarea { display: block; width: 100%; box-sizing: border-box; min-height: 92px; max-height: 30vh; resize: none;
 	background: transparent; border: 0; border-bottom: 1px solid rgba(244,236,223,.25); outline: none; padding: 6px 2px 10px;
 	color: #f4ecdf; font: italic 500 clamp(18px, 1.7vw, 21px)/1.5 'Cormorant Garamond', Georgia, serif; caret-color: #e9cf9a; }
 .conf-write textarea::placeholder { color: rgba(244,236,223,.4); }
@@ -260,6 +260,8 @@ module.exports = function createConfession(opts) {
 	}
 
 	function update(dt) {
+		// (tests may run it faster)
+		dt *= (window.__confSpeed || 1);
 		clock += dt;
 		const winCam = camOf(W), paperCam = camOf(C.SHOTS.paper);
 		let cam, look;

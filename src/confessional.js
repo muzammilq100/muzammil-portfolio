@@ -59,7 +59,7 @@ const LAMP = [-1.50, 2.42, 44.66];
 // a small lamp on the side wall of the open booth, as in old confessionals
 const SCONCE = [-1.78, 1.95, ZA + 0.09];
 // where the artist sits, behind the window, facing away from it
-const SEAT = { x: -1.32, z: 44.22, y: 0.47, heading: 0.32 };
+const SEAT = { x: -1.32, z: 44.08, y: 0.64, heading: 0.32 };
 
 // the camera's places (used by confession.js)
 const SHOTS = {
@@ -157,7 +157,7 @@ function lightGLSL() {
 		// deeper into the bay, a little less of the hall's light
 		open *= mix(0.62, 1.0, smoothstep(${f(BAY.x0)}, 0.3, p.x));
 		vec3 hall = vec3(1.25, 1.12, 0.94) * (0.62 + 0.38 * max(N.x, 0.0)) * (0.8 + 0.2 * N.y);
-		vec3 col = toNight(hall * open, 0.55) * mix(1.0, 0.55, night);
+		vec3 col = toNight(hall * open, 0.55) * mix(1.0, (inB1 || inPriest || inB2) ? 0.3 : 0.55, night);
 		// the lamp, warm, behind the brass
 		vec3 Ld = ${v3(LAMP)} - p;
 		float dl = length(Ld);
@@ -184,7 +184,7 @@ function lightGLSL() {
 			float fl = candleFlicker();
 			float sh = candleShadow(p);
 			vec3 cc = vec3(1.0, 0.60, 0.28) * fl * sh * night * (inPriest || inB2 ? 0.0 : 1.0);
-			col += cc * (max(dot(N, Lc), 0.0) * 0.85 + 0.15) * 0.24 / (0.02 + dc * dc * 1.2);
+			col += cc * (max(dot(N, Lc), 0.0) * 0.85 + 0.15) * 0.42 / (0.02 + dc * dc * 1.2);
 			spec += cc * pow(max(dot(N, normalize(Lc + V)), 0.0), mix(8.0, 70.0, gloss)) * gloss * 0.10 / (0.02 + dc * dc * 1.2);
 		}
 		// the gallery's lanterns, outside the booths
@@ -860,7 +860,7 @@ module.exports = (regl) => {
 			float d = length(v_pos - ${v3(LAMP)});
 			// dust drifting in the beam
 			float dust = 0.65 + 0.35 * sin(v_pos.x * 23.0 + time * 0.3) * sin(v_pos.y * 17.0 - time * 0.21) * sin(v_pos.z * 19.0 + time * 0.17);
-			vec3 col = vec3(1.0, 0.68, 0.36) * T * dust * 0.05 / (0.4 + d * d * 0.5) * mix(1.0, 0.7, night);
+			vec3 col = vec3(1.0, 0.68, 0.36) * T * dust * 0.035 / (0.4 + d * d * 0.5) * mix(1.0, 0.7, night);
 			gl_FragColor = vec4(col, 1.0);
 		}`.replace('float grilleHole', 'float grilleHole'),
 		attributes: { c: { buffer: regl.buffer(sl), size: 3 } },
@@ -1030,7 +1030,7 @@ module.exports = (regl) => {
 			v_fl = 0.85 + 0.09 * sin(time * 11.0) + 0.06 * sin(time * 27.0);
 			float sway = 0.0025 * sin(time * 3.1) + 0.0015 * sin(time * 8.7);
 			vec3 right = vec3(view[0][0], view[1][0], view[2][0]);
-			vec2 size = halo > 0.5 ? vec2(0.10, 0.10) : vec2(0.0075, 0.021) * v_fl;
+			vec2 size = halo > 0.5 ? vec2(0.07, 0.07) : vec2(0.0075, 0.021) * v_fl;
 			vec3 p = ${v3(CANDLE.flame)} + right * corner.x * size.x + vec3(0.0, 1.0, 0.0) * corner.y * size.y;
 			p.x += sway * (corner.y + 1.0) * 0.5 * (1.0 - halo);
 			v_uv = corner;
@@ -1046,7 +1046,7 @@ module.exports = (regl) => {
 			vec3 col;
 			if (halo > 0.5) {
 				float r = length(v_uv);
-				col = vec3(1.0, 0.58, 0.24) * pow(max(1.0 - r, 0.0), 3.0) * 0.16 * v_fl;
+				col = vec3(1.0, 0.58, 0.24) * pow(max(1.0 - r, 0.0), 3.0) * 0.09 * v_fl;
 			} else {
 				vec2 q = vec2(v_uv.x / (1.0 - 0.55 * max(v_uv.y, 0.0)), v_uv.y);
 				float r = length(q * vec2(1.0, 0.85));

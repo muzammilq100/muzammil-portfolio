@@ -327,7 +327,7 @@ void main() {
 		// and a little of the booth's light through the brass behind him
 		vec3 gl2 = vec3(-1.30, 1.75, 43.62) - v_pos;
 		float g2 = length(gl2);
-		col += t.rgb * vec3(1.0, 0.78, 0.55) * 1.4 * (max(dot(N, gl2 / g2), 0.0) * 0.8 + 0.1) / (1.0 + g2 * g2 * 3.0);
+		col += t.rgb * vec3(1.0, 0.78, 0.55) * 2.6 * (max(dot(N, gl2 / g2), 0.0) * 0.8 + 0.1) / (1.0 + g2 * g2 * 3.0);
 		col += vec3(1.0, 0.8, 0.6) * 0.06 * pow(1.0 - max(dot(N, V), 0.0), 2.0) * max(dot(N, gl2 / g2), 0.0);
 	}
 	// at night, the little lantern by his head: warm on his face and coat,

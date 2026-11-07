@@ -1646,7 +1646,7 @@ module.exports = function createTour(opts) {
 		<span class="tour-line tour-kicker">Thank you for walking with me</span>
 		<span class="tour-rule"></span>
 		<span class="tour-line tour-sub">${CAN_WALK ? 'The rest of the gallery is yours to wander.' : 'Swipe back to return to any painting.'}</span>
-		<span class="tour-line tour-sub tour-confess-line">Before you leave, the confessional by Venus is open. Leave me a note there; no one else will read it.</span>
+		<span class="tour-line tour-sub tour-confess-line">Before you leave, the confessional is open.<br>Leave me a note; no one else will read it.</span>
 		<div class="tour-line tour-end"><button type="button" class="tour-btn" data-act="confess">Leave something behind</button></div>
 		${contact.line('tour-line tour-contact')}
 		<div class="tour-line tour-end">
