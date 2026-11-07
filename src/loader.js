@@ -17,19 +17,63 @@
  */
 
 const screen = document.getElementById('loader');
-const bar = screen && screen.querySelector('.loader-bar i');
+const nameEl = screen && screen.querySelector('.loader-name');
 
 let asked = 0;
 let done = 0;
 let finished = false;
 const started = performance.now();
 
+// the brush: how much of the name is painted (0..1). It follows the
+// files as they arrive, never goes back, and when everything is in it
+// finishes the name; the screen fades once the name is complete.
+let target = 0.06;
+let shown = 0;
+let lastT = 0;
+let closing = false;
+const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+function paint(p) {
+	if (!nameEl) return;
+	const W = nameEl.offsetWidth || 1;
+	// the ragged edge sits in the middle of a mask twice the name's width;
+	// it starts just past the name's right end and leaves past its left
+	const edge = W * (1.14 - 1.28 * p);
+	const x = (edge - W).toFixed(1) + 'px 0';
+	nameEl.style.webkitMaskPosition = x;
+	nameEl.style.maskPosition = x;
+}
+
+function brush(now) {
+	const dt = Math.min(0.05, lastT ? (now - lastT) / 1000 : 0.016);
+	lastT = now;
+	// a brush moves steadily, a little faster when it has ground to make up
+	const speed = finished ? 0.75 : 0.22 + (target - shown) * 1.2;
+	shown = Math.min(target, shown + Math.max(0, speed) * dt);
+	if (reduce) shown = target;
+	paint(shown);
+	if (finished && shown >= 0.999) {
+		if (!closing) {
+			closing = true;
+			setTimeout(close, 650);
+		}
+		return;
+	}
+	requestAnimationFrame(brush);
+}
+if (nameEl) requestAnimationFrame(brush);
+
 function update() {
-	if (!bar) return;
-	// (more files are asked for as the gallery builds itself, so the line
+	// (more files are asked for as the gallery builds itself, so the brush
 	// never claims more than it knows)
 	const p = asked ? done / Math.max(asked, 24) : 0;
-	bar.style.transform = 'scaleX(' + Math.min(1, 0.06 + p * 0.94).toFixed(3) + ')';
+	target = Math.max(target, Math.min(0.9, 0.06 + p * 0.84));
+}
+
+function close() {
+	if (!screen) return;
+	screen.classList.add('done');
+	setTimeout(() => screen.remove(), 1400);
 }
 
 function finish() {
@@ -37,9 +81,8 @@ function finish() {
 	finished = true;
 	window.__galleryReady = true;
 	if (!screen) return;
-	if (bar) bar.style.transform = 'scaleX(1)';
-	screen.classList.add('done');
-	setTimeout(() => screen.remove(), 1400);
+	target = 1;
+	if (!nameEl) close();
 }
 
 // close once nothing is outstanding for a moment (and never later than 20 s)

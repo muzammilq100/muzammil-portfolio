@@ -1,5 +1,7 @@
 'use strict';
 
+const NIGHT_GLSL = require('./env').GLSL;   // moonlit by night (see env.js)
+
 /*
  * THE ARTIST IN THE TREE COURT
  * ----------------------------
@@ -236,8 +238,12 @@ void main() {
 	gl_Position = proj * view * vec4(p, 1.0);
 }`;
 
+const LANTERN = require('./lanterns');
 const FRAG = `
 precision highp float;
+${NIGHT_GLSL}
+uniform float time;
+${LANTERN.lanternGLSL(LANTERN.TREE_LANTERN)}
 uniform sampler2D tex;
 uniform float alphaCut, skin, glowLight, kind, alphaScale;
 uniform vec3 glowPos;
@@ -304,6 +310,11 @@ void main() {
 	vec3 R = reflect(-V, N);
 	col += vec3(0.9, 0.88, 0.85) * gloss * (pow(max(dot(R, SHAFT), 0.0), 30.0) * (0.3 + sun) + 0.08 * smoothstep(0.2, 1.0, R.y));
 	col += vec3(0.05, 0.05, 0.055) * step(0.5, kind) * pow(1.0 - max(dot(N, V), 0.0), 3.0);
+	col = toNight(col, 0.85);
+	// at night, the little lantern by his head: warm on his face and coat,
+	// and a glint on the leather
+	vec3 lan = lanternLight(v_pos, N);
+	col += t.rgb * lan * (1.3 + 1.2 * skin) + lan * gloss * 0.4;
 	gl_FragColor = vec4(col, t.a);
 }`;
 
@@ -488,6 +499,9 @@ void main() {
 
 const BOOK_FRAG = `
 precision highp float;
+${NIGHT_GLSL}
+uniform float time;
+${LANTERN.lanternGLSL(LANTERN.TREE_LANTERN)}
 uniform sampler2D cover;
 varying vec3 v_pos, v_n;
 varying vec2 v_uv;
@@ -515,7 +529,7 @@ void main() {
 	}
 	float light = 0.42 + 0.2 * (0.5 + 0.5 * N.y);
 	light += max(dot(N, SHAFT), 0.0) * oculusOpen(v_pos) * treeShade(v_pos) * 1.2;
-	gl_FragColor = vec4(base * light, 1.0);
+	gl_FragColor = vec4(toNight(base * light, 0.85) + base * lanternLight(v_pos, N), 1.0);
 }`;
 
 
@@ -587,6 +601,7 @@ void main() {
 
 const BRUSH_FRAG = `
 precision highp float;
+${NIGHT_GLSL}
 uniform float pulse;
 varying vec3 v_n, v_col, v_pos, v_eye;
 varying float v_mat, v_y;
@@ -603,7 +618,7 @@ void main() {
 	else col *= 0.8 + 0.2 * fract(sin(dot(floor(v_pos.xz * 4000.0), vec2(12.9898, 78.233))) * 43758.5453);
 	// only the wet paint on the tip holds a faint warm light
 	col += vec3(0.30, 0.18, 0.05) * smoothstep(-0.128, -0.150, v_y) * (0.4 + 0.3 * pulse);
-	gl_FragColor = vec4(col, 1.0);
+	gl_FragColor = vec4(toNight(col, 0.85), 1.0);
 }`;
 
 const HALO_VERT = `

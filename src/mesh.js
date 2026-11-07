@@ -83,6 +83,9 @@ module.exports = (regl, data, useReflexion) => {
 
     uniform float yScale;
     uniform float mirrorOn;
+    uniform float night;   // 0 by day, 1 at night
+    uniform float time;
+    ${require('./lanterns').lanternGLSL()}
 
     varying vec3 v_pos;
     varying vec3 v_relativepos;
@@ -141,7 +144,14 @@ module.exports = (regl, data, useReflexion) => {
       vec3 col = mix(vec3(0.80, 0.86, 0.92), vec3(0.42, 0.60, 0.86), smoothstep(0.55, 1.0, h));
       vec2 cp = dir.xz / max(dir.y, 0.2) * 1.6;
       float c = smoothstep(0.50, 0.78, fbm(cp * 0.7 + vec2(3.1, 7.4)));
-      return mix(col, vec3(0.97, 0.96, 0.93), c * 0.65);
+      vec3 day = mix(col, vec3(0.97, 0.96, 0.93), c * 0.65);
+      // night: deep blue-black, thin moonlit cloud and a scatter of stars
+      vec3 nsky = mix(vec3(0.035, 0.05, 0.09), vec3(0.012, 0.018, 0.04), smoothstep(0.3, 1.0, h));
+      nsky = mix(nsky, vec3(0.16, 0.19, 0.25), c * 0.45);
+      vec2 sp = dir.xz / max(dir.y, 0.15) * 60.0;
+      float star = step(0.996, hash12(floor(sp))) * (1.0 - c) * smoothstep(0.15, 0.4, h);
+      nsky += vec3(0.75, 0.8, 0.9) * star;
+      return mix(day, nsky, night);
     }
 
     // soft darkening of the floor around something standing on it
@@ -427,6 +437,8 @@ module.exports = (regl, data, useReflexion) => {
 
       // dim the room as a whole; the picture lights stay strong
       light *= ${ROOM_BRIGHTNESS.toFixed(3)};
+      // at night the room itself sinks into darkness
+      light *= mix(1.0, 0.38, night);
 
       // ---------------------------------------------------------
       // DAYLIGHT THROUGH THE DOOR
@@ -443,7 +455,8 @@ module.exports = (regl, data, useReflexion) => {
         }
         spill += exp(-inZ / 2.4) * 0.24 * (1.0 - isCeiling * 0.5);
       }
-      light += spill * 0.55;
+      // (at night the door's light is lamplight from the street: dimmer)
+      light += spill * 0.55 * mix(1.0, 0.22, night);
 
       // ---------------------------------------------------------
       // SUNLIGHT THROUGH THE SKYLIGHT
@@ -457,9 +470,11 @@ module.exports = (regl, data, useReflexion) => {
         float ndl = max(dot(N, SKY_SUN), 0.0);
         if (ndl > 0.0) sun = skylightAt(v_pos) * ndl;
       }
-      light += sun * 0.85 + glow * 0.05 * (1.0 - isCeiling);
+      // by night the same squares are moonlight: a little softer, the
+      // glow around them much weaker, so the pattern stands alone in the dark
+      light += sun * 0.85 * mix(1.0, 0.72, night) + glow * 0.05 * (1.0 - isCeiling) * mix(1.0, 0.25, night);
       // the coffers glow with daylight, brighter towards the glass
-      light += isCream * (0.18 + 0.42 * smoothstep(8.0, 8.62, v_pos.y)) * glow;
+      light += isCream * (0.18 + 0.42 * smoothstep(8.0, 8.62, v_pos.y)) * glow * mix(1.0, 0.22, night);
 
       // ---------------------------------------------------------
       // DAYLIGHT IN THE NEW CORRIDOR
@@ -472,13 +487,13 @@ module.exports = (regl, data, useReflexion) => {
       // ---------------------------------------------------------
       float aSun = alcoveSun(v_pos, N);
       float aGlow = alcoveGlow(v_pos);
-      light += aSun * 1.8 + aGlow * 0.5 * (1.0 - 0.3 * isCeiling);
-      light += isCream * aGlow * 0.18 * smoothstep(8.0, 10.5, v_pos.y);
+      light += aSun * 1.8 * mix(1.0, 1.45, night) + aGlow * 0.5 * (1.0 - 0.3 * isCeiling) * mix(1.0, 0.2, night);
+      light += isCream * aGlow * 0.18 * smoothstep(8.0, 10.5, v_pos.y) * mix(1.0, 0.2, night);
       sun = max(sun, aSun);
 
       float winL = windowLight(v_pos, N);
       float cg = corridorGlow(v_pos);
-      light += winL * 0.48 + cg * 0.16 * (1.0 - 0.4 * isCeiling);
+      light += winL * 0.48 * mix(1.0, 0.62, night) + cg * 0.16 * (1.0 - 0.4 * isCeiling) * mix(1.0, 0.25, night);
 
       // the little lamps in the statue niches
       float nl = nicheLight(v_pos, N);
@@ -500,16 +515,25 @@ module.exports = (regl, data, useReflexion) => {
       // tungsten-warm picture lights against cooler daylight from the
       // skylight, the windows and the dome: the mix of the two is what
       // real gallery light looks like
-      vec3 pictureTint = vec3(1.0, 0.90, 0.74);
+      // (at night the picture lights burn lower and yellower, like lanterns,
+      // so the moon and the lanterns carry the room)
+      vec3 pictureTint = mix(vec3(1.0, 0.90, 0.74), vec3(1.0, 0.80, 0.46) * 0.52, night);
       float daylight = glow * 0.05 + cg * 0.16 + aGlow * 0.5 + winL * 0.48;
       float coolShare = clamp(daylight / max(light, 0.05), 0.0, 1.0) * (1.0 - clamp(sun * 2.0 + spill, 0.0, 1.0));
       vec3 spillTint = mix(vec3(1.0), vec3(1.10, 0.95, 0.78), clamp(spill * 2.0, 0.0, 1.0));
-      spillTint = mix(spillTint, vec3(1.08, 1.0, 0.86), clamp(sun * 1.5, 0.0, 1.0));
+      // sunlight warm by day; moonlight silver-blue by night
+      vec3 moonTint = vec3(0.70, 0.82, 1.12);
+      spillTint = mix(spillTint, mix(vec3(1.08, 1.0, 0.86), moonTint * 1.18, night), clamp((sun + winL * 0.6) * 1.5, 0.0, 1.0));
       spillTint *= mix(vec3(1.0), vec3(0.93, 0.97, 1.05), coolShare * 0.7);
+      // and the dark itself is cold at night, except near the door's lamplight
+      spillTint *= mix(vec3(1.0), mix(vec3(0.66, 0.76, 0.98), vec3(1.05, 0.86, 0.62), clamp(spill * 2.0, 0.0, 1.0)), night);
       vec3 finalColour = material * (vec3(light) * spillTint + pictureTint * pic * ${PICTURE_LIGHT.toFixed(3)} * (1.0 - 0.5 * isFloor));
 
+      // lantern light, patterned by the leaded glass, at night
+      finalColour += material * lanternLight(v_pos, N);
+
       // light bounced off the warm floor onto the lower walls and columns
-      finalColour += material * vec3(1.0, 0.84, 0.62) * 0.05 * ${ROOM_BRIGHTNESS.toFixed(3)}
+      finalColour += material * vec3(1.0, 0.84, 0.62) * 0.05 * mix(1.0, 0.3, night) * ${ROOM_BRIGHTNESS.toFixed(3)}
         * (1.0 - smoothstep(0.0, 2.4, v_pos.y)) * (1.0 - isFloor) * (1.0 - abs(N.y));
 
       // polished marble (columns, arch, skirting): a soft highlight of the
@@ -575,7 +599,7 @@ module.exports = (regl, data, useReflexion) => {
       float far = 1.0 - atmosphere;
       float lum = dot(finalColour, vec3(0.299, 0.587, 0.114));
       finalColour = mix(finalColour, vec3(lum), far * 0.22);
-      finalColour = mix(finalColour, vec3(0.30, 0.27, 0.23) * ${ROOM_BRIGHTNESS.toFixed(3)}, far * 0.16);
+      finalColour = mix(finalColour, mix(vec3(0.30, 0.27, 0.23), vec3(0.06, 0.075, 0.11), night) * ${ROOM_BRIGHTNESS.toFixed(3)}, far * 0.16);
 
       // ---------------------------------------------------------
       // POLISHED FLOOR
@@ -591,7 +615,11 @@ module.exports = (regl, data, useReflexion) => {
         // tree has its own sun, a little to one side)
         vec3 sunDir = v_pos.x > 14.0 ? SHAFT : SKY_SUN;
         float sd = max(dot(dirUp * vec3(1.0, sign(dirUp.y), 1.0), sunDir), 0.0);
-        finalColour = finalColour * 1.08 + vec3(1.0, 0.92, 0.78) * (pow(sd, 48.0) * 1.8 + pow(sd, 6.0) * 0.3);
+        // by day the sun; by night the moon in the same place: a small
+        // bright disc with a cold halo
+        vec3 bodyCol = mix(vec3(1.0, 0.92, 0.78) * (pow(sd, 48.0) * 1.8 + pow(sd, 6.0) * 0.3),
+                           vec3(0.86, 0.9, 1.0) * (smoothstep(0.9993, 0.9996, sd) * 2.4 + pow(sd, 160.0) * 0.5 + pow(sd, 10.0) * 0.12), night);
+        finalColour = finalColour * mix(1.08, 1.0, night) + bodyCol;
       }
 
       float alpha = 1.0;

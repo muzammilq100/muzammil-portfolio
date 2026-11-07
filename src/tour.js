@@ -1132,6 +1132,7 @@ const CSS = `
 	transition: background .3s ease, border-color .3s ease;
 }
 .tour-icon:hover { background: rgba(60,45,30,.45); border-color: rgba(244,236,223,.55); }
+button.tour-icon { padding: 0; cursor: pointer; font: inherit; }
 .tour-icon:focus-visible { outline: 2px solid #e9cf9a; outline-offset: 3px; }
 
 /* the same, as a line of words on the About and closing cards */
@@ -1476,8 +1477,17 @@ module.exports = function createTour(opts) {
 		document.head.appendChild(l);
 	}
 
+	// his handwriting (res/hand.json): the paintings' words are written
+	// in it, stroke by stroke, as each story comes up
+	const HandWriter = require('./handwriter');
+	let HAND = null;
+	fetch('res/hand.json').then((r) => (r.ok ? r.json() : null)).then((g) => { HAND = g; }).catch(() => {});
+
 	const style = document.createElement('style');
 	style.textContent = CSS + `
+	.hand-text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: normal; }
+	.tour-body canvas.hand { display: block; cursor: pointer; }`;
+	style.textContent += `
 	body.touring #museum-mobile-controls,
 	body.touring .painting-plaque { display: none !important; }`;
 	document.head.appendChild(style);
@@ -1491,6 +1501,8 @@ module.exports = function createTour(opts) {
 	free.type = 'button';
 	// Instagram and email, then "Explore freely", in the top right corner
 	const links = el('div', 'tour-links', contact.icons('tour-icon'));
+	// Day / Night, first in the row
+	links.insertBefore(require('./lighttoggle')('tour-icon'), links.firstChild);
 	if (CAN_WALK) links.appendChild(free);
 
 	const progress = el('div', 'tour-progress', SHOTS.map(() => '<i></i>').join(''));
@@ -1563,11 +1575,48 @@ module.exports = function createTour(opts) {
 			const after = 0.35 + t.length * 0.045 + 0.2;
 			card.querySelector('.tour-rule').style.transitionDelay = after.toFixed(2) + 's';
 			const paras = String(p.description || '').split(/\n\s*\n/).filter((x) => x.trim());
-			body.innerHTML = paras.map((x) => `<p class="tour-line">${esc(x.trim())}</p>`).join('');
 			card.querySelector('.tour-kicker').style.transitionDelay = '0.1s';
-			body.querySelectorAll('.tour-line').forEach((e, i) => {
-				e.style.transitionDelay = (after + 0.3 + Math.min(i, 6) * 0.35).toFixed(2) + 's';
-			});
+			if (HAND && paras.length) {
+				// the words, written by his hand; the typed text stays for
+				// screen readers (and for copying)
+				body.innerHTML = paras.map((x) => `<p class="hand-text">${esc(x.trim())}</p>`).join('') +
+					'<div class="hand-wrap"><canvas class="hand" aria-hidden="true"></canvas></div>';
+				const canvas = body.querySelector('canvas');
+				const text = paras.map((x) => x.trim()).join('\n\n');
+				let manual = false, wrote = false, timer = 0;
+				body.addEventListener('wheel', () => { manual = true; }, { passive: true });
+				body.addEventListener('touchmove', () => { manual = true; }, { passive: true });
+				const fs = parseFloat(getComputedStyle(body).fontSize) || 17;
+				const pen = HandWriter(canvas, HAND, {
+					ink: 'rgba(244,236,223,0.93)',
+					shadow: 'rgba(0,0,0,0.55)', shadowBlur: 7,
+					xh: Math.max(8.5, fs * 0.56), width: 0.14,
+					seed: 3 + t.length,
+					// keep the pen in view as it goes down the page
+					onPen: (y) => {
+						if (manual) return;
+						const want = y - body.clientHeight * 0.55;
+						if (want > body.scrollTop + 4) body.scrollTop += Math.min(6, want - body.scrollTop);
+					}
+				});
+				// a tap shows the rest at once
+				canvas.addEventListener('click', (e) => { e.stopPropagation(); clearTimeout(timer); if (!wrote) { wrote = true; pen.write(text, true); } else pen.finish(); });
+				card.write = () => {
+					clearTimeout(timer);
+					manual = false;
+					if (wrote) { pen.write(text, true); return; }
+					pen.write('', true);
+					timer = setTimeout(() => { wrote = true; pen.write(text); }, (after + 0.4) * 1000);
+				};
+				card.stopWrite = () => { clearTimeout(timer); pen.stop(); };
+				let rz = 0;
+				window.addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(() => { if (wrote && card.classList.contains('on')) pen.write(text, true); }, 250); });
+			} else {
+				body.innerHTML = paras.map((x) => `<p class="tour-line">${esc(x.trim())}</p>`).join('');
+				body.querySelectorAll('.tour-line').forEach((e, i) => {
+					e.style.transitionDelay = (after + 0.3 + Math.min(i, 6) * 0.35).toFixed(2) + 's';
+				});
+			}
 		};
 		return card;
 	}
@@ -1683,13 +1732,18 @@ module.exports = function createTour(opts) {
 			c.body.scrollTop = 0;
 			void c.offsetWidth;
 		}
-		cards.forEach((c, k) => c.classList.toggle('on', k === i));
+		cards.forEach((c, k) => {
+			const was = c.classList.contains('on');
+			c.classList.toggle('on', k === i);
+			if (k === i && !was && c.write) c.write();
+			if (k !== i && was && c.stopWrite) c.stopWrite();
+		});
 		if (c && c.warm) c.warm();
 		hintText.textContent = HINTS[i] || '';
 		hint.classList.toggle('on', !!HINTS[i]);
 	}
 	function hideUI() {
-		cards.forEach((c) => c.classList.remove('on'));
+		cards.forEach((c) => { if (c.stopWrite && c.classList.contains('on')) c.stopWrite(); c.classList.remove('on'); });
 		hint.classList.remove('on');
 	}
 

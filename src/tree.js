@@ -1,5 +1,7 @@
 'use strict';
 
+const NIGHT_GLSL = require('./env').GLSL;   // moonlit by night (see env.js)
+
 /*
  * THE TREE IN THE ALCOVE
  * ----------------------
@@ -135,8 +137,13 @@ void main() {
 	gl_Position = proj * view * vec4(p, 1.0);
 }`;
 
+const LANTERN = require('./lanterns');
 const FRAG = `
 precision highp float;
+${NIGHT_GLSL}
+uniform float time;
+${LANTERN.lanternGLSL(LANTERN.TREE_LANTERN)}
+const vec3 LANTERN_POS = vec3(${LANTERN.LANTERNS[LANTERN.TREE_LANTERN[0]].x.toFixed(3)}, ${LANTERN.LANTERNS[LANTERN.TREE_LANTERN[0]].y.toFixed(3)}, ${LANTERN.LANTERNS[LANTERN.TREE_LANTERN[0]].z.toFixed(3)});
 uniform sampler2D leaves, bark;
 varying vec3 v_pos, v_n;
 varying vec2 v_uv;
@@ -183,7 +190,10 @@ void main() {
 	vec3 col = base * light * vec3(1.03, 1.0, 0.94);
 	// leaves glow a little where the sun comes through them
 	col += v_leaf * base * vec3(0.55, 0.65, 0.25) * oculusSun(v_pos) * v_shade * 0.35;
-	gl_FragColor = vec4(col, 1.0);
+	// at night the little lantern on the bench glints on the bark and
+	// the undersides of the leaves
+	vec3 lan = lanternLight(v_pos, v_leaf > 0.5 ? normalize(LANTERN_POS - v_pos) : N);
+	gl_FragColor = vec4(toNight(col, 1.15) + base * lan * 1.2, 1.0);
 }`;
 
 module.exports = (regl) => {

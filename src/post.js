@@ -30,6 +30,7 @@ const { skylightGLSL, Z_START, Z_END, GLASS_Y } = require('./skylight');
 const { oculusGLSL, A: COURT } = require('./alcove');
 const { windowLightGLSL, C: WING } = require('./wing');
 const { doorLightGLSL } = require('./entrance');
+const env = require('./env');
 
 const f = (x) => x.toFixed(4);
 
@@ -173,6 +174,7 @@ module.exports = (regl, quality) => {
 	uniform mat4 invVP;
 	uniform vec3 eye;
 	uniform float time;
+	uniform float night;
 	uniform vec4 strength;   // skylight, dome, windows, door
 
 	float hash12(vec2 p) {
@@ -198,7 +200,9 @@ module.exports = (regl, quality) => {
 		vec2 a = p.xz * 0.55 + vec2(p.y * 0.35 + time * 0.05, -p.y * 0.2 - time * 0.03);
 		vec2 b = p.zy * 0.9 + vec2(time * 0.04, p.x * 0.3);
 		float n = vnoise(a) * vnoise(b + 3.7);
-		return 0.3 + 1.6 * n * n;
+		float day = 0.3 + 1.6 * n * n;
+		float nightAir = 0.08 + 2.6 * n * n * n;
+		return mix(day, nightAir, night);
 	}
 
 	// Henyey-Greenstein: air scatters more light the closer you look
@@ -240,10 +244,10 @@ module.exports = (regl, quality) => {
 				float acc = 0.0;
 				for (int i = 0; i < N; i++) {
 					vec3 p = eye + rd * (t.x + (float(i) + jit) * st);
-					acc += skylightVol(p) * air(p);
+					acc += mix(skylightVol(p), skylightAt(p), night) * air(p);
 				}
 				float ph = phase(dot(rd, SKY_SUN), 0.55) + 0.05;
-				sum += vec3(1.0, 0.86, 0.64) * acc * st * ph * strength.x;
+				sum += mix(vec3(1.0, 0.86, 0.64), vec3(0.62, 0.74, 1.0) * 1.15, night) * acc * st * ph * strength.x;
 			}
 		}
 
@@ -259,7 +263,7 @@ module.exports = (regl, quality) => {
 					if (p.y < ${f(COURT.dome.base)} && p.x > ${f(COURT.x0 - 0.1)}) acc += oculusOpen(p) * treeShade(p) * air(p);
 				}
 				float ph = phase(dot(rd, SHAFT), 0.6) + 0.05;
-				sum += vec3(1.0, 0.88, 0.68) * acc * st * ph * strength.y;
+				sum += mix(vec3(1.0, 0.88, 0.68), vec3(0.62, 0.74, 1.0) * 1.2, night) * acc * st * ph * strength.y;
 			}
 		}
 
@@ -275,7 +279,7 @@ module.exports = (regl, quality) => {
 					acc += windowLight(p, WIN_SKY) * air(p);
 				}
 				float ph = phase(dot(rd, WIN_SKY), 0.45) + 0.05;
-				sum += vec3(0.86, 0.90, 1.0) * acc * st * ph * strength.z;
+				sum += mix(vec3(0.86, 0.90, 1.0), vec3(0.55, 0.68, 1.0), night) * acc * st * ph * strength.z;
 			}
 		}
 
@@ -292,7 +296,7 @@ module.exports = (regl, quality) => {
 					acc += doorLight(p, L) * air(p);
 				}
 				float ph = phase(dot(rd, L), 0.5) + 0.05;
-				sum += vec3(1.0, 0.85, 0.66) * acc * st * ph * strength.w;
+				sum += mix(vec3(1.0, 0.85, 0.66), vec3(1.0, 0.70, 0.40) * 0.45, night) * acc * st * ph * strength.w;
 			}
 		}
 
@@ -302,9 +306,12 @@ module.exports = (regl, quality) => {
 		invVP: () => invVP,
 		eye: () => eye,
 		time: regl.context('time'),
+		night: () => env.night,
 		strength: () => {
 			const k = LOOK.shafts * shot.shafts;
-			return [0.06 * k, 0.1 * k, 0.07 * k, 0.04 * k];
+			// at night the moonbeams are the brightest thing in the air
+			const n = env.night;
+			return [0.06 * k * (1 + 0.9 * n), 0.1 * k * (1 + 0.9 * n), 0.07 * k * (1 + 0.4 * n), 0.04 * k * (1 - 0.75 * n)];
 		}
 	});
 
@@ -367,7 +374,7 @@ module.exports = (regl, quality) => {
 	varying vec2 uv;
 	uniform sampler2D scene, depthTex, soft, bloomA, bloomB, shafts;
 	uniform vec2 res;
-	uniform float time, exposure, vignette, grain, letterbox, fade, aperture, focus, hasDepth, bloomK;
+	uniform float time, exposure, vignette, grain, letterbox, fade, aperture, focus, hasDepth, bloomK, night;
 	uniform vec3 fadeColor;
 
 	float hash12(vec2 p) {
@@ -448,10 +455,11 @@ module.exports = (regl, quality) => {
 		vec3 col = pow(lin, vec3(1.0 / 2.2));
 
 		// a gentle S-curve, warm shadows, a touch less saturation
-		col = col * col * (3.0 - 2.0 * col) * 0.35 + col * 0.65;
+		col = col * col * (3.0 - 2.0 * col) * (0.35 + 0.15 * night) + col * (0.65 - 0.15 * night);
 		float l2 = luma(col);
-		col = mix(col, col * vec3(1.05, 0.99, 0.90), (1.0 - smoothstep(0.0, 0.5, l2)) * 0.7);
-		col = mix(vec3(l2), col, 0.93);
+		// by night the shadows turn cold and blue-green, like moonlit film
+		col = mix(col, col * mix(vec3(1.05, 0.99, 0.90), vec3(0.86, 0.97, 1.10), night), (1.0 - smoothstep(0.0, 0.5, l2)) * 0.7);
+		col = mix(vec3(l2), col, 0.93 - 0.13 * night);
 
 		// vignette
 		vec2 q = (p - 0.5) * vec2(res.x / res.y, 1.0);
@@ -474,7 +482,8 @@ module.exports = (regl, quality) => {
 		res: (ctx) => [ctx.drawingBufferWidth, ctx.drawingBufferHeight],
 		time: regl.context('time'),
 		exposure: () => LOOK.exposure * shot.exposure,
-		vignette: () => Math.min(1, LOOK.vignette + shot.vignette),
+		vignette: () => Math.min(1, LOOK.vignette + shot.vignette + 0.22 * env.night),
+		night: () => env.night,
 		grain: () => LOOK.grain,
 		bloomK: () => LOOK.bloom,
 		letterbox: () => shot.letterbox,

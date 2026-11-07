@@ -1,5 +1,7 @@
 'use strict';
 
+const NIGHT_GLSL = require('./env').GLSL;   // moonlit by night (see env.js)
+
 /*
  * THE CLOISTER GARDEN
  * -------------------
@@ -1130,6 +1132,7 @@ float sunVisible(vec3 p, vec3 n) {
 
 const SOLID_FRAG = `
 precision highp float;
+${NIGHT_GLSL}
 varying vec3 v_pos, v_normal, v_attr, v_eye;
 uniform float time, gardenDetail;
 ${COMMON}
@@ -1180,7 +1183,7 @@ void main() {
 	V /= dist;
 
 	if (kind == ${K.SKY}.0) {
-		gl_FragColor = vec4(tonemap(skyColor(normalize(v_pos - v_eye)) * 1.05), 1.0);
+		gl_FragColor = vec4(toNight(tonemap(skyColor(normalize(v_pos - v_eye)) * 1.05), 0.45), 1.0);
 		return;
 	}
 
@@ -1285,7 +1288,7 @@ void main() {
 		vec3 R = reflect(-V, N);
 		base = vec3(0.03, 0.035, 0.04);
 		vec3 refl = skyColor(normalize(vec3(R.x, abs(R.y), R.z))) * 0.25;
-		gl_FragColor = vec4(tonemap(base + refl * (0.4 + 0.6 * pow(1.0 - abs(dot(N, V)), 3.0))), 1.0);
+		gl_FragColor = vec4(toNight(tonemap(base + refl * (0.4 + 0.6 * pow(1.0 - abs(dot(N, V)), 3.0))), 0.45), 1.0);
 		return;
 	} else if (kind == ${K.PLASTER}.0) {
 		base = mix(vec3(0.82, 0.76, 0.64), vec3(0.88, 0.83, 0.72), noise(wq * 1.3));
@@ -1335,7 +1338,7 @@ void main() {
 	float haze = 1.0 - exp(-dist / (far > 0.5 ? 160.0 : 400.0));
 	col = mix(col, vec3(0.68, 0.76, 0.86), haze * (far > 0.5 ? 0.5 : 0.25));
 
-	gl_FragColor = vec4(tonemap(col), 1.0);
+	gl_FragColor = vec4(toNight(tonemap(col), 0.45), 1.0);
 }`;
 
 const SOLID_VERT = `
@@ -1386,6 +1389,7 @@ void main() {
 
 const LEAF_FRAG = `
 precision highp float;
+${NIGHT_GLSL}
 uniform sampler2D leaves;
 varying vec2 v_uv;
 varying vec3 v_light, v_tint, v_bloom, v_pos;
@@ -1400,7 +1404,7 @@ void main() {
 	// leaves glow a little when the sun is behind them
 	vec3 col = base * (SKY_AMB * 0.75 * occl + BOUNCE * 0.25 + SUN_COL * sun * (0.25 + 0.75 * facing) * 0.95);
 	col += vec3(0.9, 0.95, 0.8) * sun * facing * 0.05;
-	gl_FragColor = vec4(tonemap(col), 1.0);
+	gl_FragColor = vec4(toNight(tonemap(col), 0.45), 1.0);
 }`;
 
 

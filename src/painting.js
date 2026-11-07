@@ -47,6 +47,7 @@ const FRAME_FRAG = `#extension GL_OES_standard_derivatives : enable
 precision highp float;
 uniform vec2 fsize;
 uniform mat4 view;
+uniform float night;
 varying vec2 v_l;
 varying vec3 v_vpos;
 
@@ -199,6 +200,8 @@ void main() {
 	float ry = dot(R, upV);
 	vec3 env = mix(vec3(0.07, 0.055, 0.04), vec3(0.62, 0.53, 0.40), smoothstep(-0.35, 0.55, ry));
 	env += vec3(1.0, 0.9, 0.7) * pow(max(ry, 0.0), 10.0) * 0.6;
+	// by night the room the gilding reflects is dark, and cold
+	env *= mix(vec3(1.0), vec3(0.28, 0.32, 0.42), night);
 	float spec = pow(nh, mix(110.0, 18.0, rough));
 	vec3 col = F0 * (env * (1.0 - rough * 0.4) + diff * 0.62 + 0.12) + F0 * spec * (1.4 - rough);
 
@@ -249,6 +252,8 @@ module.exports = (regl) => {
 	uniform float texel;     // one texel of the painting's picture
 	uniform float detail;    // 1: canvas weave, varnish and relief
 	uniform float yScale;    // -1 in the mirrored floor
+	uniform float night, time;
+	${require('./lanterns').lanternGLSL()}
 	varying vec3 uv;
 	varying vec3 v_world;
 	varying vec3 v_eye;
@@ -357,6 +362,12 @@ module.exports = (regl) => {
 
 			col *= mix(1.0, lamp, frontMask);
 			col += vec3(1.0, 0.93, 0.80) * sheen * frontMask;
+			// at night: the picture light low and lantern-yellow, so the
+			// painting glows softly instead of shining
+			vec3 paint = col;
+			col *= mix(vec3(1.0), vec3(0.58, 0.50, 0.36), night);
+			// and the lanterns nearby warm it
+			col += paint * lanternLight(v_world, N) * 1.1 * frontMask;
 
 			// ---- the frame's inner lip: its shadow falls on the canvas,
 			// deepest along the top where the light comes from

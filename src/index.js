@@ -169,6 +169,7 @@ const about = require('./about');
 const contact = require('./contact');
 const caption = require('./caption');
 const visit = require('./visit');
+const env = require('./env');
 const { A: COURT } = require('./alcove');
 
 fps = require('./fps')(
@@ -185,6 +186,8 @@ const drawFarDoor = require('./fardoor')(regl);
 // the leaf that falls from the tree, and the dust in the sunbeams
 const drawLeaf = require('./leaf')(regl);
 const drawDust = require('./dust')(regl, quality);
+const drawFireflies = require('./fireflies')(regl, quality);
+const drawLanterns = require('./lanterns')(regl);
 
 // the cinematic tour the visit opens with (see tour.js)
 const tour = require('./tour')({
@@ -219,7 +222,10 @@ const context = regl({
 		view: () => camView,
 		proj: () => camProj,
 		yScale: 1.0,
-		mirrorOn: () => (useReflexion ? 1.0 : 0.0)
+		mirrorOn: () => (useReflexion ? 1.0 : 0.0),
+		// 0 by day, 1 at night (see env.js)
+		night: () => env.night,
+		time: regl.context('time')
 	}
 });
 
@@ -421,6 +427,9 @@ canvas {
 }
 body.touring .museum-links { display: none; }
 .museum-link {
+	padding: 0;
+	cursor: pointer;
+	font: inherit;
 	display: flex;
 	align-items: center;
 	justify-content: center;
@@ -654,6 +663,7 @@ document.body.appendChild(overlay);
 const museumLinks = document.createElement('div');
 museumLinks.className = 'museum-links';
 museumLinks.innerHTML = contact.icons('museum-link');
+museumLinks.insertBefore(require('./lighttoggle')('museum-link'), museumLinks.firstChild);
 // (clicks on the links must not grab the mouse for walking)
 ['mousedown', 'pointerdown', 'click'].forEach((t) => museumLinks.addEventListener(t, (e) => e.stopPropagation()));
 document.body.appendChild(museumLinks);
@@ -1235,6 +1245,8 @@ regl.frame(
 
 		stats.begin();
 
+		env.tick(time);
+
 		// after a few seconds, check the frame rate; if it is low, step
 		// down one notch and check again
 		perfFrames++;
@@ -1283,6 +1295,7 @@ regl.frame(
 								() => {
 									drawMap();
 									drawStatues();
+									drawLanterns();
 									drawTree();
 									drawAvatar();
 									drawPainting(
@@ -1301,6 +1314,7 @@ regl.frame(
 
 						drawMap();
 						drawStatues();
+						drawLanterns();
 						drawTree();
 						drawAvatar();
 						drawPainting(
@@ -1313,6 +1327,8 @@ regl.frame(
 						// the garden and the Florence street, through the corridor glass
 						drawGarden();
 						drawFlorence();
+						// at night, fireflies in the garden
+						drawFireflies();
 
 						// the leaf, and the dust glinting in the sunbeams
 						drawLeaf(leafNow);
