@@ -247,6 +247,10 @@ ${LANTERN.lanternGLSL(LANTERN.TREE_LANTERN)}
 uniform sampler2D tex;
 uniform float alphaCut, skin, glowLight, kind, alphaScale;
 uniform vec3 glowPos;
+// in the confessional: the priest's lamp (xyz, strength), and how much of
+// the court's own light reaches him (0 there)
+uniform vec4 boothLamp;
+uniform float court;
 varying vec3 v_pos, v_n, v_eye;
 varying vec2 v_uv;
 ${oculusGLSL()}
@@ -292,10 +296,10 @@ void main() {
 	vec3 V = normalize(v_eye - v_pos);
 	// soft daylight in the court, mostly from above
 	float up = 0.55 + 0.45 * N.y;
-	float light = 0.36 + 0.22 * up;
+	float light = (0.36 + 0.22 * up) * mix(0.5, 1.0, court);
 	// sun through the glass dome, dappled by the tree
 	float ndl = max(dot(N, SHAFT), 0.0);
-	float sun = ndl * oculusOpen(v_pos) * treeShade(v_pos);
+	float sun = ndl * oculusOpen(v_pos) * treeShade(v_pos) * court;
 	light += sun * 1.25;
 	// a little light from the glowing brush above his head
 	vec3 gl = glowPos - v_pos;
@@ -311,6 +315,21 @@ void main() {
 	col += vec3(0.9, 0.88, 0.85) * gloss * (pow(max(dot(R, SHAFT), 0.0), 30.0) * (0.3 + sun) + 0.08 * smoothstep(0.2, 1.0, R.y));
 	col += vec3(0.05, 0.05, 0.055) * step(0.5, kind) * pow(1.0 - max(dot(N, V), 0.0), 3.0);
 	col = toNight(col, 0.85);
+	// the confessional's lamp, warm, in front of him and to the side, with
+	// a soft rim on his hair where it wraps round
+	if (boothLamp.w > 0.0) {
+		vec3 bl = boothLamp.xyz - v_pos;
+		float bd = length(bl);
+		float lam = max(dot(N, bl / bd), 0.0);
+		float wrap = max(dot(N, bl / bd) * 0.5 + 0.5, 0.0);
+		col += t.rgb * vec3(1.0, 0.70, 0.40) * boothLamp.w * (lam * 0.8 + wrap * 0.25) / (1.0 + bd * bd * 1.6);
+		col += vec3(1.0, 0.75, 0.45) * boothLamp.w * 0.22 * pow(1.0 - max(dot(N, V), 0.0), 2.5) * wrap;
+		// and a little of the booth's light through the brass behind him
+		vec3 gl2 = vec3(-1.30, 1.75, 43.62) - v_pos;
+		float g2 = length(gl2);
+		col += t.rgb * vec3(1.0, 0.78, 0.55) * 1.4 * (max(dot(N, gl2 / g2), 0.0) * 0.8 + 0.1) / (1.0 + g2 * g2 * 3.0);
+		col += vec3(1.0, 0.8, 0.6) * 0.06 * pow(1.0 - max(dot(N, V), 0.0), 2.0) * max(dot(N, gl2 / g2), 0.0);
+	}
 	// at night, the little lantern by his head: warm on his face and coat,
 	// and a glint on the leather
 	vec3 lan = lanternLight(v_pos, N);
@@ -719,7 +738,8 @@ module.exports = (regl) => {
 			uniforms: {
 				tex: regl.prop('tex'), alphaCut: regl.prop('alphaCut'), skin: regl.prop('skin'),
 				kind: regl.prop('kind'), alphaScale: regl.prop('alphaScale'),
-				glowPos: () => state.glowPos, glowLight: () => state.glow
+				glowPos: () => state.glowPos, glowLight: () => state.glow,
+				boothLamp: () => (seat ? seat.lamp : [0, 0, 0, 0]), court: () => (seat ? 0 : 1)
 			},
 			cull: { enable: false }
 		});
@@ -730,7 +750,8 @@ module.exports = (regl) => {
 			uniforms: {
 				tex: regl.prop('tex'), alphaCut: regl.prop('alphaCut'), skin: regl.prop('skin'),
 				kind: regl.prop('kind'), alphaScale: regl.prop('alphaScale'),
-				glowPos: () => state.glowPos, glowLight: () => state.glow
+				glowPos: () => state.glowPos, glowLight: () => state.glow,
+				boothLamp: () => (seat ? seat.lamp : [0, 0, 0, 0]), court: () => (seat ? 0 : 1)
 			},
 			cull: { enable: false },
 			depth: { enable: true, mask: false },
@@ -802,7 +823,50 @@ module.exports = (regl) => {
 			return { blink: 0 };
 		}
 
+		// sitting on a stool, forearms on his thighs, head a little bowed;
+		// he breathes and his head moves a very little
+		function seatedPose(t, st) {
+			const br = Math.sin(t * 2 * Math.PI / 4.6);
+			const nod = Math.sin(t * 0.37) * 0.6 + Math.sin(t * 0.83 + 1.0) * 0.4;
+			const P = {
+				LeftUpLeg: [-86, -6, 0], RightUpLeg: [-84, 7, 0],
+				LeftLeg: [88, 0, 0], RightLeg: [82, 0, 0],
+				LeftFoot: [-4, 0, 0], RightFoot: [-2, 0, 0],
+				Spine: [6, 0, 0], Spine1: [5 + br * 0.8, 0, 0], Spine2: [4 + br * 0.6, 0, 0],
+				Neck: [10, 0, 0], Head: [12 + nod * 2.0, nod * 2.5, 0],
+				LeftArm: [0, 0, -72], RightArm: [0, 0, 72],
+				LeftForeArm: [0, -62, 0], RightForeArm: [0, 62, 0],
+				LeftHand: [0, 0, -10], RightHand: [0, 0, 10]
+			};
+			const deltas = {};
+			for (const k in P) { const e = P[k]; deltas[k] = qeuler(e[0], e[1], e[2]); }
+			const place = standAt(st.x, st.z, st.heading);
+			const world = new Array(nb);
+			for (let i = 0; i < nb; i++) {
+				const b = bones[i];
+				let local = restLocal[i];
+				const D = deltas[b.name];
+				if (D) {
+					const W = restWorldQ[i];
+					const L = qmul(qconj(W), qmul(D, W));
+					local = trs(b.t, qmul(b.r, L), b.s);
+				}
+				world[i] = b.parent < 0 ? mmul(place, local) : mmul(world[b.parent], local);
+			}
+			// lower him onto the seat
+			const hy = world[byName.Hips][13];
+			const drop = hy - (st.y + 0.10);
+			for (let i = 0; i < nb; i++) {
+				world[i] = world[i].slice();
+				world[i][13] -= drop;
+				skinMats[i] = mmul(world[i], ibm[i]);
+			}
+			const blinkT = (t % 4.1);
+			return { blink: blinkT < 0.16 ? Math.sin(blinkT / 0.16 * Math.PI) : 0 };
+		}
+
 		function pose(t, w) {
+			if (seat) return seatedPose(t, seat);
 			if (w) return walkingPose(w);
 			const breath = Math.sin(t * 2 * Math.PI / 4.2);
 			const blinkT = (t % 3.7);
@@ -896,7 +960,7 @@ module.exports = (regl) => {
 				const l = Math.hypot(qx, qy, qz) || 1;
 				outN[i * 3] = qx / l; outN[i * 3 + 1] = qy / l; outN[i * 3 + 2] = qz / l;
 			}
-			if (m.grid && !walking) drape(p);
+			if (m.grid && !walking && !seat) drape(p);
 			p.pb.subdata(outP);
 			p.nbuf.subdata(outN);
 		}
@@ -986,13 +1050,15 @@ module.exports = (regl) => {
 	// the tour sets this while he walks past the camera ({ x, z, heading,
 	// phase }); null puts him back on his bench
 	let walk = null;
+	// in the confessional: { x, z, y (seat), heading, lamp: [x, y, z, strength] }
+	let seat = null;
 
 	function draw(ctx) {
 		if (!ready) return;
 		const t = quality.motion ? clock() : clock();
 		const wk = walk ? [walk.x, walk.z, walk.heading, walk.phase].map((v) => v.toFixed(4)).join() : '';
 		// on phones the figure is re-posed at most 30 times a second
-		if (wk !== lastWalk || (!walk && Math.abs(t - lastT) > (quality.isPhone ? 1 / 30 : 0))) {
+		if (seat || wk !== lastWalk || (!walk && Math.abs(t - lastT) > (quality.isPhone ? 1 / 30 : 0))) {
 			ready.update(t, walk);
 			lastT = t;
 			lastWalk = wk;
@@ -1003,7 +1069,7 @@ module.exports = (regl) => {
 		}
 		// the book over his face, and the brush floating above him
 		const st = ready.state;
-		if (st.headM && !walk) {
+		if (st.headM && !walk && !seat) {
 			drawBook({ model: bookMatrix(st) });
 			const hp = st.headPos;
 			const bob = Math.sin(t * 1.3) * 0.02;
@@ -1025,6 +1091,7 @@ module.exports = (regl) => {
 	draw.state = state;
 	draw.place = PLACE;
 	draw.setWalk = (w) => { walk = w || null; if (walk) state.glow = 0; };
+	draw.setSeat = (s) => { seat = s || null; state.glow = seat ? 0 : state.glow; lastT = -1; };
 	return draw;
 };
 
