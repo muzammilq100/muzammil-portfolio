@@ -103,7 +103,7 @@ function lanternGLSL(which) {
 					// the direction in the lantern's own frame
 					float c = ${f(Math.cos(Math.atan2(l.o[1], l.o[0])))}, s = ${f(Math.sin(Math.atan2(l.o[1], l.o[0])))};
 					vec3 q = vec3(D.x * c + D.z * s, D.y, -D.x * s + D.z * c);
-					float T = lanternGlass(q);
+					float T = lanternGlass(q, 0.10 + 0.05 * d);
 					${shadow}${tableShadow}
 					float fl = 0.90 + 0.06 * sin(time * 6.1 + ${f(i * 1.7)}) + 0.04 * sin(time * 15.3 + ${f(i * 2.9)}) * sin(time * 1.9 + ${f(i * 0.6)});
 					float lam = max(dot(N, -D / d), 0.0) * 0.85 + 0.15;
@@ -116,24 +116,27 @@ function lanternGLSL(which) {
 	// how much of a lantern's light gets out in direction q (lantern frame,
 	// y up): through the leaded glass, past the iron posts, a little
 	// through the vents in the roof and the open work under the base
-	float lanternGlass(vec3 q) {
+	float lanternGlass(vec3 q, float blur) {
 		float h = length(q.xz) + 1e-5;
 		float az = atan(q.z, q.x);
 		// which of the six panels, and where across it
 		float t = mod(az + ${f(PI / 6)}, ${f(PI / 3)}) - ${f(PI / 6)};
 		float U = tan(t) / ${f(Math.tan(PI / 6))};
 		float V = (q.y / h) * (${f(APO / HH)} / cos(t));
-		// the diamond lattice of lead
+		// the diamond lattice of lead: its shadow soft, as a flame is not
+		// a point, and softer the further it falls
 		float s1 = U * 1.5 + V * 2.0, s2 = U * 1.5 - V * 2.0;
 		float e1 = 0.5 - abs(fract(s1) - 0.5), e2 = 0.5 - abs(fract(s2) - 0.5);
-		float lead = 1.0 - smoothstep(0.03, 0.085, min(e1, e2));
-		float T = 1.0 - 0.82 * lead;
+		float lead = 1.0 - smoothstep(0.0, 0.05 + blur, min(e1, e2));
+		float T = 1.0 - 0.48 * lead;
 		// the iron posts at the corners
-		T *= 1.0 - 0.92 * smoothstep(0.84, 0.95, abs(U));
+		T *= 1.0 - 0.6 * smoothstep(0.80 - blur, 1.0, abs(U));
 		// the rails at top and bottom, and beyond them the roof and base
-		float inGlass = 1.0 - smoothstep(0.90, 1.02, abs(V));
-		float leak = V > 0.0 ? 0.10 : 0.28;
-		return mix(leak, T, inGlass);
+		float inGlass = 1.0 - smoothstep(0.80 - blur, 1.05 + blur * 2.0, abs(V));
+		float leak = V > 0.0 ? 0.26 : 0.40;
+		// and a little light that is not patterned at all: the glow of
+		// the warm glass itself
+		return mix(mix(leak, T, inGlass), 1.0, 0.18);
 	}
 	vec3 lanternLight(vec3 p, vec3 N) {
 		if (night <= 0.001) return vec3(0.0);
@@ -400,7 +403,7 @@ module.exports = (regl) => {
 			v_fl = 0.90 + 0.06 * sin(time * 6.1 + i * 1.7) + 0.04 * sin(time * 15.3 + i * 2.9);
 			vec3 right = vec3(view[0][0], view[1][0], view[2][0]);
 			vec3 up = vec3(view[0][1], view[1][1], view[2][1]);
-			vec3 p = at.xyz + (right * corner.x + up * corner.y) * 0.75 * floor(at.w * 100.0 + 0.5) / 100.0;
+			vec3 p = at.xyz + (right * corner.x + up * corner.y) * 1.1 * floor(at.w * 100.0 + 0.5) / 100.0;
 			v_uv = corner;
 			p.y *= yScale;
 			gl_Position = proj * view * vec4(p, 1.0);
@@ -412,7 +415,7 @@ module.exports = (regl) => {
 		varying float v_fl;
 		void main() {
 			float r = length(v_uv);
-			vec3 col = vec3(1.0, 0.62, 0.28) * pow(max(1.0 - r, 0.0), 3.0) * 0.22 * v_fl;
+			vec3 col = vec3(1.0, 0.62, 0.28) * (pow(max(1.0 - r, 0.0), 3.0) * 0.30 + pow(max(1.0 - r, 0.0), 8.0) * 0.35) * v_fl;
 			gl_FragColor = vec4(col * night, 1.0);
 		}`,
 		attributes: { corner: quadC, at },

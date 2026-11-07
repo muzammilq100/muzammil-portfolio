@@ -87,6 +87,7 @@ module.exports = (regl) => {
 		frag: `
 		precision highp float;
 		${NIGHT_GLSL}
+		uniform float time;
 		uniform float yScale, visible;
 		varying vec3 v_pos, v_normal;
 		varying vec2 v_uv;
@@ -137,7 +138,17 @@ module.exports = (regl) => {
 			vec3 H = normalize(L + V);
 			col += vec3(1.0, 0.95, 0.85) * sun * pow(max(dot(N, H), 0.0), 40.0) * 0.6;
 
-			gl_FragColor = vec4(toNight(col * visible, 0.55), 1.0);
+			col = toNight(col, 0.55);
+			// at night it glows from within, gold-green, brightest along
+			// its veins and midrib, flickering faintly, like something
+			// carrying the last of the light
+			float vein = 1.0 - smoothstep(0.0, 0.07, across);
+			float side = 1.0 - smoothstep(0.0, 0.035, abs(fract(v_uv.x * 7.0 - across * 2.2) - 0.5) - 0.42);
+			float pulse = 0.88 + 0.12 * sin(time * 1.7) * sin(time * 0.63 + 1.0);
+			vec3 glow = vec3(0.62, 0.88, 0.30) * (0.55 + 0.9 * vein + 0.35 * side * (1.0 - across))
+				+ vec3(1.0, 0.85, 0.45) * pow(1.0 - abs(dot(N, V)), 2.0) * 0.5;
+			col += glow * 1.35 * pulse * night;
+			gl_FragColor = vec4(col * visible, 1.0);
 		}`,
 		attributes: { position: g.pos, normal: g.nrm, uv: g.uv },
 		elements: g.idx,
@@ -148,8 +159,46 @@ module.exports = (regl) => {
 		cull: { enable: false }
 	});
 
+	// at night: a soft halo of light around it, drawn additively
+	const env = require('./env');
+	const halo = regl({
+		vert: `
+		precision highp float;
+		uniform mat4 proj, view, model;
+		uniform float yScale;
+		attribute vec2 corner;
+		varying vec2 v_uv;
+		void main() {
+			vec3 c = (model * vec4(${(LENGTH * 0.35).toFixed(3)}, 0.0, 0.0, 1.0)).xyz;
+			vec3 right = vec3(view[0][0], view[1][0], view[2][0]);
+			vec3 up = vec3(view[0][1], view[1][1], view[2][1]);
+			vec3 p = c + (right * corner.x + up * corner.y) * 0.55;
+			v_uv = corner;
+			p.y *= yScale;
+			gl_Position = proj * view * vec4(p, 1.0);
+		}`,
+		frag: `
+		precision highp float;
+		uniform float night, time;
+		varying vec2 v_uv;
+		void main() {
+			float r = length(v_uv);
+			float pulse = 0.88 + 0.12 * sin(time * 1.7) * sin(time * 0.63 + 1.0);
+			vec3 col = vec3(0.70, 0.95, 0.40) * (pow(max(1.0 - r, 0.0), 2.5) * 0.28 + pow(max(1.0 - r, 0.0), 10.0) * 0.5);
+			gl_FragColor = vec4(col * night * pulse, 1.0);
+		}`,
+		attributes: { corner: [[-1, -1], [1, -1], [1, 1], [-1, -1], [1, 1], [-1, 1]] },
+		count: 6,
+		uniforms: { model: regl.prop('model'), night: () => env.night },
+		depth: { enable: true, mask: false },
+		blend: { enable: true, func: { srcRGB: 'one', dstRGB: 'one', srcAlpha: 'zero', dstAlpha: 'one' } }
+	});
+
 	// draws the leaf when tour.js says where it is (state.model)
 	return function (state) {
-		if (state && state.visible) draw({ model: state.model });
+		if (state && state.visible) {
+			draw({ model: state.model });
+			if (env.night > 0.01) halo({ model: state.model });
+		}
 	};
 };
