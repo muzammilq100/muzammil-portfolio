@@ -17,9 +17,8 @@ let target = 0;
 try {
 	const q = location.search;
 	if (/[?&]night\b/.test(q)) target = 1;
-	else if (/[?&]day\b/.test(q)) target = 0;
-	else if (localStorage.getItem(KEY) === 'night') target = 1;
-} catch (e) { /* storage not available: day */ }
+	// every visit begins by day; night is the visitor's choice
+} catch (e) { /* day */ }
 
 let value = target;
 let last = 0;
@@ -41,7 +40,6 @@ const env = {
 	get isNight() { return target === 1; },
 	set(n) {
 		target = n ? 1 : 0;
-		try { localStorage.setItem(KEY, n ? 'night' : 'day'); } catch (e) { /* fine */ }
 		listeners.forEach((f) => f(target));
 	},
 	toggle() { env.set(!target); },

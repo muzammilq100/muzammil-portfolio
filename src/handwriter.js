@@ -116,13 +116,20 @@ function HandWriter(canvas, G, opts) {
 	}
 
 	function size(cssW, cssH) {
-		const dpr = Math.min(window.devicePixelRatio || 1, 2);
-		canvas.width = Math.round(cssW * dpr);
-		canvas.height = Math.round(cssH * dpr);
-		canvas.style.height = cssH + 'px';
-		canvas.style.width = cssW + 'px';
-		ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-		ctx.clearRect(0, 0, cssW, cssH);
+		if (opts.fixed) {
+			// writing onto a canvas of its own size (a texture), inside margins
+			const F = opts.fixed;
+			ctx.setTransform(1, 0, 0, 1, F.mx, F.my);
+			ctx.clearRect(-F.mx, -F.my, canvas.width, canvas.height);
+		} else {
+			const dpr = Math.min(window.devicePixelRatio || 1, 2);
+			canvas.width = Math.round(cssW * dpr);
+			canvas.height = Math.round(cssH * dpr);
+			canvas.style.height = cssH + 'px';
+			canvas.style.width = cssW + 'px';
+			ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+			ctx.clearRect(0, 0, cssW, cssH);
+		}
 		ctx.strokeStyle = opts.ink;
 		ctx.fillStyle = opts.ink;
 		ctx.lineCap = 'round';
@@ -184,7 +191,7 @@ function HandWriter(canvas, G, opts) {
 	return {
 		write(text, instant) {
 			cancelAnimationFrame(raf);
-			const cssW = canvas.parentElement.clientWidth;
+			const cssW = opts.fixed ? canvas.width - 2 * opts.fixed.mx : canvas.parentElement.clientWidth;
 			const L = layout(text, cssW);
 			strokes = L.strokes; total = L.total;
 			// a time limit: the same writing, just quicker

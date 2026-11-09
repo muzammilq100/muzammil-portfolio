@@ -188,12 +188,14 @@ const drawLeaf = require('./leaf')(regl);
 const drawDust = require('./dust')(regl, quality);
 const drawFireflies = require('./fireflies')(regl, quality);
 const drawLanterns = require('./lanterns')(regl);
+const drawConfessional = require('./confessional')(regl);
 
 // the cinematic tour the visit opens with (see tour.js)
 const tour = require('./tour')({
 	fps,
 	// the paintings (with their titles and words), once they have loaded
 	paintings: () => placement.interactables(),
+	avatar: drawAvatar,
 	onExit: () => fps.setPaused(false)
 });
 fps.setPaused(true);
@@ -1296,6 +1298,7 @@ regl.frame(
 									drawMap();
 									drawStatues();
 									drawLanterns();
+									drawConfessional({ reflected: true });
 									drawTree();
 									drawAvatar();
 									drawPainting(
@@ -1315,6 +1318,7 @@ regl.frame(
 						drawMap();
 						drawStatues();
 						drawLanterns();
+						drawConfessional();
 						drawTree();
 						drawAvatar();
 						drawPainting(

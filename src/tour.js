@@ -1646,6 +1646,8 @@ module.exports = function createTour(opts) {
 		<span class="tour-line tour-kicker">Thank you for walking with me</span>
 		<span class="tour-rule"></span>
 		<span class="tour-line tour-sub">${CAN_WALK ? 'The rest of the gallery is yours to wander.' : 'Swipe back to return to any painting.'}</span>
+		<span class="tour-line tour-sub tour-confess-line">Before you leave, the confessional is open.<br>Leave me a note; no one else will read it.</span>
+		<div class="tour-line tour-end"><button type="button" class="tour-btn" data-act="confess">Leave something behind</button></div>
 		${contact.line('tour-line tour-contact')}
 		<div class="tour-line tour-end">
 			${CAN_WALK ? '<button type="button" class="tour-btn" data-act="free">Walk the gallery</button>' : ''}
@@ -1657,6 +1659,15 @@ module.exports = function createTour(opts) {
 	const cards = [intro, aboutCard, sky, master, story, quiet(), quiet(), quiet(), story1, story2, story3, quiet(), ...hallStories, end];
 	root.append(...cards, mark, links, progress, hint);
 	document.body.appendChild(root);
+
+	// the confessional at the end of the tour (see confession.js)
+	const conf = require('./confession')({
+		root,
+		avatar: opts.avatar,
+		glyphs: () => HAND,
+		// back at the end of the tour: its words come up again
+		onExit: () => { shown = -1; }
+	});
 	document.body.classList.add('touring');
 
 	// phones swipe, laptops scroll (or click, or press the arrow keys)
@@ -1755,6 +1766,7 @@ module.exports = function createTour(opts) {
 	let holdUntil = -1;        // resting at a shot: no leaving before this
 
 	function wind(secs) {
+		if (conf.active) return;
 		if (!active || exiting) return;
 		const fresh = now - lastInput > GESTURE_GAP;
 		lastInput = now;
@@ -1777,6 +1789,7 @@ module.exports = function createTour(opts) {
 
 	// a key, click or tap: glide on to the next shot (or back to the last)
 	function go(dir) {
+		if (conf.active) return;
 		if (!active || exiting) return;
 		const here = auto ? target : scroll;
 		let i;
@@ -1823,6 +1836,12 @@ module.exports = function createTour(opts) {
 		const d = drag;
 		drag = null;
 		if (!d) return;
+		if (conf.active) {
+			// in the confessional: a tap, or a swipe up, carries on
+			if (d.moved < 10 && performance.now() - d.t < 500) conf.tap();
+			else if (d.y - (e ? e.clientY : d.ly) > 30) conf.swipe(1);
+			return;
+		}
 		if (d.moved < 10 && performance.now() - d.t < 500) {
 			// a tap or click: on to the next shot
 			go(1);
@@ -1835,6 +1854,12 @@ module.exports = function createTour(opts) {
 	root.addEventListener('pointercancel', () => { drag = null; });
 
 	root.addEventListener('wheel', (e) => {
+		if (conf.active) {
+			if (e.target.closest('.conf-ui')) return;
+			e.preventDefault();
+			conf.wheel(e.deltaY);
+			return;
+		}
 		if (e.target.closest('.tour-body')) {
 			const b = e.target.closest('.tour-body');
 			const atEnd = b.scrollTop + b.clientHeight >= b.scrollHeight - 2 && e.deltaY > 0;
@@ -1848,6 +1873,13 @@ module.exports = function createTour(opts) {
 
 	window.addEventListener('keydown', (e) => {
 		if (!active || exiting || document.body.classList.contains('visiting')) return;
+		if (conf.active) {
+			// typing the note: the keys are the visitor's, not the tour's
+			e.stopImmediatePropagation();
+			if (e.target && /TEXTAREA|INPUT|BUTTON/.test(e.target.tagName)) return;
+			if (conf.key(e.key)) e.preventDefault();
+			return;
+		}
 		const k = e.key;
 		if (['ArrowDown', 'ArrowRight', 'PageDown', ' ', 'Enter'].indexOf(k) >= 0) {
 			// (Enter and Space on a focused button press the button)
@@ -1878,6 +1910,7 @@ module.exports = function createTour(opts) {
 		if (b.dataset.act === 'free') exit();
 		if (b.dataset.act === 'replay') replay();
 		if (b.dataset.act === 'list') require('./listview').show(false);
+		if (b.dataset.act === 'confess') { hideUI(); shown = -2; conf.start(camNow, look); }
 	});
 
 
@@ -2014,6 +2047,16 @@ module.exports = function createTour(opts) {
 
 		if (exiting) {
 			return null;
+		}
+
+		// in the confessional: its own camera and look
+		if (conf.active) {
+			const r = conf.update(dt);
+			camNow = r.camera;
+			setLook(r.look);
+			if (DEBUG && window.__camOverride) camNow = window.__camOverride;
+			if (DEBUG && window.__lookOverride) Object.assign(look, window.__lookOverride);
+			return { camera: camNow, walker: null, door: 1, look, leaf: leafState(dt) };
 		}
 
 		// resting near a shot: settle onto it
@@ -2154,6 +2197,9 @@ module.exports = function createTour(opts) {
 	if (DEBUG) {
 		window.__tour = {
 			go, exit, wind,
+			confess() { hideUI(); shown = -2; conf.start(camNow, look); },
+			conf,
+			paper: require('./confessional').STATE,
 			seek(i, u) { scroll = target = AT[i] + (AT[i + 1] - AT[i]) * u; vel = 0; auto = false; lastInput = now + 1e6; fadeIn.start = now - 10; started = true; },
 			jump(i) { scroll = target = AT[i]; vel = 0; auto = false; restClock = 0; lastInput = now; fadeIn.start = now - 10; started = true; },
 			state: () => ({ current: nearestShot(scroll), scroll: +scroll.toFixed(3), target: +target.toFixed(3), shown, move: Math.abs(target - scroll) > 0.02 ? { p: scroll } : null, camNow, leaf, look })

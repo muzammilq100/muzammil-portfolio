@@ -6,6 +6,7 @@ const entrance = require('./entrance');
 const skylight = require('./skylight');
 const wing = require('./wing');
 const alcove = require('./alcove');
+const confessional = require('./confessional');
 
 /*
  * RENAISSANCE ART GALLERY
@@ -1289,21 +1290,18 @@ module.exports = function () {
     // SIDE WALLS
     // ========================================================
 
-    addBox(
-
-        position,
-        normal,
-        elements,
-
-        -WALL,
-        0,
-        0,
-
-        WALL,
-        HEIGHT,
-        LENGTH
-
-    );
+    // the right-hand wall (as you walk in), with the bay of the
+    // confessional opened in it near the end of the hall
+    {
+        const BAY = confessional.BAY;
+        addBox(position, normal, elements, -WALL, 0, 0, WALL, HEIGHT, BAY.z0);
+        addBox(position, normal, elements, -WALL, 0, BAY.z1, WALL, HEIGHT, LENGTH);
+        addBox(position, normal, elements, -WALL, BAY.top, BAY.z0, WALL, HEIGHT, BAY.z1);
+        confessional.addBay(
+            (x0, y0, z0, x1, y1, z1) => addBox(position, normal, elements, x0, y0, z0, x1, y1, z1),
+            (x0, z0, x1, z1) => elements.push(...pushQuad(position, normal, [x0, 0, z0], [x1, 0, z0], [x0, 0, z1], [x1, 0, z1], [0, 1, 0]))
+        );
+    }
 
 
     // the left wall (as you walk in) is built by alcove.js, with the
@@ -1317,8 +1315,10 @@ module.exports = function () {
     // ========================================================
     // SKIRTING BOARDS (marble, two steps) on the side and end walls
     // ========================================================
-    addBox(position, normal, elements, WALL, 0, 0, WALL + 0.12, 0.42, LENGTH - WALL);
-    addBox(position, normal, elements, WALL, 0.42, 0, WALL + 0.07, 0.50, LENGTH - WALL);
+    for (const [za, zb] of [[0, confessional.BAY.z0 - 0.5], [confessional.BAY.z1 + 0.5, LENGTH - WALL]]) {
+        addBox(position, normal, elements, WALL, 0, za, WALL + 0.12, 0.42, zb);
+        addBox(position, normal, elements, WALL, 0.42, za, WALL + 0.07, 0.50, zb);
+    }
     addBox(position, normal, elements, WALL, 0, LENGTH - WALL - 0.12, WIDTH - WALL, 0.42, LENGTH - WALL);
     addBox(position, normal, elements, WALL, 0.42, LENGTH - WALL - 0.07, WIDTH - WALL, 0.50, LENGTH - WALL);
 
@@ -1451,13 +1451,7 @@ module.exports = function () {
     );
 
 
-    addWallPanel(
-        position,
-        normal,
-        elements,
-        43,
-        'left'
-    );
+    // (no panel at 43 on the right-hand wall: the confessional's bay is there)
 
 
 
