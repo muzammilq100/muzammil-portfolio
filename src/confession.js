@@ -172,7 +172,7 @@ module.exports = function createConfession(opts) {
 		g.setTransform(1, 0, 0, 1, 0, 0);
 		g.clearRect(0, 0, inkCanvas.width, inkCanvas.height);
 		C.STATE.ink = inkCanvas; C.STATE.inkDirty = true;
-		avatar.setSeat({ x: C.SEAT.x, z: C.SEAT.z, y: C.SEAT.y, heading: C.SEAT.heading, lamp: [C.LAMP[0], C.LAMP[1], C.LAMP[2], 1.6] });
+		// (the booth behind the brass is empty: only the lamp burns there)
 		document.body.classList.add('confessing');
 		go('approach');
 		show('');
@@ -336,7 +336,6 @@ module.exports = function createConfession(opts) {
 				g.setTransform(1, 0, 0, 1, 0, 0);
 				g.clearRect(0, 0, inkCanvas.width, inkCanvas.height);
 				C.STATE.inkDirty = true;
-				avatar.setSeat(null);
 				document.body.classList.remove('confessing');
 				if (opts.onExit) opts.onExit();
 			}
