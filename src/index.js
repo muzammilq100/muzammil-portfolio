@@ -189,6 +189,7 @@ const drawDust = require('./dust')(regl, quality);
 const drawFireflies = require('./fireflies')(regl, quality);
 const drawLanterns = require('./lanterns')(regl);
 const drawConfessional = require('./confessional')(regl);
+const drawStairHall = require('./stairhall')(regl);
 
 // the cinematic tour the visit opens with (see tour.js)
 const tour = require('./tour')({
@@ -1298,7 +1299,8 @@ regl.frame(
 									drawMap();
 									drawStatues();
 									drawLanterns();
-									drawConfessional({ reflected: true });
+									drawStairHall({ reflected: true });
+									drawConfessional({ reflected: true, view: camView });
 									drawTree();
 									drawAvatar();
 									drawPainting(
@@ -1318,7 +1320,8 @@ regl.frame(
 						drawMap();
 						drawStatues();
 						drawLanterns();
-						drawConfessional();
+						drawStairHall();
+						drawConfessional({ view: camView });
 						drawTree();
 						drawAvatar();
 						drawPainting(

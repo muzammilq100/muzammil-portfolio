@@ -233,14 +233,20 @@ module.exports = function createConfession(opts) {
 	let leaveFrom = null;
 	let lastCam = null;
 
-	// the way in: across the hall to the bay, in through the curtain, and
-	// round to face the window
+	// the way in: across the hall and through the arch into the stair
+	// hall, round the piano in its candles, to the confessional in the far
+	// wall, in through the curtain and round to face the window
+	// (gallery metres; the booth's own points are moved with it, see OFF)
 	const W = C.SHOTS.window;
+	const O = C.OFF;
+	const at = (p) => [p[0] + O[0], p[1], p[2]];
+	const IN_EYES = [[3.4, 1.75, 44.5], [0.3, 1.72, 44.5], [-2.5, 1.66, 45.0], [-4.6, 1.6, 46.55], [-7.0, 1.58, 47.15], [-9.3, 1.55, 46.4], at([1.25, 1.5, 43.25]), at([-0.55, 1.36, 42.92])];
+	const IN_TGTS = [[-3.0, 1.9, 44.5], [-6.5, 1.5, 44.6], [-7.0, 1.0, 44.4], [-7.6, 0.95, 44.0], [-10.5, 1.5, 44.6], at([-1.0, 1.55, 43.6]), at([-1.4, 1.35, 43.1]), at([-1.5, 1.33, 43.3])];
 	function approachCam(t) {
 		const e = ease(clamp01(t));
-		const eyes = [from.eye, [4.6, 1.9, 43.4], [1.3, 1.5, 43.0], [-0.55, 1.36, 42.92], W.eye];
-		const tgts = [from.target, [-0.6, 1.6, 43.6], [-1.4, 1.35, 43.1], [-1.5, 1.33, 43.3], W.target];
-		return { eye: curve(eyes, e), target: curve(tgts, smooth(0, 1, e * 1.04)), fov: mix(from.fov, W.fov, smooth(0.2, 0.9, e)), roll: (from.roll || 0) * (1 - e) };
+		const eyes = [from.eye, ...IN_EYES, W.eye];
+		const tgts = [from.target, ...IN_TGTS, W.target];
+		return { eye: curve(eyes, e), target: curve(tgts, smooth(0, 1, e * 1.03)), fov: mix(from.fov, W.fov, smooth(0.6, 0.97, e)), roll: (from.roll || 0) * (1 - e) };
 	}
 
 	// a held camera breathes a little
@@ -266,10 +272,10 @@ module.exports = function createConfession(opts) {
 		const winCam = camOf(W), paperCam = camOf(C.SHOTS.paper);
 		let cam, look;
 		if (stage === 'approach') {
-			const T = REDUCED ? 0.6 : 6.5;
+			const T = REDUCED ? 0.6 : 15.0;
 			const u = clamp01(clock / T);
 			cam = approachCam(u);
-			look = lookMix(fromLook, LOOK_BOOTH, smooth(0.35, 0.95, u));
+			look = lookMix(fromLook, LOOK_BOOTH, smooth(0.15, 0.9, u));
 			if (u >= 1) { go('write'); show('write'); }
 		} else if (stage === 'write') {
 			cam = breathe(winCam, 1);
@@ -319,12 +325,12 @@ module.exports = function createConfession(opts) {
 		} else if (stage === 'leave') {
 			// back out through the curtain and across the hall to where the
 			// tour ended
-			const T = REDUCED ? 0.6 : 5.5;
+			const T = REDUCED ? 0.6 : 12.0;
 			const u = clamp01(clock / T);
 			const back = { eye: from.eye, target: from.target, fov: from.fov, roll: from.roll };
 			const e = ease(u);
-			const eyes = [leaveFrom.eye, [-0.55, 1.4, 42.95], [1.6, 1.65, 43.2], back.eye];
-			const tgts = [leaveFrom.target, [1.5, 1.45, 43.3], [6.0, 1.5, 46.0], back.target];
+			const eyes = [leaveFrom.eye, at([-0.55, 1.4, 42.95]), at([1.4, 1.55, 43.4]), [-9.3, 1.58, 46.4], [-7.0, 1.6, 47.15], [-4.6, 1.62, 46.55], [-2.2, 1.68, 44.8], [0.6, 1.72, 44.5], back.eye];
+			const tgts = [leaveFrom.target, at([1.5, 1.45, 43.4]), [-7.0, 1.2, 44.6], [-4.0, 1.5, 47.0], [-1.5, 1.7, 45.5], [1.0, 1.8, 44.5], [4.0, 1.8, 44.5], [7.0, 1.9, 44.2], back.target];
 			cam = { eye: curve(eyes, e), target: curve(tgts, e), fov: mix(leaveFrom.fov, back.fov, e), roll: back.roll * e };
 			look = lookMix(LOOK_BOOTH, fromLook, smooth(0.1, 0.7, u));
 			if (u >= 1) {

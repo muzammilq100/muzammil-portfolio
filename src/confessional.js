@@ -26,6 +26,8 @@
  */
 
 const env = require('./env');
+const SH = require('./stairhall');
+const mat4 = require('gl-mat4');
 
 const PI = Math.PI;
 const f = (x) => (+x).toFixed(4);
@@ -156,8 +158,10 @@ function lightGLSL() {
 		if (inB2) open = 0.10;
 		// deeper into the bay, a little less of the hall's light
 		open *= mix(0.62, 1.0, smoothstep(${f(BAY.x0)}, 0.3, p.x));
-		vec3 hall = vec3(1.25, 1.12, 0.94) * (0.62 + 0.38 * max(N.x, 0.0)) * (0.8 + 0.2 * N.y);
-		vec3 col = toNight(hall * open, 0.55) * mix(1.0, (inB1 || inPriest || inB2) ? 0.3 : 0.55, night);
+		// the stair hall's candlelight (it stands there now: see stairhall.js)
+		vec3 rs;
+		vec3 col = roomLight(p + ${v3(SH.OFF)}, N, V, gloss, rs) * 1.25 * open;
+		spec += rs * open;
 		// the lamp, warm, behind the brass
 		vec3 Ld = ${v3(LAMP)} - p;
 		float dl = length(Ld);
@@ -188,7 +192,6 @@ function lightGLSL() {
 			spec += cc * pow(max(dot(N, normalize(Lc + V)), 0.0), mix(8.0, 70.0, gloss)) * gloss * 0.10 / (0.02 + dc * dc * 1.2);
 		}
 		// the gallery's lanterns, outside the booths
-		if (!(inB1 || inPriest || inB2)) col += lanternLight(p, N) * open;
 		return col;
 	}`;
 }
@@ -572,6 +575,7 @@ module.exports = (regl) => {
 	${NIGHT}
 	uniform float time;
 	${LANTERN.lanternGLSL()}
+	${SH.roomGLSL()}
 	${lightGLSL()}
 	float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 	float vnoise(vec2 p) {
@@ -630,7 +634,7 @@ module.exports = (regl) => {
 				}
 			} else if (k < 2.5 || (k > 2.5 && k < 3.5)) {
 				// velvet: deep maroon (the cushions a little redder)
-				base = k < 2.5 ? vec3(0.20, 0.022, 0.040) : vec3(0.21, 0.035, 0.038);
+				base = k < 2.5 ? vec3(0.34, 0.018, 0.022) : vec3(0.30, 0.030, 0.030);
 				base *= 0.9 + 0.2 * vnoise(q * 60.0);
 				gloss = 0.0;
 			} else if (k < 4.5) {
@@ -1065,7 +1069,14 @@ module.exports = (regl) => {
 	});
 
 	let inkShape = [0, 0];
+	// it is built where it always stood and moved, whole, into the stair hall
+	const shift = regl({ uniforms: { view: regl.prop('view') } });
+	const shifted = new Float32Array(16);
 	function draw(opts) {
+		mat4.translate(shifted, opts.view, SH.OFF);
+		shift({ view: shifted }, () => drawHere(opts));
+	}
+	function drawHere(opts) {
 		const reflected = opts && opts.reflected;
 		booth();
 		curtains();
@@ -1098,8 +1109,10 @@ module.exports = (regl) => {
 
 module.exports.addBay = addBay;
 module.exports.BAY = BAY;
+module.exports.OFF = SH.OFF;
 module.exports.STATE = STATE;
-module.exports.SHOTS = SHOTS;
+const moved = (p) => [p[0] + SH.OFF[0], p[1] + SH.OFF[1], p[2] + SH.OFF[2]];
+module.exports.SHOTS = Object.fromEntries(Object.entries(SHOTS).map(([k, v]) => [k, Object.assign({}, v, { eye: moved(v.eye), target: moved(v.target) })]));
 module.exports.SEAT = SEAT;
 module.exports.LAMP = LAMP;
 module.exports.SCONCE = SCONCE;

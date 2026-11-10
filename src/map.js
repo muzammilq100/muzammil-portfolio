@@ -6,7 +6,7 @@ const entrance = require('./entrance');
 const skylight = require('./skylight');
 const wing = require('./wing');
 const alcove = require('./alcove');
-const confessional = require('./confessional');
+const stairhall = require('./stairhall');
 
 /*
  * RENAISSANCE ART GALLERY
@@ -59,9 +59,13 @@ const COLUMN_Z = [
 
 const wallSegments = [
 
-    // Left wall
+    // the x = 0 wall, open where the arch leads into the stair hall
     [
         [0, 0],
+        [0, stairhall.PASS.z0]
+    ],
+    [
+        [0, stairhall.PASS.z1],
         [0, LENGTH]
     ],
 
@@ -203,7 +207,7 @@ for (const pl of PLANTS) {
 
 
 const collisionSegments =
-    wallSegments.concat(columnSegments, obstacleSegments);
+    wallSegments.concat(columnSegments, obstacleSegments, stairhall.segments());
 
 
 // ============================================================
@@ -1290,17 +1294,14 @@ module.exports = function () {
     // SIDE WALLS
     // ========================================================
 
-    // the right-hand wall (as you walk in), with the bay of the
-    // confessional opened in it near the end of the hall
+    // the right-hand wall (as you walk in), with the arch into the stair
+    // hall cut in it near the end of the hall (stairhall.js builds the
+    // arch's surround, its passage and the room beyond)
     {
-        const BAY = confessional.BAY;
-        addBox(position, normal, elements, -WALL, 0, 0, WALL, HEIGHT, BAY.z0);
-        addBox(position, normal, elements, -WALL, 0, BAY.z1, WALL, HEIGHT, LENGTH);
-        addBox(position, normal, elements, -WALL, BAY.top, BAY.z0, WALL, HEIGHT, BAY.z1);
-        confessional.addBay(
-            (x0, y0, z0, x1, y1, z1) => addBox(position, normal, elements, x0, y0, z0, x1, y1, z1),
-            (x0, z0, x1, z1) => elements.push(...pushQuad(position, normal, [x0, 0, z0], [x1, 0, z0], [x0, 0, z1], [x1, 0, z1], [0, 1, 0]))
-        );
+        const S = stairhall.SURR;
+        addBox(position, normal, elements, -WALL, 0, 0, WALL, HEIGHT, S.z0);
+        addBox(position, normal, elements, -WALL, 0, S.z1, WALL, HEIGHT, LENGTH);
+        addBox(position, normal, elements, -WALL, S.top, S.z0, WALL, HEIGHT, S.z1);
     }
 
 
@@ -1315,7 +1316,7 @@ module.exports = function () {
     // ========================================================
     // SKIRTING BOARDS (marble, two steps) on the side and end walls
     // ========================================================
-    for (const [za, zb] of [[0, confessional.BAY.z0 - 0.5], [confessional.BAY.z1 + 0.5, LENGTH - WALL]]) {
+    for (const [za, zb] of [[0, stairhall.SURR.z0], [stairhall.SURR.z1, LENGTH - WALL]]) {
         addBox(position, normal, elements, WALL, 0, za, WALL + 0.12, 0.42, zb);
         addBox(position, normal, elements, WALL, 0.42, za, WALL + 0.07, 0.50, zb);
     }
@@ -1451,7 +1452,7 @@ module.exports = function () {
     );
 
 
-    // (no panel at 43 on the right-hand wall: the confessional's bay is there)
+    // (no panel at 43 on the right-hand wall: the arch into the stair hall is there)
 
 
 

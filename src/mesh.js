@@ -145,12 +145,10 @@ module.exports = (regl, data, useReflexion) => {
       vec2 cp = dir.xz / max(dir.y, 0.2) * 1.6;
       float c = smoothstep(0.50, 0.78, fbm(cp * 0.7 + vec2(3.1, 7.4)));
       vec3 day = mix(col, vec3(0.97, 0.96, 0.93), c * 0.65);
-      // night: deep blue-black, thin moonlit cloud and a scatter of stars
-      vec3 nsky = mix(vec3(0.035, 0.05, 0.09), vec3(0.012, 0.018, 0.04), smoothstep(0.3, 1.0, h));
-      nsky = mix(nsky, vec3(0.16, 0.19, 0.25), c * 0.45);
-      vec2 sp = dir.xz / max(dir.y, 0.15) * 60.0;
-      float star = step(0.996, hash12(floor(sp))) * (1.0 - c) * smoothstep(0.15, 0.4, h);
-      nsky += vec3(0.75, 0.8, 0.9) * star;
+      // night: deep blue, lit by the moon, with thin silver cloud
+      // (no painted stars: they read as specks on the glass)
+      vec3 nsky = mix(vec3(0.05, 0.07, 0.12), vec3(0.018, 0.028, 0.06), smoothstep(0.3, 1.0, h));
+      nsky = mix(nsky, vec3(0.20, 0.23, 0.30), c * 0.5);
       return mix(day, nsky, night);
     }
 
@@ -438,7 +436,7 @@ module.exports = (regl, data, useReflexion) => {
       // dim the room as a whole; the picture lights stay strong
       light *= ${ROOM_BRIGHTNESS.toFixed(3)};
       // at night the room itself sinks into darkness
-      light *= mix(1.0, 0.38, night);
+      light *= mix(1.0, 0.42, night);
 
       // ---------------------------------------------------------
       // DAYLIGHT THROUGH THE DOOR
@@ -472,9 +470,9 @@ module.exports = (regl, data, useReflexion) => {
       }
       // by night the same squares are moonlight: a little softer, the
       // glow around them much weaker, so the pattern stands alone in the dark
-      light += sun * 0.85 * mix(1.0, 0.72, night) + glow * 0.05 * (1.0 - isCeiling) * mix(1.0, 0.25, night);
+      light += sun * 0.85 * mix(1.0, 1.25, night) + glow * 0.05 * (1.0 - isCeiling) * mix(1.0, 1.1, night);
       // the coffers glow with daylight, brighter towards the glass
-      light += isCream * (0.18 + 0.42 * smoothstep(8.0, 8.62, v_pos.y)) * glow * mix(1.0, 0.22, night);
+      light += isCream * (0.18 + 0.42 * smoothstep(8.0, 8.62, v_pos.y)) * glow * mix(1.0, 0.55, night);
 
       // ---------------------------------------------------------
       // DAYLIGHT IN THE NEW CORRIDOR
@@ -493,7 +491,7 @@ module.exports = (regl, data, useReflexion) => {
 
       float winL = windowLight(v_pos, N);
       float cg = corridorGlow(v_pos);
-      light += winL * 0.48 * mix(1.0, 0.62, night) + cg * 0.16 * (1.0 - 0.4 * isCeiling) * mix(1.0, 0.25, night);
+      light += winL * 0.48 * mix(1.0, 1.0, night) + cg * 0.16 * (1.0 - 0.4 * isCeiling) * mix(1.0, 0.7, night);
 
       // the little lamps in the statue niches
       float nl = nicheLight(v_pos, N);
@@ -517,7 +515,7 @@ module.exports = (regl, data, useReflexion) => {
       // real gallery light looks like
       // (at night the picture lights burn lower and yellower, like lanterns,
       // so the moon and the lanterns carry the room)
-      vec3 pictureTint = mix(vec3(1.0, 0.90, 0.74), vec3(1.0, 0.80, 0.46) * 0.52, night);
+      vec3 pictureTint = mix(vec3(1.0, 0.90, 0.74), vec3(1.0, 0.82, 0.52) * 0.30, night);
       float daylight = glow * 0.05 + cg * 0.16 + aGlow * 0.5 + winL * 0.48;
       float coolShare = clamp(daylight / max(light, 0.05), 0.0, 1.0) * (1.0 - clamp(sun * 2.0 + spill, 0.0, 1.0));
       vec3 spillTint = mix(vec3(1.0), vec3(1.10, 0.95, 0.78), clamp(spill * 2.0, 0.0, 1.0));

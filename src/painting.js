@@ -365,7 +365,9 @@ module.exports = (regl) => {
 			// at night: the picture light low and lantern-yellow, so the
 			// painting glows softly instead of shining
 			vec3 paint = col;
-			col *= mix(vec3(1.0), vec3(0.58, 0.50, 0.36), night);
+			col *= mix(vec3(1.0), vec3(0.50, 0.47, 0.40), night);
+			// and the moon, cool and soft, from the skylight
+			col += paint * vec3(0.11, 0.13, 0.18) * night * frontMask;
 			// and the lanterns nearby warm it
 			col += paint * lanternLight(v_world, N) * 1.1 * frontMask;
 

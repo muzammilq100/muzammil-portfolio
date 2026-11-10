@@ -76,7 +76,7 @@ module.exports = (regl, quality) => {
 			float tw = 0.55 + 0.45 * sin(time * (1.5 + v_seed * 3.0) + v_seed * 40.0);
 			// warm gold motes in the sun; silver ones, a little brighter against
 			// the dark, in the moonlight
-			gl_FragColor = vec4(mix(vec3(1.0, 0.93, 0.80), vec3(0.78, 0.86, 1.0) * 1.3, night) * a * v_light * tw * 0.75, 1.0);
+			gl_FragColor = vec4(mix(vec3(1.0, 0.93, 0.80), vec3(0.78, 0.86, 1.0) * 0.85, night) * a * v_light * tw * 0.75, 1.0);
 		}`,
 		attributes: { seed: pts },
 		count: pts.length,

@@ -82,13 +82,27 @@ function buildStreet() {
 
 const f = (x) => x.toFixed(5);
 
+// the street's lamps: [x, y, z, which wall] (+1: the left row of houses,
+// whose face looks +z; -1: the right row)
+const LAMPS = [
+	[DOOR_X + 3.4, 3.7, LEFT_Z + 0.01, 1],
+	[DOOR_X + 8.6, 4.1, RIGHT_Z - 0.01, -1],
+	[DOOR_X + 14.8, STEPS_H + 3.3, LEFT_Z + 0.01, 1],
+	[DOOR_X + 19.6, STEPS_H + 3.6, RIGHT_Z - 0.01, -1]
+];
+
 const FRAG = `
 precision highp float;
 ${NIGHT_GLSL}
 uniform sampler2D photo;
+uniform float time;
 varying vec3 v_pos;
+varying vec3 v_normal;
+const int NLAMP = ${LAMPS.length};
+vec4 LAMP[NLAMP];
 
 void main() {
+	${LAMPS.map((l, i) => `LAMP[${i}] = vec4(${f(l[0])}, ${f(l[1])}, ${f(l[2])}, ${f(l[3])});`).join('\n\t')}
 	vec3 d = v_pos - vec3(${f(CAM[0])}, ${f(CAM[1])}, ${f(CAM[2])});
 	float c = ${f(Math.cos(PITCH))}, s = ${f(Math.sin(PITCH))};
 	float fw = d.x * c + d.y * s;
@@ -105,17 +119,33 @@ void main() {
 	col = mix(col, soft, smoothstep(0.0, 0.06, outside));
 	// the photo is a little dark for a sunny day
 	col = pow(col, vec3(0.9)) * 1.08;
-	gl_FragColor = vec4(toNight(col, 0.22), 1.0);
+	vec3 lit = toNight(col, 0.28);
+	// the street's lamps: old iron lanterns on brackets high on the house
+	// walls, burning low; warm pools on the walls and the paving under them
+	float lampK = mix(0.22, 1.0, night);
+	vec3 albedo = pow(col, vec3(1.1)) * 1.3 + 0.03;
+	for (int i = 0; i < ${LAMPS.length}; i++) {
+		vec4 L = LAMP[i];                       // x, y, z, side (+1 left wall, -1 right)
+		vec3 d = L.xyz - v_pos;
+		float dd = dot(d, d);
+		float fl = 0.92 + 0.05 * sin(time * 7.3 + float(i) * 2.1) + 0.03 * sin(time * 17.0 + float(i));
+		// the wall it hangs on is lit across, the paving from above
+		float face = v_normal.y > 0.5 ? max(normalize(d).y, 0.0) : 0.35 + 0.65 * max(dot(v_normal, normalize(d)), 0.0);
+		lit += albedo * vec3(1.0, 0.62, 0.30) * face * fl * lampK * 3.2 / (0.6 + dd * 0.45);
+	}
+	gl_FragColor = vec4(lit, 1.0);
 }`;
 
 const VERT = `
 precision highp float;
 uniform mat4 proj, view;
 uniform float yScale;
-attribute vec3 position;
+attribute vec3 position, normal;
 varying vec3 v_pos;
+varying vec3 v_normal;
 void main() {
 	v_pos = position;
+	v_normal = normal;
 	vec3 p = position;
 	p.y *= yScale;
 	gl_Position = proj * view * vec4(p, 1.0);
@@ -138,13 +168,80 @@ module.exports = (regl) => {
 	const draw = regl({
 		frag: FRAG,
 		vert: VERT,
-		attributes: { position: data.position },
+		attributes: { position: data.position, normal: data.normal },
 		elements: new Uint32Array(data.elements),
 		uniforms: { photo },
 		cull: { enable: false }
 	});
 
+	// the lanterns themselves: a glass box in an iron frame under a little
+	// roof, held out from the wall on a bracket
+	const lg = { pos: [], nrm: [], k: [], idx: [] };
+	const box = (c, h, k) => {
+		const [x, y, z] = c;
+		const faces = [
+			[[1, 0, 0], [0, 1, 0], [0, 0, 1]], [[-1, 0, 0], [0, 1, 0], [0, 0, -1]],
+			[[0, 0, 1], [0, 1, 0], [-1, 0, 0]], [[0, 0, -1], [0, 1, 0], [1, 0, 0]],
+			[[0, 1, 0], [0, 0, 1], [1, 0, 0]], [[0, -1, 0], [0, 0, 1], [-1, 0, 0]]
+		];
+		for (const [n, u, v] of faces) {
+			const b0 = lg.pos.length / 3;
+			for (const [su, sv] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
+				lg.pos.push(x + n[0] * h[0] + u[0] * su * h[0] + v[0] * sv * h[0], y + n[1] * h[1] + u[1] * su * h[1] + v[1] * sv * h[1], z + n[2] * h[2] + u[2] * su * h[2] + v[2] * sv * h[2]);
+				lg.nrm.push(...n); lg.k.push(k);
+			}
+			lg.idx.push(b0, b0 + 1, b0 + 2, b0, b0 + 2, b0 + 3);
+		}
+	};
+	for (const L of LAMPS) {
+		const out = L[3];                    // which way is out from the wall (z)
+		const cz = L[2] + out * 0.42;
+		box([L[0], L[1], cz], [0.11, 0.17, 0.11], 1);                       // the glass
+		for (const sx of [-1, 1]) for (const sz of [-1, 1]) box([L[0] + sx * 0.11, L[1], cz + sz * 0.11], [0.014, 0.18, 0.014], 0);   // corner posts
+		box([L[0], L[1] + 0.20, cz], [0.15, 0.03, 0.15], 0);                 // the roof
+		box([L[0], L[1] + 0.27, cz], [0.05, 0.05, 0.05], 0);                 // its finial
+		box([L[0], L[1] - 0.19, cz], [0.09, 0.025, 0.09], 0);                // the base
+		box([L[0], L[1] + 0.34, L[2] + out * 0.21], [0.015, 0.015, 0.21], 0);   // the bracket
+		box([L[0], L[1] + 0.15, L[2] + out * 0.03], [0.04, 0.24, 0.03], 0);  // its wall plate
+	}
+	const lanterns = regl({
+		vert: `
+		precision highp float;
+		uniform mat4 proj, view;
+		uniform float yScale;
+		attribute vec3 position, normal;
+		attribute float k;
+		varying vec3 v_n, v_pos;
+		varying float v_k;
+		void main() {
+			v_n = normal; v_k = k; v_pos = position;
+			vec3 p = position; p.y *= yScale;
+			gl_Position = proj * view * vec4(p, 1.0);
+		}`,
+		frag: `
+		precision highp float;
+		uniform float night, time;
+		varying vec3 v_n, v_pos;
+		varying float v_k;
+		void main() {
+			float lampK = mix(0.22, 1.0, night);
+			float fl = 0.92 + 0.06 * sin(time * 7.3 + v_pos.x) + 0.03 * sin(time * 17.0);
+			if (v_k > 0.5) {
+				gl_FragColor = vec4(vec3(1.0, 0.62, 0.30) * (0.45 + 1.5 * lampK) * fl, 1.0);
+				return;
+			}
+			// old black iron, catching a little of its own light from below
+			vec3 c = vec3(0.025, 0.022, 0.02) * (0.6 + 0.4 * max(v_n.y, 0.0));
+			c += vec3(0.30, 0.18, 0.08) * lampK * max(-v_n.y, 0.0) * 0.4;
+			gl_FragColor = vec4(c, 1.0);
+		}`,
+		attributes: { position: lg.pos, normal: lg.nrm, k: lg.k },
+		elements: new Uint16Array(lg.idx),
+		cull: { enable: false }
+	});
+
 	return function () {
 		draw();
+		lanterns();
 	};
 };

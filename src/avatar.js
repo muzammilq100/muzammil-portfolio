@@ -283,6 +283,11 @@ void main() {
 			float l = dot(t.rgb, vec3(0.33));
 			t.rgb = vec3(0.022, 0.02, 0.019) + vec3(0.05) * l * l;
 			gloss = 0.55;
+		} else if (kind > 7.5) {
+			// socks: fine charcoal wool in narrow ribs
+			float rib = abs(fract(v_uv.x * 900.0) - 0.5) * 2.0;
+			t.rgb = vec3(0.030, 0.029, 0.033) * (0.78 + 0.32 * smoothstep(0.2, 0.8, rib) + 0.1 * n);
+			gloss = 0.02;
 		} else {
 			// the scarf: dark maroon wool, knitted in soft ribs
 			float rib = abs(fract(v_uv.x / 0.006) - 0.5) * 2.0;
@@ -757,9 +762,24 @@ module.exports = (regl) => {
 			depth: { enable: true, mask: false },
 			blend: { enable: true, func: { srcRGB: 'src alpha', dstRGB: 'one minus src alpha', srcAlpha: 'one', dstAlpha: 'one minus src alpha' } }
 		});
+		// socks: below the trousers' hem the body's own lower legs and feet
+		// are drawn as dark knitted socks, so no bare ankle shows between
+		// the shoe and the trousers when he walks (rest pose metres, y up)
+		const SOCK_TOP = 0.30;
 		for (const p of parts) {
 			p.uvBuf = regl.buffer(p.uv);
-			p.el = regl.elements({ data: p.idx, type: 'uint16' });
+			if (/Body/.test(p.m.name)) {
+				const keep = [], sock = [];
+				for (let t = 0; t < p.idx.length; t += 3) {
+					const a = p.idx[t], b = p.idx[t + 1], c = p.idx[t + 2];
+					const low = p.pos[a * 3 + 1] < SOCK_TOP && p.pos[b * 3 + 1] < SOCK_TOP && p.pos[c * 3 + 1] < SOCK_TOP;
+					(low ? sock : keep).push(a, b, c);
+				}
+				p.el = regl.elements({ data: new Uint16Array(keep), type: 'uint16' });
+				if (sock.length) p.sockEl = regl.elements({ data: new Uint16Array(sock), type: 'uint16' });
+			} else {
+				p.el = regl.elements({ data: p.idx, type: 'uint16' });
+			}
 		}
 
 		// placing the whole figure in the court
@@ -1066,6 +1086,7 @@ module.exports = (regl) => {
 		for (const p of ready.parts) {
 			if (p.blend) continue;
 			ready.drawOpaque({ pb: p.pb, nb: p.nbuf, uv: p.uvBuf, el: p.el, tex: p.tex, alphaCut: p.alphaCut, skin: p.skin, kind: p.kind, alphaScale: p.alphaScale });
+			if (p.sockEl) ready.drawOpaque({ pb: p.pb, nb: p.nbuf, uv: p.uvBuf, el: p.sockEl, tex: white, alphaCut: 0, skin: 0, kind: 8, alphaScale: 1 });
 		}
 		// the book over his face, and the brush floating above him
 		const st = ready.state;

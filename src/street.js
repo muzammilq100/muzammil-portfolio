@@ -375,7 +375,6 @@ void main() {
 		// the night sky: deep blue with a few stars
 		vec3 nd = normalize(V);
 		vec3 ns = mix(vec3(0.03, 0.045, 0.085), vec3(0.01, 0.016, 0.035), smoothstep(0.0, 0.7, nd.y));
-		ns += vec3(0.8, 0.85, 0.95) * step(0.997, hash(floor(nd.xz / max(nd.y, 0.1) * 70.0)));
 		gl_FragColor = vec4(mix(sk, ns, night), 1.0);
 		return;
 	}

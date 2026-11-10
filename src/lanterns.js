@@ -142,7 +142,7 @@ function lanternGLSL(which) {
 		if (night <= 0.001) return vec3(0.0);
 		float sum = 0.0;
 		${terms}
-		return vec3(1.0, 0.72, 0.38) * sum * 2.8 * night;
+		return vec3(1.0, 0.74, 0.42) * sum * 1.5 * night;
 	}`;
 }
 
@@ -416,7 +416,7 @@ module.exports = (regl) => {
 		void main() {
 			float r = length(v_uv);
 			vec3 col = vec3(1.0, 0.62, 0.28) * (pow(max(1.0 - r, 0.0), 3.0) * 0.30 + pow(max(1.0 - r, 0.0), 8.0) * 0.35) * v_fl;
-			gl_FragColor = vec4(col * night, 1.0);
+			gl_FragColor = vec4(col * night * 0.6, 1.0);
 		}`,
 		attributes: { corner: quadC, at },
 		count: quadC.length / 2,
