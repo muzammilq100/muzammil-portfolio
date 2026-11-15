@@ -788,27 +788,24 @@ module.exports = (regl) => {
 			vec3 base;
 			float gloss = 0.08;
 			if (k < 0.5) {
-				// floor: big worn flags of pale stone, laid in rings round the middle
-				vec2 q = v_pos.xz;
-				float r = length(q - vec2(${f(C.x)}, ${f(C.z)}));
-				float a = atan(q.y - ${f(C.z)}, q.x - ${f(C.x)});
-				float ring = floor(r / 0.9);
-				float cnt = max(1.0, floor(6.2831 * (ring + 0.5) * 0.9 / 0.95));
-				float seg = a / 6.2831 * cnt + hash(vec2(ring, 3.0)) * 7.0;
-				float jr = abs(fract(r / 0.9) - 0.5), ja = abs(fract(seg) - 0.5);
-				float joint = smoothstep(0.485, 0.497, max(jr, ja * (r < 0.5 ? 0.0 : 1.0)));
-				if (v_pos.x > ${f(C.x + R - 0.4)}) {
-					// in the passage, straight flags
-					vec2 s = v_pos.xz / vec2(0.9, 0.95);
-					vec2 j = abs(fract(s + vec2(0.0, floor(s.x) * 0.5)) - 0.5);
-					joint = smoothstep(0.485, 0.497, max(j.x, j.y));
-					seg = floor(s.x) + floor(s.y) * 7.0;
-				}
-				base = limestone(q * 0.8 + vec2(seg, ring) * 1.7) * vec3(0.92, 0.88, 0.84);
-				base *= 0.93 + 0.14 * hash(vec2(floor(seg), ring));
-				base *= 1.0 - 0.45 * joint;
-				// waxed by the candles: a soft sheen
-				gloss = 0.32 * (1.0 - joint) * (0.7 + 0.3 * vnoise(q * 3.0));
+				// floor: the gallery's own chequered marble, carried through the
+				// doorway on the same grid so the tiles run on without a break
+				float tileSize = 0.62;
+				vec2 tq = mat2(0.70711, 0.70711, -0.70711, 0.70711) * (v_pos.xz - vec2(7.0, 0.0));
+				vec2 tile = floor(tq / tileSize);
+				float checker = mod(tile.x + tile.y, 2.0);
+				float rnd = hash(tile);
+				vec3 lightTile = vec3(0.80, 0.74, 0.60) * (0.93 + 0.10 * rnd);
+				vec3 darkTile = vec3(0.028, 0.026, 0.024) + vec3(0.012) * rnd;
+				float vein = abs(sin(tq.x * 5.5 + tq.y * 2.0 + sin(tq.y * 1.6) + rnd * 6.0));
+				vein = 1.0 - smoothstep(0.0, 0.09, vein);
+				base = mix(lightTile, darkTile, checker);
+				base = mix(base, base * 0.80, vein * 0.35 * (1.0 - checker));
+				base = mix(base, base * 1.5 + 0.02, vein * 0.18 * checker);
+				vec2 jt = abs(fract(tq / tileSize) - 0.5);
+				base *= 1.0 - 0.25 * smoothstep(0.488, 0.498, max(jt.x, jt.y));
+				// polished: it takes the candles and the oculus as a long sheen
+				gloss = mix(0.55, 0.85, checker);
 			} else if (k < 1.5) {
 				// the walls: dressed limestone in courses (uv: metres round, up)
 				vec2 q = v_uv;

@@ -748,7 +748,7 @@ const MOVES = [
 
 	// 5 → 6  FOOTSTEPS COMING
 	{
-		dur: 3.5,
+		dur: 5.5,
 		cam(u, from, to) { return mixCam(from, to, sineInOut(u)); },
 		look(u, a, b) {
 			const o = {};
@@ -763,7 +763,7 @@ const MOVES = [
 	// the picture narrows to a wide film frame for the steps, and opens
 	// out again once the leaf is in the air
 	{
-		dur: 7.5,
+		dur: 11,
 		kick: (u) => clamp01((u - kickU()) / (1 - kickU())),
 		cam(u, from, to, leaf) {
 			const ku = kickU();
@@ -1043,7 +1043,7 @@ const MOVES = [
 // (slow, almost slow motion, while he crosses the picture; then he walks
 // on out of it)
 const WALK_OUT = 9.2;
-const CROSS = 0.6;
+const CROSS = 0.72;
 function walkerX(u) {
 	return u < CROSS ? lerp(walkRest(), WALK_OUT, u / CROSS) : lerp(WALK_OUT, WALK_TO, (u - CROSS) / (1 - CROSS));
 }

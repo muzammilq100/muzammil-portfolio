@@ -309,6 +309,8 @@ void main() {
 	if (t.a < alphaCut) discard;
 	float gloss = 0.0;
 	float hairStreak = 0.5;
+	float relief = 0.0;     // stitching and knitting stand up off the cloth
+	float scarfK = 0.0;
 	// the outfit: a long black wool overcoat, a ribbed roll-neck, pleated
 	// pinstripe trousers, a leather belt and shoes, a maroon scarf
 	// (scripts/avatar/build_outfit.py makes them)
@@ -317,6 +319,18 @@ void main() {
 		if (kind < 1.5) {
 			t.rgb = vec3(0.038, 0.037, 0.040) * (0.9 + 0.2 * n);
 			gloss = 0.05;
+			// where it is sewn: a seam down the middle of the back and one
+			// down each side, the hem stitched up, the cuffs stitched round
+			float seam = 0.0;
+			if (abs(v_uv.x) < 1.0) {
+				float sx = min(abs(v_uv.x), abs(abs(v_uv.x) - 0.314));
+				seam = (1.0 - smoothstep(0.0006, 0.0020, sx)) * (1.0 - smoothstep(1.50, 1.56, v_uv.y));
+				seam = max(seam, 1.0 - smoothstep(0.0012, 0.0032, abs(v_uv.y - 0.385)));
+			} else if (abs(v_uv.x) < 8.0) {
+				seam = 1.0 - smoothstep(0.0012, 0.0032, abs(v_uv.y - 0.700));
+			}
+			t.rgb *= 1.0 - 0.5 * seam;
+			relief = -seam * 0.0012;
 		} else if (kind < 2.5) {
 			float rib = abs(fract(v_uv.x / 0.007) - 0.5) * 2.0;
 			t.rgb = vec3(0.032, 0.031, 0.034) * (0.75 + 0.45 * smoothstep(0.2, 0.8, rib));
@@ -359,10 +373,20 @@ void main() {
 			t.rgb = vec3(0.030, 0.029, 0.033) * (0.78 + 0.32 * smoothstep(0.2, 0.8, rib) + 0.1 * n);
 			gloss = 0.02;
 		} else {
-			// the scarf: dark maroon wool, knitted in soft ribs
-			float rib = abs(fract(v_uv.x / 0.006) - 0.5) * 2.0;
-			float st = abs(fract(v_uv.y / 0.008 + 0.5 * step(0.5, fract(v_uv.x / 0.012))) - 0.5) * 2.0;
-			t.rgb = vec3(0.24, 0.04, 0.055) * (0.7 + 0.25 * smoothstep(0.1, 0.9, rib) + 0.12 * st + 0.12 * n);
+			// the scarf: thick maroon wool, hand knitted. Each rib is a column
+			// of little V stitches; the yarn is heathered, no two rows one red
+			scarfK = 1.0;
+			float cx = v_uv.x / 0.0074;
+			float fx = fract(cx) - 0.5;
+			float st = abs(fract(v_uv.y / 0.0080 + abs(fx) * 1.5) - 0.5) * 2.0;
+			float ridge = smoothstep(0.0, 0.75, 1.0 - abs(fx) * 2.0);
+			float knit = ridge * (0.5 + 0.5 * smoothstep(0.1, 0.9, st));
+			// (far off the stitches are smaller than a pixel: their average)
+			float near = 1.0 - smoothstep(0.35, 1.1, fwidth(cx));
+			knit = mix(0.55, knit, near);
+			float heather = fract(sin(dot(floor(vec2(cx, v_uv.y / 0.0080)), vec2(12.9898, 78.233))) * 43758.5453);
+			t.rgb = vec3(0.40, 0.050, 0.075) * (0.30 + 0.85 * knit) * (0.84 + 0.30 * heather * near + 0.08 * n);
+			relief = knit * 0.0016 * near;
 			gloss = 0.0;
 		}
 	}
@@ -379,9 +403,10 @@ void main() {
 		float folds = cnoise(v_uv * vec2(34.0, 9.0)) * 0.6 + cnoise(v_uv * vec2(70.0, 22.0) + 5.0) * 0.4;
 		float grain = cnoise(v_uv * 520.0);
 		float fade = 1.0 - smoothstep(0.0005, 0.004, fwidth(v_uv.x) + fwidth(v_uv.y));
-		N = bump(N, v_pos, folds * 0.012 + grain * 0.0006 * fade, 1.0);
+		// (the big folds are modelled; these are the small ones between them)
+		N = bump(N, v_pos, folds * 0.007 + grain * 0.0006 * fade + relief, 1.0);
 		// the hollows of the folds hold a little shadow
-		t.rgb *= 0.82 + 0.36 * folds;
+		t.rgb *= 0.86 + 0.28 * folds;
 	}
 	if (isHair > 0.5 && v_uv.x > -0.5) {
 		// the strands run the length of the lock; each one tilts the light
@@ -422,6 +447,8 @@ void main() {
 	// catch whatever light there is, a soft pale edge, never a shine
 	col += vec3(0.11, 0.11, 0.12) * cloth * pow(1.0 - max(dot(N, V), 0.0), 2.6) * (0.35 + light);
 	col += vec3(0.05, 0.05, 0.055) * step(0.5, kind) * (1.0 - cloth) * pow(1.0 - max(dot(N, V), 0.0), 3.0);
+	// the scarf is soft and hairy: its own red glows along its edges
+	col += vec3(0.30, 0.045, 0.06) * scarfK * pow(1.0 - max(dot(N, V), 0.0), 1.8) * (0.3 + light);
 	col = toNight(col, 0.85);
 	// at the piano: nothing but the candles on the floor round him and
 	// the pale light falling from the oculus
@@ -433,6 +460,7 @@ void main() {
 		col += skin * t.rgb * vec3(0.55, 0.16, 0.08) * pow(1.0 - max(dot(N, V), 0.0), 2.2) * rl * 0.7;
 		float edge = pow(1.0 - max(dot(N, V), 0.0), 2.6);
 		col += (vec3(0.16) * cloth + vec3(0.05) * (1.0 - cloth)) * edge * rl * 1.6;
+		col += vec3(0.30, 0.045, 0.06) * scarfK * pow(1.0 - max(dot(N, V), 0.0), 1.8) * rl;
 	}
 	// the confessional's lamp, warm, in front of him and to the side, with
 	// a soft rim on his hair where it wraps round
@@ -1200,22 +1228,6 @@ module.exports = (regl) => {
 			}
 			const deltas = {};
 			for (const k in P) { const e = P[k]; deltas[k] = qeuler(e[0], e[1], e[2]); }
-
-			// and through all of it, the way a real pianist's back, neck and
-			// head move while playing (motion capture), laid over the pose
-			if (motion && motion.piano) {
-				const c = motion.piano;
-				const smp = sampleClip(c, t * c.fps);
-				[['Hips', 0.35], ['Spine', 0.7], ['Spine1', 0.7], ['Spine2', 0.7], ['Neck', 0.75], ['Head', 0.75]].forEach(([bn, k]) => {
-					const m = smp.q[bn], mean = c.meanQ[bn];
-					if (!m || !mean) return;
-					// the movement about its own average, so his posture stays his
-					let rel = qmul(m, qconj(mean));
-					if (rel[3] < 0) rel = [-rel[0], -rel[1], -rel[2], -rel[3]];
-					rel = qnorm([rel[0] * k, rel[1] * k, rel[2] * k, 1 + (rel[3] - 1) * k]);
-					deltas[bn] = deltas[bn] ? qmul(rel, deltas[bn]) : rel;
-				});
-			}
 
 			// on the front half of the stool, the hips lowered onto it
 			const hipRest = restWorld[byName.Hips][13] * S;

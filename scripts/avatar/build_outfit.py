@@ -136,9 +136,12 @@ def mixw(a, b, t):
 
 # ---------------------------------------------------------------- the trousers
 
+def wrap(a):
+    return (a + PI) % (2 * PI) - PI
+
 def trousers():
     P = Part('trousers', 3)
-    N = 28
+    N = 36
     # the seat: one tube from the waist to the fork
     rows = [(1.062, 0.168, 0.118), (1.03, 0.176, 0.124), (0.98, 0.190, 0.132), (0.93, 0.198, 0.136), (0.895, 0.200, 0.136)]
     G, U, Wt = [], [], []
@@ -154,21 +157,36 @@ def trousers():
         G.append(g); U.append(u); Wt.append(w)
     P.add_grid(G, U, Wt, closed=True)
     # the legs: wide and straight, a pressed crease down the front and back,
-    # two pleats under the waistband, a soft break over the shoe
+    # a pleat under the waistband, and the folds a real pair falls into:
+    # pulled across from the fork, creased behind the knee, stacked in a
+    # soft break over the shoe, and finished with a turn-up
     for sg, up, lo in ((1, 'LeftUpLeg', 'LeftLeg'), (-1, 'RightUpLeg', 'RightLeg')):
         tab = [(0.075, 0.092, 0.112, 0.100), (0.16, 0.091, 0.110, 0.100), (0.544, 0.090, 0.108, 0.098),
                (0.80, 0.092, 0.114, 0.098), (0.905, 0.096, 0.124, 0.100), (0.93, 0.098, 0.128, 0.100)]
+        ys = [(y, 0.0) for y in np.concatenate([np.linspace(0.93, 0.63, 9), np.linspace(0.60, 0.44, 12),
+                                                np.linspace(0.41, 0.27, 4), np.linspace(0.24, 0.125, 7)])]
+        ys += [(0.123, 0.007), (0.075, 0.007), (0.073, -0.006)]          # the turn-up
         G, U, Wt = [], [], []
-        for y in np.concatenate([np.linspace(0.93, 0.62, 7), np.linspace(0.58, 0.50, 4), np.linspace(0.45, 0.16, 6), [0.12, 0.09, 0.075]]):
+        for y, cuff in ys:
             rx, rz, cx = interp(y, tab)
             g, u, w = [], [], []
             for c in range(N):
                 a = c / N * 2 * PI
+                front, inner = np.cos(a), max(0.0, -sg * np.sin(a))
                 # the crease: a sharp ridge at the very front and back of the leg
                 cr = 1 + 0.045 * (np.exp(-((np.cos(a) - 1) / 0.06) ** 2) + 0.6 * np.exp(-((np.cos(a) + 1) / 0.06) ** 2))
-                # the cloth breaks a little where it meets the shoe
-                brk = 0.012 * np.sin(a * 3 + sg) * float(smooth(0.2, 0.08, y))
-                g.append([sg * cx + rx * np.sin(a) * cr, y, 0.008 + rz * np.cos(a) * cr + brk])
+                d = cuff
+                # the pleat, opening from the waistband and dying out down the thigh
+                d += 0.007 * np.exp(-(wrap(a - sg * 0.55) / 0.15) ** 2) * float(smooth(0.60, 0.93, y))
+                # cloth pulled across from the fork
+                d += 0.006 * np.sin(y * 40 - sg * wrap(a) * 2.0) * float(smooth(0.60, 0.88, y)) * (0.4 + 0.6 * inner)
+                # creases behind the knee
+                d += 0.006 * np.sin((y - 0.52) * 2 * PI / 0.055) * np.exp(-((y - 0.52) / 0.07) ** 2) * max(0.0, -front)
+                # the long soft flutes of a wide leg
+                d += 0.004 * np.sin(a * 3 + sg + y * 5) * float(smooth(0.92, 0.6, y))
+                # and the break: it stacks where it meets the shoe
+                d += 0.010 * np.sin((y - 0.12) * 2 * PI / 0.07 + 1.2 * np.sin(a)) * float(smooth(0.30, 0.14, y)) * (0.55 + 0.45 * front)
+                g.append([sg * cx + (rx * cr + d) * np.sin(a), y, 0.008 + (rz * cr + d) * np.cos(a)])
                 u.append([a * (rx + rz) / 2 + sg * 3.0, y])
                 if y > 0.88: ww = mixw({'Hips': 1.0}, {up: 1.0}, float(smooth(0.94, 0.86, y)))
                 else: ww = mixw({up: 1.0}, {lo: 1.0}, float(smooth(0.60, 0.49, y)))
@@ -261,6 +279,31 @@ def ring_point(R, phi, y=None):
     z = R['zc'] - (R['rzb'] if c > 0 else R['rzf']) * c
     return [R['rx'] * np.sin(phi), R['y'](phi) if y is None else y, z]
 
+def coat_fold(phi, y, pm):
+    """how far the cloth stands in or out of the coat's smooth shape here (a
+    share of its radius): the folds heavy wool falls into. One field for the
+    body and the skirt, so they meet at the waist."""
+    ap = abs(phi)
+    d = 0.0
+    # below the waist: long folds, deepening to the hem, no two alike
+    k = float(smooth(1.04, 0.40, y))
+    d += k * (0.046 * np.sin(phi * 7.0 + 0.6) + 0.020 * np.sin(phi * 12.0 + 2.1 + 3.0 * y) + 0.010 * np.sin(phi * 4.0 - 1.0 + 2.0 * y))
+    # down the back from the shoulder blades
+    d += 0.012 * np.sin(phi * 7.0 + 0.6) * float(smooth(1.46, 1.14, y)) * float(smooth(1.04, 1.12, y) * 0.6 + 0.4) * np.exp(-(phi / 1.5) ** 2)
+    # pulled round him at the waist: creases dragging across the sides
+    d += 0.009 * np.sin(y * 48 + 3.0 * np.sin(phi * 1.5)) * np.exp(-((y - 1.13) / 0.10) ** 2) * float(smooth(0.3, 1.2, ap))
+    # bunched under the arm
+    d += 0.008 * np.sin(y * 60 + phi * 3) * np.exp(-((y - 1.36) / 0.07) ** 2) * np.exp(-((ap - 1.57) / 0.5) ** 2)
+    d *= float(smooth(1.52, 1.44, y))
+    # the fronts above the waist are pressed and lie clean under the lapels
+    neat = float(smooth(pm - 0.05, pm - 0.6, ap))
+    return 1.0 + d * (neat + (1 - neat) * float(smooth(1.10, 0.92, y)))
+
+def fold_point(R, phi, y):
+    p = ring_point(R, phi, y)
+    f = coat_fold(phi, y, ring_phi_max(R))
+    return [p[0] * f, p[1], R['zc'] + (p[2] - R['zc']) * f]
+
 def ring_phi_max(R):
     return PI - np.arcsin(min(0.99, R['gap'] / R['rx']))
 
@@ -284,10 +327,13 @@ def coat_w(p):
     if s > 0: w = mixw(w, {('LeftShoulder' if x > 0 else 'RightShoulder'): 1.0}, s)
     return w
 
+COLS = 81
+
 def coat():
     P = Part('coat', 1)
-    C = 57
-    rows = [coat_ring(y) for y in (1.00, 1.045, 1.10, 1.16, 1.22, 1.28, 1.34, 1.40, 1.44, 1.475, 1.51)]
+    C = COLS
+    hs = list(np.linspace(1.00, 1.42, 15)) + [1.45, 1.48, 1.51]
+    rows = [coat_ring(y) for y in hs]
     sh, nk = shoulder_ring(), neck_ring()
     def blend(A, B, t):
         R = {k: A[k] * (1 - t) + B[k] * t for k in ('rx', 'rzb', 'rzf', 'zc', 'gap')}
@@ -295,27 +341,41 @@ def coat():
         return R
     rows += [blend(rows[-1], sh, 0.5), sh, blend(sh, nk, 0.33), blend(sh, nk, 0.66), nk]
     G, U, Wt = [], [], []
-    for R in rows:
+    for i, R in enumerate(rows):
         pm = ring_phi_max(R)
         g, u, w = [], [], []
         for c in range(C):
             phi = -pm + 2 * pm * c / (C - 1)
-            p = ring_point(R, phi)
+            p = fold_point(R, phi, hs[i]) if i < len(hs) else ring_point(R, phi)
             g.append(p); u.append([phi * 0.2, p[1]]); w.append(coat_w(p))
         G.append(g); U.append(u); Wt.append(w)
     P.add_grid(G, U, Wt, flip=True)
-    # the sleeves: roomy at the shoulder, straight, long enough to reach the knuckles
-    S = 18
-    tab = [(0.165, 0.070), (0.215, 0.072), (0.30, 0.070), (0.437, 0.064), (0.58, 0.060), (0.70, 0.058), (0.735, 0.058)]
+    # the sleeves: roomy at the shoulder, straight, long enough to reach the
+    # knuckles. They crease at the elbow (deepest inside the bend), twist a
+    # little down the upper arm, bunch under the arm and stack towards the
+    # cuff, which is turned in so the cloth has an edge
+    S = 20
+    tab = [(0.165, 0.070), (0.215, 0.072), (0.30, 0.070), (0.437, 0.064), (0.58, 0.060), (0.70, 0.058), (0.74, 0.058)]
     for sg, sh_b, arm, fore in ((1, 'LeftShoulder', 'LeftArm', 'LeftForeArm'), (-1, 'RightShoulder', 'RightArm', 'RightForeArm')):
         G, U, Wt = [], [], []
-        for s in (0.165, 0.19, 0.215, 0.25, 0.30, 0.36, 0.41, 0.437, 0.465, 0.52, 0.58, 0.64, 0.70, 0.735):
+        ss = [(x, 0.0) for x in np.arange(0.165, 0.7351, 0.015)] + [(0.737, -0.007)]
+        for s, turn in ss:
             r, = interp(s, tab)
             g, u, w = [], [], []
             for c in range(S):
                 a = c / S * 2 * PI
+                inside, under = max(0.0, np.sin(a)), max(0.0, -np.cos(a))
+                d = turn
+                d += 0.008 * np.sin((s - 0.437) * 2 * PI / 0.05) * np.exp(-((s - 0.437) / 0.075) ** 2) * (0.35 + 0.65 * inside)
+                d += 0.004 * np.sin(2 * a + s * 34) * float(smooth(0.20, 0.30, s)) * float(smooth(0.75, 0.55, s))
+                d += 0.005 * np.sin(s * 2 * PI / 0.06 + 1.5 * np.sin(a)) * float(smooth(0.50, 0.66, s))
+                d += 0.007 * np.sin(s * 2 * PI / 0.055) * float(smooth(0.31, 0.20, s)) * under
+                d += 0.005 * under * np.sin(PI * (s - 0.165) / 0.57)
+                # the seam where the sleeve is set into the shoulder
+                d += 0.004 * np.exp(-((s - 0.195) / 0.012) ** 2)
+                rr = r + d
                 # (the top of the sleeve head sits a touch above the shoulder: the pad)
-                g.append([sg * s, 1.530 - 0.010 * float(smooth(0.30, 0.17, s)) + r * np.cos(a), -0.036 + r * 0.98 * np.sin(a)])
+                g.append([sg * s, 1.530 - 0.010 * float(smooth(0.30, 0.17, s)) + rr * np.cos(a), -0.036 + rr * 0.98 * np.sin(a)])
                 u.append([a * r + 5.0 * sg, s])
                 if s < 0.30:
                     t = float(smooth(0.165, 0.275, s))
@@ -327,24 +387,23 @@ def coat():
         P.add_grid(G, U, Wt, closed=True, flip=(sg > 0))
     return P
 
-SKIRT_ROWS, SKIRT_COLS = 14, 57
+SKIRT_ROWS, SKIRT_COLS = 22, COLS
 
 def skirt():
     """the coat below the waist: a grid, rows from the waist down (avatar.js lays it flat when he lies on the bench)"""
     P = Part('skirt', 1)
     P.grid = [SKIRT_ROWS, SKIRT_COLS]
     G, U, Wt = [], [], []
-    for r in range(SKIRT_ROWS):
-        y = 1.00 - (1.00 - 0.34) * r / (SKIRT_ROWS - 1)
+    # (the last row is the hem, turned up inside)
+    hs = [(1.00 - (1.00 - 0.34) * r / (SKIRT_ROWS - 2), 1.0) for r in range(SKIRT_ROWS - 1)] + [(0.346, 0.975)]
+    for y, turn in hs:
         R = coat_ring(y)
         pm = ring_phi_max(R)
         g, u, w = [], [], []
         for c in range(SKIRT_COLS):
             phi = -pm + 2 * pm * c / (SKIRT_COLS - 1)
-            p = ring_point(R, phi)
-            # heavy cloth falls in a few long soft folds, deeper towards the hem
-            f = 1 + 0.022 * np.sin(phi * 7.0 + 0.6) * float(smooth(0.95, 0.45, y))
-            p = [p[0] * f, p[1], R['zc'] + (p[2] - R['zc']) * f]
+            p = fold_point(R, phi, min(y, 0.34) if turn < 1 else y)
+            p = [p[0] * turn, y, R['zc'] + (p[2] - R['zc']) * turn]
             g.append(p); u.append([phi * 0.2, y])
             # it swings a little with the leg on its side
             lw = 0.30 * float(smooth(0.92, 0.50, y)) * float(smooth(0.03, 0.12, abs(p[0])))
@@ -364,7 +423,7 @@ def surface_frame(rows_fn, y, phi):
 
 def coat_surface(y, phi):
     """the coat's surface anywhere from the waist to the collar (y is a height up to 1.51, then 1.51..1.61 runs up over the shoulder to the neck)"""
-    if y <= 1.51: return ring_point(coat_ring(y), phi)
+    if y <= 1.51: return fold_point(coat_ring(y), phi, y)
     sh, nk = shoulder_ring(), neck_ring()
     top = coat_ring(1.51)
     t = (y - 1.51) / 0.10
@@ -427,51 +486,82 @@ def lapels():
 # ---------------------------------------------------------------- the scarf
 
 def scarf():
-    """narrow maroon wool: once round the neck, one end down the front over the coat, the other back over the shoulder"""
+    """a thick knitted maroon scarf, a garment of its own: wound once round the
+    neck in a fat roll, one end down the front over the coat, the other thrown
+    back over the shoulder, each finished in a fringe"""
     P = Part('scarf', 7)
-    WID = 0.105
-    # round the neck: a soft band, a little crushed
-    N = 32
+    WID, THICK = 0.118, 0.017
+    # round the neck: a full soft roll, crushed and wrinkled where it turns
+    N, M = 32, 10
     G, U, Wt = [], [], []
-    for k, (dy, dr) in enumerate([(-0.030, 0.006), (-0.020, 0.016), (0.0, 0.021), (0.020, 0.017), (0.032, 0.007)]):
+    for j in range(M + 1):
+        b = j / M * 2 * PI
         g, u, w = [], [], []
         for c in range(N + 1):
             a = c / N * 2 * PI
-            r = 0.083 + dr + 0.004 * np.sin(a * 5 + k)
-            y = 1.612 + dy + 0.010 * (-np.cos(a)) + 0.004 * np.sin(a * 3)
+            r = 0.097 + 0.019 * np.cos(b) + 0.004 * np.sin(a * 7 + 2 * np.sin(b)) + 0.003 * np.sin(a * 3 + 1)
+            y = 1.612 + 0.037 * np.sin(b) + 0.010 * (-np.cos(a)) + 0.005 * np.sin(a * 4 + 1 + b)
             g.append([r * np.sin(a), y, neck_axis(y) + r * 1.05 * np.cos(a) + 0.004])
-            u.append([a * 0.09, (k / 4) * WID]); w.append(mixw({'Neck': 1.0}, {'Spine2': 1.0}, 0.45))
+            u.append([(0.5 - 0.5 * np.cos(b)) * WID * 0.5 + 0.2 * (b > PI), a * 0.097]); w.append(mixw({'Neck': 1.0}, {'Spine2': 1.0}, 0.45))
         G.append(g); U.append(u); Wt.append(w)
     P.add_grid(G, U, Wt)
-    # the two ends
-    def tail(x0, front, y_top, y_end, lean):
+    def on_coat(x, y, front):
+        yc = min(y, 1.50)
+        R = coat_ring(yc)
+        sx = np.clip(x / R['rx'], -0.98, 0.98)
+        phi = (PI - np.arcsin(sx)) if front else np.arcsin(sx)
+        return fold_point(R, phi, yc)[2]
+    # the two ends: a slab of knitting with body, its edges rolled
+    def tail(x0, front, y_top, y_end, lean, seed):
         G, U, Wt = [], [], []
-        ys = np.concatenate([np.linspace(y_top, 1.50, 6)[:-1], np.linspace(1.50, y_end, 12)])
+        ys = np.concatenate([np.linspace(y_top, 1.50, 6)[:-1], np.linspace(1.50, y_end, 13)])
         zdir = 1 if front else -1
-        for i, y in enumerate(ys):
+        K = 10
+        def centre(y, f, i):
             t = float(np.clip((1.50 - y) / (1.50 - y_end), 0, 1))
             up = float(smooth(1.50, y_top, y))               # 0 on the coat .. 1 at the neck
+            wd = WID * (0.82 + 0.18 * t + 0.05 * np.sin(t * 5 + seed))
+            x = x0 + lean * t + 0.008 * np.sin(t * 4.0 + seed) + f * wd
+            # lying on the coat, with a long soft fold running down it and
+            # its weight making it hang a little clear lower down
+            z = on_coat(x, y, front) + zdir * (0.006 + THICK / 2 + 0.007 * np.cos(f * 2 * PI * 1.1 + i * 0.35 + seed) + 0.006 * t)
+            # above the chest it leaves the coat and rises into the roll round the neck
+            xn = x0 * 0.8 + f * WID * 0.7
+            zn = neck_axis(y_top) + zdir * (0.100 - 0.02 * abs(f))
+            return np.array([x * (1 - up) + xn * up, y, z * (1 - up) + zn * up]), t
+        for i, y in enumerate(ys):
             g, u, w = [], [], []
-            for k in range(5):
-                f = k / 4 - 0.5
-                x = x0 + lean * t + f * WID * (0.9 + 0.1 * t)
-                # lying on the coat: the coat's surface at this x and height
-                yc = min(y, 1.50)
-                R = coat_ring(yc)
-                sx = np.clip(x / R['rx'], -0.98, 0.98)
-                phi = (PI - np.arcsin(sx)) if front else np.arcsin(sx)
-                p = np.array(ring_point(R, phi))
-                # soft folds along its length, standing a little proud of the coat
-                z = p[2] + zdir * (0.016 + 0.006 * np.cos(f * 2 * PI * 1.5 + i * 0.5) + 0.004 * np.sin(t * 6))
-                # above the chest it leaves the coat and rises to the band round the neck
-                xn = x0 * 0.8 + f * WID * 0.75
-                zn = neck_axis(y_top) + zdir * (0.098 - 0.02 * abs(f))
-                g.append([x * (1 - up) + xn * up, y + 0.004 * np.sin(f * 7 + i) * (1 - up), z * (1 - up) + zn * up])
-                u.append([f * WID + (3.0 if front else 6.0), y]); w.append(spine_w(min(y, 1.54)))
+            for k in range(K):
+                b = k / K * 2 * PI
+                cb, sb = np.cos(b), np.sin(b)
+                f = 0.5 * np.sign(cb) * abs(cb) ** 0.6
+                p, t = centre(y, f, i)
+                p[2] += zdir * np.sign(sb) * abs(sb) ** 0.8 * THICK / 2
+                p[1] += 0.004 * np.sin(f * 7 + i)
+                g.append(p.tolist())
+                u.append([f * WID + (3.0 if front else 6.0) + (0.5 if sb < 0 else 0.0), y]); w.append(spine_w(min(y, 1.54)))
             G.append(g); U.append(u); Wt.append(w)
-        P.add_grid(G, U, Wt, flip=not front)
-    tail(0.085, True, 1.612, 1.10, -0.012)      # down the front, on his left
-    tail(-0.070, False, 1.618, 1.16, 0.010)     # thrown back over his right shoulder
+        P.add_grid(G, U, Wt, closed=True, flip=not front)
+        # the fringe: twisted tassels of the same yarn
+        T = 8
+        for k in range(T):
+            f = (k + 0.5) / T - 0.5
+            ln = 0.062 + 0.012 * np.sin(k * 2.3 + seed)
+            G, U, Wt = [], [], []
+            for q, (dy, rad) in enumerate(((0.004, 0.0052), (-0.35, 0.0040), (-0.75, 0.0046), (-1.0, 0.0058))):
+                y = y_end + dy * ln if q else y_end + dy
+                c0, _ = centre(y_end, f, len(ys) - 1)
+                c0[0] += 0.004 * np.sin(k * 1.7 + q + seed) * q
+                c0[2] = on_coat(c0[0], y, front) + zdir * (0.006 + THICK / 2 + 0.006 + 0.004 * np.sin(k + seed))
+                g, u, w = [], [], []
+                for m in range(4):
+                    b = m / 4 * 2 * PI + q * 0.7
+                    g.append([c0[0] + rad * np.cos(b), y, c0[2] + rad * np.sin(b)])
+                    u.append([m / 4 * 0.015 + 9.0 + k, y]); w.append(spine_w(y))
+                G.append(g); U.append(u); Wt.append(w)
+            P.add_grid(G, U, Wt, closed=True)
+    tail(0.088, True, 1.612, 1.08, -0.014, 0.0)     # down the front, on his left
+    tail(-0.074, False, 1.618, 1.17, 0.012, 2.0)    # thrown back over his right shoulder
     return P
 
 # ---------------------------------------------------------------- the hair
