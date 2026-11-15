@@ -170,6 +170,8 @@ const contact = require('./contact');
 const caption = require('./caption');
 const visit = require('./visit');
 const env = require('./env');
+const cull = require('./cull');
+const cine = require('./cine');
 const { A: COURT } = require('./alcove');
 
 fps = require('./fps')(
@@ -1165,6 +1167,7 @@ function applyAboutZoom(time) {
 
 const FREE_LOOK = { fade: 0, fadeColor: [0, 0, 0], letterbox: 0, focus: 6, aperture: 0, exposure: 1, shafts: 1, vignette: 0 };
 let leafNow = null;
+let walkerNow = false;
 
 function lookAtRolled(out, eye, target, roll) {
 	const f = [target[0] - eye[0], target[1] - eye[1], target[2] - eye[2]];
@@ -1193,10 +1196,12 @@ function setCamera(time) {
 		leafNow = t.leaf;
 		// the artist leaves his bench to walk past the camera
 		drawAvatar.setWalk(t.walker || null);
+		walkerNow = !!t.walker;
 		drawFarDoor.setOpen(t.door || 0);
 	} else {
 		leafNow = tour.restingLeaf();
 		drawAvatar.setWalk(null);
+		walkerNow = false;
 		drawFarDoor.setOpen(tour.restingDoor());
 	}
 
@@ -1210,6 +1215,9 @@ function setCamera(time) {
 			look[k] = Array.isArray(FREE_LOOK[k]) ? FREE_LOOK[k] : h.fromLook[k] + (FREE_LOOK[k] - h.fromLook[k]) * h.k;
 		}
 	}
+
+	// the operator's hand on the tour's camera (see cine.js)
+	if (c && t) c = cine.apply(c, time);
 
 	if (c) {
 		lookAtRolled(camView, c.eye, c.target, c.roll || 0);
@@ -1226,6 +1234,77 @@ function setCamera(time) {
 	}
 
 	for (const k in FREE_LOOK) shot[k] = look[k];
+	if (t) cine.pull(shot, time);
+}
+
+
+/* ===========================================================
+   THE AIR
+   What stirs the dust (dust.js): the leaf leaves a wake along its
+   path, and the gust that throws the far door open carries the
+   corridor's air with it.
+=========================================================== */
+
+const dustState = {
+	wake: [[0, -50, 0, 0], [0, -50, 0, 0], [0, -50, 0, 0], [0, -50, 0, 0]],
+	wakeDir: [0, 0, 1],
+	gust: [0, 0],
+	focus: 6,
+	aperture: 0
+};
+const wakeAge = [9, 9, 9, 9];
+const wakeGain = [0, 0, 0, 0];
+let wakeNext = 0, wakeTimer = 0;
+let leafLast = null, dustLast = 0, doorLast = 0, gustNow = 0;
+
+function updateDust(time) {
+	const dt = Math.min(0.1, Math.max(0, time - dustLast));
+	dustLast = time;
+	dustState.focus = post.shot.focus;
+	dustState.aperture = quality.post >= 2 ? post.shot.aperture : 0;
+
+	// the leaf's wake
+	for (let i = 0; i < 4; i++) {
+		wakeAge[i] += dt;
+		dustState.wake[i][3] = wakeGain[i] * Math.exp(-wakeAge[i] / 1.1);
+	}
+	const m = leafNow && leafNow.visible ? leafNow.model : null;
+	if (m && dt > 0) {
+		const p = [m[12], m[13], m[14]];
+		if (leafLast) {
+			const d = [p[0] - leafLast[0], p[1] - leafLast[1], p[2] - leafLast[2]];
+			const len = Math.hypot(d[0], d[1], d[2]);
+			const speed = len / dt;
+			// (a jump of metres is a cut, not a flight)
+			if (len < 1.5 && speed > 0.12) {
+				const k = Math.min(1, dt * 8);
+				for (let i = 0; i < 3; i++) dustState.wakeDir[i] += (d[i] / len - dustState.wakeDir[i]) * k;
+				const dl = Math.hypot(dustState.wakeDir[0], dustState.wakeDir[1], dustState.wakeDir[2]) || 1;
+				for (let i = 0; i < 3; i++) dustState.wakeDir[i] /= dl;
+				wakeTimer += dt;
+				if (wakeTimer > 0.14) {
+					wakeTimer = 0;
+					const w = dustState.wake[wakeNext];
+					w[0] = p[0]; w[1] = p[1]; w[2] = p[2];
+					wakeGain[wakeNext] = Math.min(1, (speed - 0.12) / 1.6) * 0.5;
+					wakeAge[wakeNext] = 0;
+					wakeNext = (wakeNext + 1) % 4;
+				}
+			}
+		}
+		leafLast = p;
+	} else if (!m) {
+		leafLast = null;
+	}
+
+	// the gust: while the far door is swinging open (or, wound backwards, shut)
+	const door = drawFarDoor.openNow ? drawFarDoor.openNow() : 0;
+	const swing = dt > 0 ? (door - doorLast) / dt : 0;
+	doorLast = door;
+	const want = Math.max(-1, Math.min(1, swing * 1.2));
+	gustNow += (want - gustNow) * Math.min(1, dt * (Math.abs(want) > Math.abs(gustNow) ? 6 : 0.7));
+	dustState.gust[0] += gustNow * 5.5 * dt;
+	dustState.gust[1] = Math.abs(gustNow);
 }
 
 
@@ -1233,8 +1312,8 @@ function setCamera(time) {
    RENDER LOOP
 =========================================================== */
 
-let perfFrames = 0;
-let perfStart = 0;
+let lastFrame = 0;
+let skipFrame = false;
 
 regl.frame(
 	function ({ time }) {
@@ -1242,7 +1321,7 @@ regl.frame(
 		// a visit's film is playing over everything: stop drawing the
 		// gallery so the film has the machine to itself
 		if (document.body.classList.contains('visiting')) {
-			perfFrames = 0;
+			lastFrame = 0;
 			return;
 		}
 
@@ -1250,17 +1329,24 @@ regl.frame(
 
 		env.tick(time);
 
-		// after a few seconds, check the frame rate; if it is low, step
-		// down one notch and check again
-		perfFrames++;
-		if (perfFrames === 60) perfStart = time;
-		if (perfFrames === 180) {
-			const fpsMeasured = 120 / Math.max(time - perfStart, 0.001);
-			if (fpsMeasured < 32 && quality.stepDown()) {
-				useReflexion = quality.reflection;
-				perfFrames = 0;
-			}
+		// phones (and laptops already short of breath) draw every other
+		// frame while nothing is happening: the picture is the same, the
+		// device stays cool
+		const resting = tour.active && cine.resting && env.settled &&
+			(quality.isPhone || quality.scale < 1 || quality.level > 0);
+		if (resting) {
+			skipFrame = !skipFrame;
+			if (skipFrame) { stats.end(); return; }
+		} else {
+			skipFrame = false;
 		}
+
+		// keep the frame rate smooth: softer when it sags, sharper again
+		// when there is room (quality.js)
+		const frameDt = time - lastFrame;
+		lastFrame = time;
+		quality.frame(resting ? frameDt / 2 : frameDt);
+		useReflexion = quality.reflection;
 
 
 		fps.tick({
@@ -1281,6 +1367,8 @@ regl.frame(
 
 
 		setCamera(time);
+		cull.update(camView, camProj, camEye);
+		updateDust(time);
 
 		post.capture(
 			arguments[0],
@@ -1290,25 +1378,28 @@ regl.frame(
 					() => {
 
 						if (
-							useReflexion
+							useReflexion && cull.floor
 						) {
 
 							// the room upside down beneath the polished floor
+							// (only the rooms whose reflection is in view)
 							reflexion(
 								() => {
 									drawMap();
-									drawStatues();
+									drawStatues({ reflected: true });
 									drawLanterns();
-									drawStairHall({ reflected: true });
-									drawConfessional({ reflected: true, view: camView });
-									drawTree();
-									drawAvatar();
+									if (cull.room('stair', true)) {
+										drawStairHall({ reflected: true });
+										drawConfessional({ reflected: true, view: camView });
+									}
+									if (cull.room('court', true)) drawTree();
+									if (cull.room('court', true) || walkerNow) drawAvatar();
 									drawPainting(
 										placement.batch()
 									);
-									drawStreet();
-									drawGarden();
-									drawFlorence();
+									if (cull.room('street', true)) drawStreet();
+									if (cull.room('garden', true)) drawGarden();
+									if (cull.room('florence', true)) drawFlorence();
 									drawLeaf(leafNow);
 									drawFarDoor();
 									drawGlass();
@@ -1320,27 +1411,31 @@ regl.frame(
 						drawMap();
 						drawStatues();
 						drawLanterns();
-						drawStairHall();
-						drawConfessional({ view: camView });
-						drawTree();
-						drawAvatar();
+						if (cull.room('stair')) {
+							drawStairHall();
+							drawConfessional({ view: camView });
+						}
+						if (cull.room('court')) drawTree();
+						if (cull.room('court') || walkerNow) drawAvatar();
 						drawPainting(
 							placement.batch()
 						);
 
 						// the street outside, seen through the door
-						drawStreet();
+						if (cull.room('street')) drawStreet();
 
 						// the garden and the Florence street, through the corridor glass
-						drawGarden();
-						drawFlorence();
-						// at night, fireflies in the garden
-						drawFireflies();
+						if (cull.room('garden')) {
+							drawGarden();
+							// at night, fireflies in the garden
+							drawFireflies();
+						}
+						if (cull.room('florence')) drawFlorence();
 
 						// the leaf, and the dust glinting in the sunbeams
 						drawLeaf(leafNow);
 						drawFarDoor();
-						drawDust();
+						drawDust(dustState);
 
 						// glass last, over everything
 						drawGlass();

@@ -175,5 +175,6 @@ module.exports = (regl) => {
 		for (const L of leaves) drawGlass({ pos: L.gpos, nrm: L.gnrm, count: L.glassCount });
 	};
 	draw.setOpen = (o) => { open = o || 0; };
+	draw.openNow = () => open;
 	return draw;
 };

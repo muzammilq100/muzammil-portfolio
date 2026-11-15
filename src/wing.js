@@ -633,7 +633,13 @@ const f4 = (x) => x.toFixed(4);
 
 function windowLightGLSL() {
 	return `
-	const vec3 WIN_SKY = vec3(0.0, 0.58, 0.81);
+	// by day soft light from the sky over the garden, straight in; by
+	// night the moon, standing off to one side, so the window shapes
+	// fall slanted across the corridor floor
+	const vec3 WIN_SKY_DAY = vec3(0.0, 0.58, 0.81);
+	const vec3 WIN_MOON = vec3(0.36, 0.50, 0.79);
+	vec3 winSky() { return normalize(mix(WIN_SKY_DAY, WIN_MOON, night)); }
+	#define WIN_SKY winSky()
 
 	float winBar(float d, float hw, float soft) {
 		return 1.0 - smoothstep(hw - soft, hw + soft, d);

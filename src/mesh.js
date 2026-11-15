@@ -35,7 +35,7 @@ const DOOR_LIGHT_DIR = (() => {
   return v.map((x) => (x / l).toFixed(4)).join(', ');
 })();
 
-module.exports = (regl, data, useReflexion) => {
+module.exports = (regl, data, useReflexion, ranged) => {
 
   // things standing on the floor cast soft contact shadows
   const occluders = (data.occluders || []).slice(0, 24);
@@ -470,7 +470,7 @@ module.exports = (regl, data, useReflexion) => {
       }
       // by night the same squares are moonlight: a little softer, the
       // glow around them much weaker, so the pattern stands alone in the dark
-      light += sun * 0.85 * mix(1.0, 1.25, night) + glow * 0.05 * (1.0 - isCeiling) * mix(1.0, 1.1, night);
+      light += sun * 0.85 * mix(1.0, 1.75, night) + glow * 0.05 * (1.0 - isCeiling) * mix(1.0, 1.1, night);
       // the coffers glow with daylight, brighter towards the glass
       light += isCream * (0.18 + 0.42 * smoothstep(8.0, 8.62, v_pos.y)) * glow * mix(1.0, 0.55, night);
 
@@ -491,7 +491,7 @@ module.exports = (regl, data, useReflexion) => {
 
       float winL = windowLight(v_pos, N);
       float cg = corridorGlow(v_pos);
-      light += winL * 0.48 * mix(1.0, 1.0, night) + cg * 0.16 * (1.0 - 0.4 * isCeiling) * mix(1.0, 0.7, night);
+      light += winL * 0.48 * mix(1.0, 1.35, night) + cg * 0.16 * (1.0 - 0.4 * isCeiling) * mix(1.0, 0.7, night);
 
       // the little lamps in the statue niches
       float nl = nicheLight(v_pos, N);
@@ -533,6 +533,11 @@ module.exports = (regl, data, useReflexion) => {
       // light bounced off the warm floor onto the lower walls and columns
       finalColour += material * vec3(1.0, 0.84, 0.62) * 0.05 * mix(1.0, 0.3, night) * ${ROOM_BRIGHTNESS.toFixed(3)}
         * (1.0 - smoothstep(0.0, 2.4, v_pos.y)) * (1.0 - isFloor) * (1.0 - abs(N.y));
+
+      // and the sunlit (or moonlit) squares under the skylight throw their
+      // own light back into the room: warm by day, faint and cold by night
+      float bounce = skylightBounce(v_pos, N) * (1.0 - isFloor) * (1.0 - isSky);
+      finalColour += material * mix(vec3(1.0, 0.86, 0.66) * 0.17, vec3(0.62, 0.74, 1.0) * 0.12, night) * bounce * ${ROOM_BRIGHTNESS.toFixed(3)};
 
       // polished marble (columns, arch, skirting): a soft highlight of the
       // daylight that drifts across the stone as you move, rougher in places
@@ -699,6 +704,11 @@ module.exports = (regl, data, useReflexion) => {
     },
 
     elements:
-      new Uint32Array(data.elements)
+      new Uint32Array(data.elements),
+
+    // (statues.js draws only the statues in view: one stretch of the
+    // triangle list for each)
+    offset: ranged ? regl.prop('offset') : 0,
+    count: ranged ? regl.prop('count') : data.elements.length
   });
 };

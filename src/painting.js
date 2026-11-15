@@ -277,6 +277,18 @@ module.exports = (regl) => {
 
 	float luma(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
 
+	float hash2(vec2 p) {
+		vec3 p3 = fract(vec3(p.x, p.y, p.x) * 0.1031);
+		p3 += dot(p3, p3.yzx + 33.33);
+		return fract((p3.x + p3.y) * p3.z);
+	}
+	float vnoise2(vec2 p) {
+		vec2 i = floor(p), g = fract(p);
+		g = g * g * (3.0 - 2.0 * g);
+		return mix(mix(hash2(i), hash2(i + vec2(1.0, 0.0)), g.x),
+		           mix(hash2(i + vec2(0.0, 1.0)), hash2(i + vec2(1.0, 1.0)), g.x), g.y);
+	}
+
 	// how much light the bar above reaches a point of the canvas (in
 	// metres from its bottom left corner): three points along the bar,
 	// falling off with distance and angle like a real lamp
@@ -327,32 +339,63 @@ module.exports = (regl) => {
 				g *= 0.8 + 0.4 * fract(sin(dot(floor(T), vec2(12.9898, 78.233))) * 43758.5453);
 				g *= 0.32 * wAmp;
 
-				// ---- the paint itself: a gentle relief that follows the
-				// brushwork in the photograph (kept low so it never looks
-				// embossed)
+				// ---- the paint itself. Oil is laid thin in the darks, where
+				// the weave of the canvas shows through it, and thick in the
+				// lights, where it stands up off the canvas and buries the weave
+				float tone = luma(col);
+				float body = smoothstep(0.18, 0.75, tone);
+				g *= mix(1.35, 0.45, body);
+
+				// a relief that follows the brushwork in the photograph ...
 				float tx = texel * 2.0;
 				float lx = luma(texture2D(tex, st + vec2(tx, 0.0)).rgb) - luma(texture2D(tex, st - vec2(tx, 0.0)).rgb);
 				float ly = luma(texture2D(tex, st + vec2(0.0, tx)).rgb) - luma(texture2D(tex, st - vec2(0.0, tx)).rgb);
-				g += vec2(lx, ly) * 0.75;
+				g += vec2(lx, ly) * (0.9 + 0.9 * body);
+
+				// ... the drag of the bristles: fine ridges running along each
+				// stroke (across the way the tone changes), a few to the
+				// centimetre, fading out where they are too small to see
+				vec2 cm = st * canvasCm;
+				vec2 grad = vec2(lx, ly);
+				float turn = vnoise2(cm * 0.07) * 6.2831;
+				vec2 along = normalize(vec2(-grad.y, grad.x) * 14.0 + vec2(cos(turn), sin(turn)));
+				vec2 across = vec2(-along.y, along.x);
+				vec2 sc = vec2(dot(cm, along) * 0.9, dot(cm, across) * 5.5);
+				float bAmp = 1.0 - smoothstep(0.25, 0.6, max(fwidth(sc.x), fwidth(sc.y)));
+				float e = 0.35;
+				float b0 = vnoise2(sc);
+				float bx = vnoise2(sc + vec2(0.0, e)) - b0;
+				g += across * bx * (0.35 + 0.75 * body) * bAmp;
+
+				// ... and the canvas is cloth on a stretcher, never perfectly
+				// flat: it swells and dips by a hair, which is what makes the
+				// light break across it
+				vec2 sag = vec2(vnoise2(cm * 0.045 + 3.1), vnoise2(cm * 0.045 + 11.7)) - 0.5;
+				g += sag * 0.07;
 
 				N = normalize(v_n - v_t * g.x - v_b * g.y);
 
-				// weave shading: the tops of the threads catch the light,
-				// the hollows between them hold a little shadow
+				// the tops of the threads and ridges catch the light, the
+				// hollows between them hold a little shadow
 				vec3 Lw = normalize(v_lamp - v_world);
 				float flatL = max(dot(v_n, Lw), 0.05);
 				float lit = max(dot(N, Lw), 0.0) / flatL;
-				col *= mix(1.0, clamp(lit, 0.8, 1.2), 0.35);
-				col *= 1.0 - 0.05 * wAmp * (1.0 - abs(f.x - 0.5) * 2.0) * (1.0 - abs(f.y - 0.5) * 2.0);
+				col *= mix(1.0, clamp(lit, 0.72, 1.3), 0.5);
+				col *= 1.0 - 0.06 * wAmp * (1.0 - 0.6 * body) * (1.0 - abs(f.x - 0.5) * 2.0) * (1.0 - abs(f.y - 0.5) * 2.0);
 
-				// ---- the varnish: a soft satin highlight of the lamp that
-				// slides over the canvas as you move, and a faint veil at
-				// low angles
+				// ---- the varnish: a satin highlight of the lamp that slides
+				// over the surface as you move, glossier where the paint is
+				// rich and a little sunk-in (matt) in patches, as real
+				// varnish dries; and at low angles the whole surface takes
+				// on a faint veil of the room's light
 				vec3 V = normalize(v_eye - v_world);
 				vec3 H = normalize(Lw + V);
 				float nh = max(dot(N, H), 0.0);
 				float fres = 0.04 + 0.96 * pow(1.0 - max(dot(N, V), 0.0), 5.0);
-				sheen = (pow(nh, 80.0) * 0.045 + pow(nh, 16.0) * 0.012) * min(pool, 1.2) + fres * 0.035;
+				float gloss = 0.55 + 0.45 * smoothstep(0.30, 0.70, vnoise2(cm * 0.11 + 7.3));
+				sheen = (pow(nh, 90.0) * 0.10 * gloss + pow(nh, 18.0) * 0.022) * min(pool, 1.2) + fres * (0.03 + 0.03 * gloss);
+				// the same highlight, tight, on the wet-looking ridges of thick paint
+				sheen += pow(nh, 220.0) * 0.12 * body * gloss * min(pool, 1.2);
 			}
 
 			// ---- oil paint, not a screen: highlights roll off softly,

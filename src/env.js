@@ -38,6 +38,8 @@ const env = {
 	// smoothed, so the change starts and ends gently
 	get night() { return value * value * (3 - 2 * value); },
 	get isNight() { return target === 1; },
+	// not in the middle of turning over
+	get settled() { return value === target; },
 	set(n) {
 		target = n ? 1 : 0;
 		listeners.forEach((f) => f(target));

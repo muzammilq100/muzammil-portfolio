@@ -61,6 +61,13 @@ const SUN = (() => {
 	return v.map((x) => x / l);
 })();
 
+// the moon for the skylight: lower, from the right and the far end
+const MOON = (() => {
+	const v = [0.42, 1.0, -0.32];
+	const l = Math.hypot(v[0], v[1], v[2]);
+	return v.map((x) => x / l);
+})();
+
 const SKY = [9, 0, 0];
 const CREAM = [10, 0, 0];
 
@@ -191,7 +198,14 @@ const f = (x) => x.toFixed(4);
 
 function skylightGLSL() {
 	return `
-	const vec3 SKY_SUN = vec3(${SUN.map(f).join(', ')});
+	// by day the sun, high and a little towards the entrance; by night
+	// the moon, lower and from the other side, so its squares of light
+	// reach across the floor to the foot of the wall. (When the light is
+	// switched, the squares slide from one to the other.)
+	const vec3 SKY_SUN_DAY = vec3(${SUN.map(f).join(', ')});
+	const vec3 SKY_MOON = vec3(${MOON.map(f).join(', ')});
+	vec3 skySun() { return normalize(mix(SKY_SUN_DAY, SKY_MOON, night)); }
+	#define SKY_SUN skySun()
 
 	float rectOpen(vec2 q, vec4 r, float soft) {
 		vec2 lo = smoothstep(r.xy - soft, r.xy + soft, q);
@@ -253,7 +267,20 @@ function skylightGLSL() {
 		vec2 q = (p + L * ((${f(GLASS_Y)} - p.y) / L.y)).xz;
 		float open = rectOpen(q, vec4(${f(X_START)}, ${f(Z_START)}, ${f(X_END)}, ${f(Z_END)}), 0.25);
 		if (open <= 0.0) return 0.0;
-		return open * (0.2 + 0.8 * skylightAt(p));
+		return open * (0.13 + 0.87 * skylightAt(p));
+	}
+
+	// light thrown back up by the bright squares on the floor: strongest
+	// on what stands beside them and faces them (the lower walls, the
+	// pillars, the statues, the ceiling above), fading with distance
+	float skylightBounce(vec3 p, vec3 n) {
+		if (p.x > 14.2 || p.x < -0.4) return 0.0;
+		vec3 L = SKY_SUN;
+		vec2 c = vec2(${f(WIDTH / 2)}, ${f((Z_START + Z_END) / 2)}) - L.xz * (${f(GLASS_Y)} / L.y);
+		vec2 d = max(abs(p.xz - c) - vec2(${f(SPAN_X / 2)}, ${f(SPAN_Z / 2)}), 0.0);
+		float fall = 1.0 / (1.0 + 0.09 * (dot(d, d) + p.y * p.y * 0.6));
+		vec3 to = normalize(vec3(c.x, -0.4, c.y) - p);
+		return fall * (0.3 + 0.7 * max(dot(n, to), 0.0));
 	}
 
 	// a soft daylight glow under the lantern

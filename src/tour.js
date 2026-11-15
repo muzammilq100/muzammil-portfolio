@@ -1982,6 +1982,8 @@ module.exports = function createTour(opts) {
 	 * ----------------------------------------------------- */
 
 	const leafModel = [];
+	// how the leaf is flying (see leafState)
+	const fl = { prev: null, vel: [0, 0, 0], axis: [1, 0, 0], dir: null, bank: 0, rock: 0, spin: 0, fresh: true };
 
 	function leafState(dt) {
 		leafClock += dt * (leaf.phase === 'floor' ? 0 : 1);
@@ -1997,22 +1999,86 @@ module.exports = function createTour(opts) {
 			m = mat4.rotateY(m, m, 0.65);
 			m = mat4.rotateX(m, m, 0.16);
 		} else {
-			// in the air it turns its face to the camera, more or less, and
-			// tumbles about that: wildly in flight, gently while it hangs
-			const e = camNow.eye, p = leaf.pos;
-			let n = [e[0] - p[0], e[1] - p[1], e[2] - p[2]];
-			const nl = Math.hypot(n[0], n[1], n[2]) || 1;
-			n = [n[0] / nl, n[1] / nl, n[2] / nl];
-			let x = [n[2], 0, -n[0]];
-			const xl = Math.hypot(x[0], x[2]) || 1;
-			x = [x[0] / xl, 0, x[2] / xl];
-			const z = [x[1] * n[2] - x[2] * n[1], x[2] * n[0] - x[0] * n[2], x[0] * n[1] - x[1] * n[0]];
-			const face = [x[0], x[1], x[2], 0, n[0], n[1], n[2], 0, z[0], z[1], z[2], 0, p[0], p[1], p[2], 1];
+			// IN THE AIR. A leaf does not spin like a coin: it rides flat on
+			// the air and rocks from side to side, slipping towards
+			// whichever edge is down; when it is carried along it turns its
+			// stalk into the wind and banks into the bends of its path; and
+			// when it drops fast it goes over on its long axis and whirls.
+			// All of that is worked out here from how it is really moving.
+			const p = leaf.pos;
+			if (fl.prev && dt > 0) {
+				const d = [p[0] - fl.prev[0], p[1] - fl.prev[1], p[2] - fl.prev[2]];
+				if (Math.hypot(d[0], d[1], d[2]) < 1.5) {
+					const kk = Math.min(1, dt * 6);
+					for (let i = 0; i < 3; i++) fl.vel[i] += (d[i] / dt - fl.vel[i]) * kk;
+				} else {
+					fl.vel = [0, 0, 0];           // a cut, not a flight
+				}
+			}
+			fl.prev = p.slice();
+			const v = fl.vel;
+			const speed = Math.hypot(v[0], v[1], v[2]);
+			const go = smooth(0.25, 1.4, speed);              // carried along, or hanging?
+			const fall = smooth(0.5, 2.0, -v[1]);             // dropping fast
+
+			// the way its tip points: trailing behind when it travels,
+			// otherwise turning slowly as it hangs
+			const yaw = leafClock * 0.35 * (0.3 + k) + 0.65;
+			let ax = [Math.cos(yaw), 0, Math.sin(yaw)];
+			if (speed > 1e-3) ax = mix3(ax, scale3(v, -1 / speed), go);
+			const ka = Math.min(1, dt * 4);
+			fl.axis = mix3(fl.axis, ax, fl.fresh ? 1 : ka);
+			let X = fl.axis;
+			const xl = Math.hypot(X[0], X[1], X[2]) || 1;
+			X = scale3(X, 1 / xl);
+
+			// its face: up, leaning towards the camera enough to be seen
+			const e = camNow.eye;
+			let c = [e[0] - p[0], e[1] - p[1], e[2] - p[2]];
+			const cl = Math.hypot(c[0], c[1], c[2]) || 1;
+			const see = lerp(0.6, 0.22, go);
+			let Y = [c[0] / cl * see, 1 + c[1] / cl * see, c[2] / cl * see];
+			const dxy = X[0] * Y[0] + X[1] * Y[1] + X[2] * Y[2];
+			Y = sub3(Y, scale3(X, dxy));
+			const yl = Math.hypot(Y[0], Y[1], Y[2]) || 1;
+			Y = scale3(Y, 1 / yl);
+			let Z = [X[1] * Y[2] - X[2] * Y[1], X[2] * Y[0] - X[0] * Y[2], X[0] * Y[1] - X[1] * Y[0]];
+
+			// banking into the bends of its path
+			const hs = Math.hypot(v[0], v[2]);
+			let turn = 0;
+			if (hs > 0.15 && fl.dir && dt > 0) {
+				const nd = [v[0] / hs, v[2] / hs];
+				turn = (fl.dir[0] * nd[1] - fl.dir[1] * nd[0]) / dt;
+				fl.dir = nd;
+			} else if (hs > 0.15) {
+				fl.dir = [v[0] / hs, v[2] / hs];
+			}
+			fl.bank += (Math.max(-0.8, Math.min(0.8, turn * 0.3)) * go - fl.bank) * Math.min(1, dt * 3);
+
+			// rocking, quicker the faster the air moves over it; and the
+			// whirl when it drops
+			fl.rock += dt * (1.5 + 2.4 * go);
+			fl.spin += dt * fall * 7.0 * (0.4 + k);
+			const roll = Math.sin(fl.rock) * (0.26 + 0.45 * k) * (1 - 0.5 * fall) + fl.bank + fl.spin;
+			const pitch = Math.sin(fl.rock * 0.63 + 1.0) * (0.16 + 0.3 * k) + (leaf.swing || 0) * 0.9;
+
+			// roll about its length, then pitch about its width
+			let cs = Math.cos(roll), sn = Math.sin(roll);
+			const Y1 = add3(scale3(Y, cs), scale3(Z, sn));
+			const Z1 = add3(scale3(Z, cs), scale3(Y, -sn));
+			cs = Math.cos(pitch); sn = Math.sin(pitch);
+			const X2 = add3(scale3(X, cs), scale3(Y1, sn));
+			const Y2 = add3(scale3(Y1, cs), scale3(X, -sn));
+
+			// slipping towards the edge that is down
+			const slip = Math.sin(fl.rock + 1.5708) * 0.035 * (0.3 + k) * (1 - 0.5 * go);
+			const q = add3(p, scale3(Z, slip));
+			const face = [X2[0], X2[1], X2[2], 0, Y2[0], Y2[1], Y2[2], 0, Z1[0], Z1[1], Z1[2], 0, q[0], q[1], q[2], 1];
 			for (let i = 0; i < 16; i++) m[i] = face[i];
-			m = mat4.rotateY(m, m, leafClock * 0.9 * k + 0.65);
-			m = mat4.rotateX(m, m, Math.sin(leafClock * 2.3) * 0.9 * k);
-			m = mat4.rotateZ(m, m, Math.sin(leafClock * 1.7 + 1.0) * 1.1 * k + (leaf.swing || 0) * 0.9);
+			fl.fresh = false;
 		}
+		if (leaf.phase !== 'fly') { fl.prev = null; fl.vel = [0, 0, 0]; fl.fresh = true; fl.spin = 0; fl.bank = 0; fl.dir = null; }
 		return { visible: true, model: m };
 	}
 

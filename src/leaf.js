@@ -25,20 +25,42 @@ const LENGTH = 0.22;   // a little larger than life, so it reads on screen
 
 function buildLeaf() {
 	const pos = [], nrm = [], uv = [], idx = [];
-	const NL = 14, NW = 4;
-	// along the leaf: u 0 (stalk) .. 1 (tip); across: v -1 .. 1
+	const NL = 18, NW = 5;
+	// the blade's surface at (u, v): u 0 (stalk) .. 1 (tip); v -1 .. 1
+	const at = (u, v) => {
+		// an olive-like blade: narrow, widest a little below the middle,
+		// one side a touch fuller than the other
+		const half = LENGTH * 0.2 * Math.pow(Math.sin(Math.PI * Math.pow(u, 0.85)), 0.9) * (v > 0 ? 1.06 : 0.94);
+		const x = u * LENGTH - LENGTH * 0.12;
+		let z = v * half;
+		// folded along the midrib, curling down at the tip, the edge
+		// rippling a little, and the whole blade with a slight twist and
+		// a sideways bend: no leaf is flat
+		let y = Math.abs(v) * half * 0.42 - 0.14 * u * u * LENGTH;
+		y += Math.sin(u * 17.0 + (v > 0 ? 0.0 : 2.1)) * 0.012 * LENGTH * v * v;
+		const tw = (u - 0.3) * 0.55;
+		const cy = Math.cos(tw), sy = Math.sin(tw);
+		const y2 = y * cy - z * sy, z2 = y * sy + z * cy;
+		return [x, y2, z2 + 0.05 * LENGTH * u * u];
+	};
+	const norm = (u, v) => {
+		const e = 0.01;
+		const a = at(Math.min(1, u + e), v), b = at(Math.max(0, u - e), v);
+		const c = at(u, Math.min(1, v + e)), d = at(u, Math.max(-1, v - e));
+		const du = [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+		const dv = [c[0] - d[0], c[1] - d[1], c[2] - d[2]];
+		const n = [dv[1] * du[2] - dv[2] * du[1], dv[2] * du[0] - dv[0] * du[2], dv[0] * du[1] - dv[1] * du[0]];
+		const l = Math.hypot(n[0], n[1], n[2]) || 1;
+		const sgn = n[1] < 0 ? -1 : 1;
+		return [n[0] / l * sgn, n[1] / l * sgn, n[2] / l * sgn];
+	};
 	for (let i = 0; i <= NL; i++) {
 		const u = i / NL;
-		// an olive-like blade: narrow, widest a little below the middle
-		const half = LENGTH * 0.2 * Math.pow(Math.sin(Math.PI * Math.pow(u, 0.85)), 0.9);
 		for (let j = 0; j <= NW * 2; j++) {
 			const v = j / NW - 1;
-			const x = u * LENGTH - LENGTH * 0.12;
-			const z = v * half;
-			// folded slightly along the midrib and curling at the tip
-			const y = Math.abs(v) * half * 0.35 - 0.12 * u * u * LENGTH;
-			pos.push([x, y, z]);
-			nrm.push([0, 1, 0]);
+			pos.push(at(u, v));
+			// (at the very ends the blade closes to a point: take the normal just inside)
+			nrm.push(norm(Math.min(0.97, Math.max(0.03, u)), v));
 			uv.push([u, v]);
 		}
 	}
@@ -109,6 +131,14 @@ module.exports = (regl) => {
 			base = mix(base, vec3(0.55, 0.58, 0.32), (1.0 - smoothstep(0.0, 0.08, across)) * 0.6);
 			// a hint of autumn towards the tip
 			base = mix(base, vec3(0.55, 0.42, 0.14), smoothstep(0.55, 1.0, v_uv.x) * 0.35);
+			// the side veins, branching forward from the midrib: paler
+			// lines on the face, and the blade between them a shade deeper
+			float sideVein = 1.0 - smoothstep(0.0, 0.05, abs(fract(v_uv.x * 8.0 - across * 2.4) - 0.5) - 0.40);
+			base = mix(base * 0.90, base * 1.18 + vec3(0.03, 0.03, 0.0), sideVein * (1.0 - across) * 0.55);
+			// the underside is paler and greyer, as an olive leaf's is
+			if (!gl_FrontFacing) base = mix(base, vec3(0.50, 0.55, 0.42), 0.55);
+			// a dry, darker edge
+			base *= 1.0 - 0.25 * smoothstep(0.82, 1.0, across);
 
 			// the sun from the skylight or the dome, whichever reaches it
 			float sky = skylightVol(v_pos);

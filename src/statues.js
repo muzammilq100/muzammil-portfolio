@@ -24,6 +24,7 @@
  */
 
 const mesh = require('./mesh');
+const cull = require('./cull');
 
 function decode(buf) {
 
@@ -72,9 +73,19 @@ module.exports = (regl, map) => {
 	let draw = null;
 	let pending = map.statues.length;
 
+	// where each statue's triangles are in the list, and the box it stands in
+	const ranges = [];
+
 	const addModel = (m, st) => {
 
 		const base = position.length / 3;
+		const r = st.height * 0.75;
+		const yb = st.base !== undefined ? st.base : map.pedestalTop;
+		ranges.push({
+			offset: elements.length,
+			count: m.nI,
+			box: [st.x - r, yb - 0.1, st.z - r, st.x + r, yb + st.height + 0.2, st.z + r]
+		});
 		const s = st.height;
 		const c = Math.cos(st.yaw);
 		const sn = Math.sin(st.yaw);
@@ -130,7 +141,8 @@ module.exports = (regl, map) => {
 					return map.viewer;
 				}
 			},
-			false
+			false,
+			true
 		);
 	};
 
@@ -152,9 +164,12 @@ module.exports = (regl, map) => {
 			});
 	});
 
-	return function () {
-		if (draw) {
-			draw();
-		}
+	// only the statues the camera can see (or, for the floor's reflection,
+	// whose reflection it can see)
+	return function (opts) {
+		if (!draw) return;
+		const mirrored = !!(opts && opts.reflected);
+		const list = ranges.filter((r) => cull.box(r.box, mirrored));
+		if (list.length) draw(list);
 	};
 };

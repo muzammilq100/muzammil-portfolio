@@ -106,19 +106,38 @@ attribute float leaf;
 varying vec3 v_pos, v_n;
 varying vec2 v_uv;
 varying float v_leaf, v_shade;
+varying vec3 v_eye;
 
 const vec3 SHAFT = vec3(${f(SHAFT[0])}, ${f(SHAFT[1])}, ${f(SHAFT[2])});
 
 void main() {
 	vec3 p = position;
-	// leaves stir a little
-	float h = max(p.y - 1.5, 0.0);
-	p.x += leaf * sin(time * 1.7 + p.y * 2.3 + p.z * 1.9) * 0.012 * h;
-	p.z += leaf * cos(time * 1.3 + p.x * 2.1) * 0.010 * h;
+	// the air in the court is never quite still. The whole tree leans
+	// with it, slowly, more the higher and the further out on a limb
+	// (wood and leaves together, so every leaf stays on its twig) ...
+	float h = max(p.y - 1.2, 0.0);
+	vec2 out2 = p.xz - vec2(${f(A.cx)}, ${f(A.zc)});
+	float reach = h * (0.5 + 0.35 * length(out2));
+	float breeze = sin(time * 0.43 + p.x * 0.35 + p.z * 0.27) * 0.6 + sin(time * 0.19 + 1.7) * 0.4;
+	p.x += breeze * 0.010 * reach;
+	p.z += (sin(time * 0.37 + p.z * 0.41 + 2.1) * 0.6 + sin(time * 0.23) * 0.4) * 0.008 * reach;
+	// ... each bough nods on its own ...
+	float bough = sin(time * 0.9 + floor(p.y * 0.8) * 2.4 + atan(out2.y, out2.x) * 2.0);
+	p.y += bough * 0.006 * reach;
+	// ... and now and then a breath passes through the crown and the
+	// leaves it touches shiver
+	float gustWave = smoothstep(0.55, 1.0, sin(time * 0.31 + p.x * 0.6 - p.z * 0.4 + p.y * 0.3));
+	float shiver = 0.25 + 0.75 * gustWave;
+	p.x += leaf * sin(time * 3.1 + p.y * 7.3 + p.z * 5.9) * 0.009 * shiver * min(h, 2.5);
+	p.y += leaf * sin(time * 2.7 + p.x * 6.1 + p.z * 4.3) * 0.006 * shiver * min(h, 2.5);
+	p.z += leaf * cos(time * 2.3 + p.x * 6.7) * 0.008 * shiver * min(h, 2.5);
 	v_pos = p;
 	v_n = normal;
 	v_uv = uv;
 	v_leaf = leaf;
+	vec3 tv = view[3].xyz;
+	v_eye = -vec3(dot(view[0].xyz, tv), dot(view[1].xyz, tv), dot(view[2].xyz, tv));
+	v_eye.y *= yScale;
 
 	// how much of the crown lies between this point and the oculus
 	vec3 cc = vec3(${f(CROWN_C[0])}, ${f(CROWN_C[1])}, ${f(CROWN_C[2])});
@@ -148,8 +167,21 @@ uniform sampler2D leaves, bark;
 varying vec3 v_pos, v_n;
 varying vec2 v_uv;
 varying float v_leaf, v_shade;
+varying vec3 v_eye;
 
 ${oculusGLSL()}
+
+float hash3(vec3 p) {
+	p = fract(p * 0.1031);
+	p += dot(p, p.yzx + 33.33);
+	return fract((p.x + p.y) * p.z);
+}
+float noise3(vec3 p) {
+	vec3 i = floor(p), g = fract(p);
+	g = g * g * (3.0 - 2.0 * g);
+	return mix(mix(mix(hash3(i), hash3(i + vec3(1, 0, 0)), g.x), mix(hash3(i + vec3(0, 1, 0)), hash3(i + vec3(1, 1, 0)), g.x), g.y),
+	           mix(mix(hash3(i + vec3(0, 0, 1)), hash3(i + vec3(1, 0, 1)), g.x), mix(hash3(i + vec3(0, 1, 1)), hash3(i + vec3(1, 1, 1)), g.x), g.y), g.z);
+}
 
 float oculusSun(vec3 p) {
 	return oculusOpen(p);
@@ -157,11 +189,24 @@ float oculusSun(vec3 p) {
 
 void main() {
 	vec3 N = normalize(v_n);
+	vec3 V = normalize(v_eye - v_pos);
 	vec3 base;
+	float rough = 0.0;
 	if (v_leaf > 0.5) {
 		vec4 t = texture2D(leaves, v_uv);
-		if (t.a < 0.5) discard;
+		// (seen from across the hall a leaf is smaller than a pixel, and a
+		// hard cut-out would thin the crown away to nothing: further off,
+		// more of each leaf is kept, so the tree stays as full as it is)
+		float away = length(v_eye - v_pos);
+		if (t.a < mix(0.5, 0.2, smoothstep(2.5, 11.0, away))) discard;
 		base = t.rgb * vec3(0.92, 1.0, 0.86);
+		// no two sprays of leaves are the same green: some younger and
+		// yellower, some older and darker, a few just turning
+		float kind = noise3(v_pos * 1.7);
+		float fine = noise3(v_pos * 9.0);
+		base *= mix(vec3(0.80, 0.86, 0.78), vec3(1.12, 1.10, 0.92), kind);
+		base = mix(base, base * vec3(1.25, 1.02, 0.62), smoothstep(0.80, 0.97, fine) * 0.55);
+		base *= 0.9 + 0.2 * fine;
 		if (!gl_FrontFacing) N = -N;
 	} else {
 		// bark from the three sides, blended by the normal
@@ -170,26 +215,47 @@ void main() {
 		w /= (w.x + w.y + w.z);
 		vec3 q = v_pos * 0.9;
 		base = texture2D(bark, q.yz).rgb * w.x + texture2D(bark, q.xz).rgb * w.y + texture2D(bark, q.xy).rgb * w.z;
-		base *= 0.85;
+		// the furrows of the bark are deep and dark, the ridges catch the
+		// light; a little moss low down and on the side away from the sun
+		float ridge = dot(base, vec3(0.333));
+		rough = smoothstep(0.18, 0.55, ridge);
+		base *= 0.74 + 0.36 * rough;
+		float moss = smoothstep(0.45, 0.75, noise3(v_pos * vec3(2.3, 1.1, 2.3))) * (1.0 - smoothstep(0.4, 2.6, v_pos.y)) * (0.4 + 0.6 * max(-dot(N, SHAFT), 0.0));
+		base = mix(base, base * vec3(0.78, 0.95, 0.60) + vec3(0.006, 0.014, 0.003), moss * 0.4);
 	}
 
 	// depth in the crown: darker deep inside
 	vec3 rel = (v_pos - vec3(${f(CROWN_C[0])}, ${f(CROWN_C[1])}, ${f(CROWN_C[2])})) / vec3(${f(CROWN_R[0])}, ${f(CROWN_R[1])}, ${f(CROWN_R[2])});
 	float outer = clamp(length(rel), 0.0, 1.0);
-	float ao = mix(0.45, 1.0, outer) * (0.75 + 0.25 * smoothstep(0.4, 2.0, v_pos.y));
+	float ao = mix(0.38, 1.0, outer * outer) * (0.75 + 0.25 * smoothstep(0.4, 2.0, v_pos.y));
+	// and the trunk darkens where it meets the soil
+	ao *= 0.6 + 0.4 * smoothstep(${f(BENCH.soil)}, ${f(BENCH.soil + 0.5)}, v_pos.y);
 
 	// soft daylight in the court, coming mostly from above
 	float up = 0.6 + 0.4 * N.y;
-	float light = (0.42 + 0.22 * up) * ao;
+	float light = (0.40 + 0.24 * up) * ao;
 
-	// the shaft of sun through the oculus
-	float ndl = v_leaf > 0.5 ? (0.35 + 0.65 * abs(dot(N, SHAFT))) : max(dot(N, SHAFT), 0.0);
-	float sun = oculusSun(v_pos) * v_shade * ndl;
-	light += sun * 1.45;
+	// the shaft of sun through the oculus, broken into flecks by the
+	// leaves above: they drift as the crown moves
+	float dapple = mix(1.0, smoothstep(0.30, 0.62, noise3(v_pos * 3.1 + vec3(time * 0.07, 0.0, time * 0.05))), 0.75 * (1.0 - v_shade * 0.6));
+	float lit = oculusSun(v_pos) * v_shade * dapple;
+	float ndl = v_leaf > 0.5 ? (0.35 + 0.65 * abs(dot(N, SHAFT))) : max(dot(N, SHAFT), 0.0) * (0.6 + 0.4 * rough);
+	float sun = lit * ndl;
+	light += sun * 1.5;
 
 	vec3 col = base * light * vec3(1.03, 1.0, 0.94);
-	// leaves glow a little where the sun comes through them
-	col += v_leaf * base * vec3(0.55, 0.65, 0.25) * oculusSun(v_pos) * v_shade * 0.35;
+	if (v_leaf > 0.5) {
+		// a leaf with the sun behind it lights up from inside, most of all
+		// when you look towards the sun through it
+		float behind = max(dot(-N, SHAFT), 0.0);
+		float towards = pow(max(dot(-V, SHAFT), 0.0), 2.0);
+		col += base * vec3(0.80, 0.95, 0.30) * lit * (0.30 + 0.9 * behind * (0.4 + 1.6 * towards));
+		// and its waxy face throws a small cold glint of the sky
+		vec3 H = normalize(SHAFT + V);
+		col += vec3(0.9, 0.95, 1.0) * pow(max(dot(N, H), 0.0), 42.0) * (0.10 + 0.55 * lit) * ao;
+		// the edge of the crown against the bright dome: a thin rim
+		col += base * pow(1.0 - abs(dot(N, V)), 3.0) * 0.18 * outer;
+	}
 	// at night the little lantern on the bench glints on the bark and
 	// the undersides of the leaves
 	vec3 lan = lanternLight(v_pos, v_leaf > 0.5 ? normalize(LANTERN_POS - v_pos) : N);

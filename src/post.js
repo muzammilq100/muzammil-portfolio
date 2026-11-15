@@ -31,6 +31,7 @@ const { oculusGLSL, A: COURT } = require('./alcove');
 const { windowLightGLSL, C: WING } = require('./wing');
 const { doorLightGLSL } = require('./entrance');
 const env = require('./env');
+const cull = require('./cull');
 
 const f = (x) => x.toFixed(4);
 
@@ -44,7 +45,7 @@ const LOOK = {
 	shafts: 1.0,         // strength of the light shafts
 	bloom: 1.0,
 	vignette: 0.42,
-	grain: 0.045
+	grain: 0.032
 };
 
 function invert(out, a) {
@@ -110,7 +111,7 @@ module.exports = (regl, quality) => {
 
 	// samples per lit volume, per pixel (the light-shaft picture is half
 	// the screen's size at full quality, a quarter otherwise)
-	const VOL_STEPS = phone ? 10 : 22;
+	const VOL_STEPS = phone ? 10 : 18;
 	const volDiv = () => (quality.post >= 2 ? 2 : 4);
 
 	const tex = (opts) => regl.texture(Object.assign({ width: 4, height: 4, min: 'linear', mag: 'linear', wrap: 'clamp' }, opts || {}));
@@ -200,7 +201,7 @@ module.exports = (regl, quality) => {
 		vec2 a = p.xz * 0.55 + vec2(p.y * 0.35 + time * 0.05, -p.y * 0.2 - time * 0.03);
 		vec2 b = p.zy * 0.9 + vec2(time * 0.04, p.x * 0.3);
 		float n = vnoise(a) * vnoise(b + 3.7);
-		float day = 0.3 + 1.6 * n * n;
+		float day = 0.2 + 1.7 * n * n;
 		float nightAir = 0.08 + 2.6 * n * n * n;
 		return mix(day, nightAir, night);
 	}
@@ -246,7 +247,7 @@ module.exports = (regl, quality) => {
 					vec3 p = eye + rd * (t.x + (float(i) + jit) * st);
 					acc += mix(skylightVol(p), skylightAt(p), night) * air(p);
 				}
-				float ph = phase(dot(rd, SKY_SUN), 0.55) + 0.05;
+				float ph = phase(dot(rd, SKY_SUN), 0.55) + 0.035;
 				sum += mix(vec3(1.0, 0.86, 0.64), vec3(0.62, 0.74, 1.0) * 1.15, night) * acc * st * ph * strength.x;
 			}
 		}
@@ -307,13 +308,22 @@ module.exports = (regl, quality) => {
 		eye: () => eye,
 		time: regl.context('time'),
 		night: () => env.night,
-		strength: () => {
-			const k = LOOK.shafts * shot.shafts;
-			// at night the moonbeams are the brightest thing in the air
-			const n = env.night;
-			return [0.06 * k * (1 + 0.9 * n), 0.1 * k * (1 + 0.9 * n), 0.07 * k * (1 + 0.4 * n), 0.04 * k * (1 - 0.75 * n)];
-		}
+		strength: () => volStrength
 	});
+
+	// how strong each lit volume is this frame: nothing for the ones the
+	// camera cannot see, so their samples are never taken
+	const volStrength = [0, 0, 0, 0];
+	function setVolumes() {
+		const k = LOOK.shafts * shot.shafts;
+		// at night the moonbeams are the brightest thing in the air
+		const n = env.night;
+		volStrength[0] = cull.box(SKY_BOX) ? 0.06 * k * (1 + 0.9 * n) : 0;
+		volStrength[1] = cull.box(COURT_BOX, false, 'court') ? 0.1 * k * (1 + 0.9 * n) : 0;
+		volStrength[2] = cull.box(WIN_BOX) ? 0.07 * k * (1 + 0.4 * n) : 0;
+		volStrength[3] = cull.box(DOOR_BOX) ? 0.04 * k * (1 - 0.75 * n) : 0;
+		return volStrength[0] + volStrength[1] + volStrength[2] + volStrength[3] > 0.0005;
+	}
 
 
 	/* -------------------------------------------------------
@@ -428,6 +438,15 @@ module.exports = (regl, quality) => {
 
 		vec3 c = fxaa(p);
 
+		// a real lens: towards the corners the colours part by a hair
+		vec2 off = p - 0.5;
+		float edge = dot(off, off);
+		float fringe = smoothstep(0.06, 0.45, edge);
+		if (fringe > 0.0) {
+			c.r = mix(c.r, texture2D(scene, p - off * edge * 0.010).r, fringe);
+			c.b = mix(c.b, texture2D(scene, p + off * edge * 0.010).b, fringe);
+		}
+
 		// depth of field: blend towards the soft picture away from the subject
 		if (aperture > 0.0 && hasDepth > 0.5) {
 			float z = linearDepth(texture2D(depthTex, p).r);
@@ -442,11 +461,12 @@ module.exports = (regl, quality) => {
 
 		// darker, more ambient: the room sinks, the light stays light
 		float L = dot(lin, vec3(0.2126, 0.7152, 0.0722));
-		lin *= mix(0.68, 1.0, smoothstep(0.05, 0.6, L)) * exposure;
+		lin *= mix(0.62, 1.0, smoothstep(0.04, 0.55, L)) * exposure;
 
 		// the light shafts and the glow add light
 		lin += texture2D(shafts, p).rgb;
-		lin += (texture2D(bloomA, p).rgb * 0.45 + texture2D(bloomB, p).rgb * 0.6) * bloomK;
+		// (the wide glow is halation: warm round the sun, cold round the moon)
+		lin += (texture2D(bloomA, p).rgb * 0.45 + texture2D(bloomB, p).rgb * 0.6 * mix(vec3(1.06, 0.94, 0.80), vec3(0.86, 0.94, 1.08), night)) * bloomK;
 
 		// a soft shoulder instead of a hard clip
 		vec3 over = max(lin - 0.7, 0.0);
@@ -479,7 +499,7 @@ module.exports = (regl, quality) => {
 		bloomA: () => quarter[0],
 		bloomB: () => eighth[0],
 		shafts: () => vol[0],
-		res: (ctx) => [ctx.drawingBufferWidth, ctx.drawingBufferHeight],
+		res: () => [scene.width, scene.height],
 		time: regl.context('time'),
 		exposure: () => LOOK.exposure * shot.exposure,
 		vignette: () => Math.min(1, LOOK.vignette + shot.vignette + 0.22 * env.night),
@@ -508,8 +528,12 @@ module.exports = (regl, quality) => {
 
 		// draw the room (drawFn) into the off-screen picture
 		capture(ctx, camera, drawFn) {
-			const W = ctx.drawingBufferWidth, H = ctx.drawingBufferHeight;
-			scene.resize(W, H);
+			// the off-screen picture: the screen's size, or a little smaller
+			// when the frame rate needs it (quality.js)
+			const k = Math.max(0.4, Math.min(1, quality.scale || 1));
+			const W = Math.max(2, Math.round(ctx.drawingBufferWidth * k / 2) * 2);
+			const H = Math.max(2, Math.round(ctx.drawingBufferHeight * k / 2) * 2);
+			if (scene.width !== W || scene.height !== H) scene.resize(W, H);
 			const hw = Math.max(1, Math.ceil(W / 2)), hh = Math.max(1, Math.ceil(H / 2));
 			half.forEach((b) => b.resize(hw, hh));
 			quarter.forEach((b) => b.resize(Math.max(1, Math.ceil(W / 4)), Math.max(1, Math.ceil(H / 4))));
@@ -531,7 +555,7 @@ module.exports = (regl, quality) => {
 			const sz = (b) => [b.width, b.height];
 
 			// light shafts
-			if (hasDepth && quality.post >= 1 && LOOK.shafts * shot.shafts > 0.001) {
+			if (hasDepth && quality.post >= 1 && setVolumes()) {
 				volPass({ out: vol[0] });
 				blurPass({ out: vol[1], src: vol[0], dir: [1, 0], size: sz(vol[0]) });
 				blurPass({ out: vol[0], src: vol[1], dir: [0, 1], size: sz(vol[0]) });
