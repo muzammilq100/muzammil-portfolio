@@ -329,21 +329,23 @@ void main() {
 			t.rgb = vec3(0.022, 0.02, 0.019) + vec3(0.05) * l * l;
 			gloss = 0.55;
 		} else if (kind > 8.5) {
-			// his hair: near black, with the brown in it showing where the
-			// light catches. uv is the bearing of each lock round the crown
-			// (as sine and cosine), its length 1 at the hairline, 2 well inside
-			float lon = atan(v_uv.x, v_uv.y);
-			float edge = clamp(length(v_uv) - 1.0, 0.0, 1.0);
-			float s1 = sin(lon * 37.0 + 1.3 * sin(lon * 5.0));
-			float s2 = sin(lon * 91.0 + 2.0);
-			float s3 = sin(lon * 173.0 + 4.0 * sin(lon * 11.0));
-			hairStreak = 0.5 + 0.22 * s1 + 0.16 * s2 + 0.12 * s3;
-			// the hairline is not a cut edge: it breaks up into the ends of locks
-			// (the outline is cut into the tips of the locks: the builder
-			// marks how far in each tip reaches)
-			if (edge < 0.13 + 0.05 * s2) discard;
-			// very dark brown, the ends a shade lighter
-			t.rgb = vec3(0.072, 0.050, 0.037) * (0.45 + 1.05 * hairStreak) * (1.15 - 0.30 * edge);
+			// his hair: sculpted locks (scripts/avatar/character.py). uv.x is
+			// the lock's number plus the way round it, uv.y the way along it
+			// (-1 marks the close dark cap under the locks)
+			if (v_uv.x < -0.5) {
+				t.rgb = vec3(0.012, 0.010, 0.009);
+				hairStreak = 0.35;
+			} else {
+				float id = floor(v_uv.x), round_ = fract(v_uv.x);
+				float h1 = fract(sin(id * 12.9898) * 43758.5453);
+				// the strands that make up a lock: fine lines running its length
+				float s1 = sin(round_ * 6.2831 * 9.0 + h1 * 6.0 + v_uv.y * 1.5);
+				float s2 = sin(round_ * 6.2831 * 23.0 + h1 * 17.0);
+				hairStreak = 0.5 + 0.26 * s1 + 0.20 * s2;
+				// black, with the brown in it where a strand lightens; no two
+				// locks quite the same, and the ends a shade paler
+				t.rgb = vec3(0.085, 0.064, 0.050) * (0.40 + 1.05 * hairStreak) * (0.78 + 0.44 * h1) * (0.85 + 0.30 * v_uv.y);
+			}
 			gloss = 0.0;
 		} else if (kind > 7.5) {
 			// socks: fine charcoal wool in narrow ribs
@@ -375,19 +377,15 @@ void main() {
 		// the hollows of the folds hold a little shadow
 		t.rgb *= 0.82 + 0.36 * folds;
 	}
-	if (isHair > 0.5) {
-		// the strands run at right angles to the way the bearing changes
-		// across the surface; each one tilts the light a little its own way
-		vec2 q = v_uv / max(dot(v_uv, v_uv), 1e-4);
+	if (isHair > 0.5 && v_uv.x > -0.5) {
+		// the strands run the length of the lock; each one tilts the light
+		// a little its own way
 		vec3 dpx = dFdx(v_pos), dpy = dFdy(v_pos);
-		float dlx = q.y * dFdx(v_uv.x) - q.x * dFdx(v_uv.y);
-		float dly = q.y * dFdy(v_uv.x) - q.x * dFdy(v_uv.y);
-		vec3 across = cross(dpy, N) * dlx + cross(N, dpx) * dly;
-		float al = length(across);
+		vec3 along = cross(dpy, N) * dFdx(v_uv.y) + cross(N, dpx) * dFdy(v_uv.y);
+		float al = length(along);
 		if (al > 1e-7) {
-			across /= al;
-			hairT = normalize(cross(N, across));
-			N = normalize(N + across * (hairStreak - 0.5) * 0.7);
+			hairT = along / al;
+			N = normalize(N + normalize(cross(N, hairT)) * (hairStreak - 0.5) * 0.75);
 		}
 	}
 	// soft daylight in the court, mostly from above
@@ -404,6 +402,11 @@ void main() {
 	vec3 col = t.rgb * light * vec3(1.03, 1.0, 0.95);
 	// skin: a warm glow where light passes through, and a soft sheen
 	col += skin * t.rgb * vec3(0.20, 0.06, 0.03) * (0.4 + sun);
+	// (his skin is a puppet's: matte, and the light sinks a little way
+	// into it, so its shadows are warm and soft, and where it is thin and
+	// turns away from you, ears, nostrils, the edge of a cheek, it glows)
+	float thin = pow(1.0 - max(dot(N, V), 0.0), 2.2);
+	col += skin * t.rgb * vec3(0.55, 0.16, 0.08) * thin * (0.22 + 0.6 * sun) * (1.0 - candle);
 	vec3 H = normalize(SHAFT + V);
 	col += vec3(1.0, 0.95, 0.85) * pow(max(dot(N, H), 0.0), 40.0) * sun * (0.06 + 0.1 * skin);
 	// polish on leather and metal, and a soft sheen on the cloth
@@ -421,6 +424,7 @@ void main() {
 		vec3 rl = roomLight(v_pos, N, V, clamp(gloss, 0.0, 1.0), spc);
 		col = t.rgb * rl * mix(1.3, 0.95, skin) + spc * (0.15 + gloss);
 		col += skin * t.rgb * vec3(0.16, 0.05, 0.02) * rl;
+		col += skin * t.rgb * vec3(0.55, 0.16, 0.08) * pow(1.0 - max(dot(N, V), 0.0), 2.2) * rl * 0.7;
 		float edge = pow(1.0 - max(dot(N, V), 0.0), 2.6);
 		col += (vec3(0.16) * cloth + vec3(0.05) * (1.0 - cloth)) * edge * rl * 1.6;
 	}
@@ -452,7 +456,10 @@ void main() {
 		float band1 = pow(max(1.0 - a1 * a1, 0.0), 26.0);
 		float band2 = pow(max(1.0 - a2 * a2, 0.0), 7.0);
 		float lit = (candle > 0.5 ? 0.85 : 0.45 + sun) * mix(1.0, 0.4, night) * max(dot(N, Lh) * 0.6 + 0.4, 0.0);
-		col += (vec3(0.80, 0.76, 0.70) * band1 * 0.17 + vec3(0.36, 0.22, 0.12) * band2 * 0.11) * lit * (0.5 + hairStreak);
+		col += (vec3(0.80, 0.76, 0.70) * band1 * 0.30 + vec3(0.36, 0.24, 0.14) * band2 * 0.20) * lit * (0.5 + hairStreak);
+		// and each lock is edged with light where it turns away, which is
+		// what separates one from the next
+		col += vec3(0.13, 0.11, 0.09) * pow(1.0 - max(dot(N, V), 0.0), 2.0) * lit * (0.6 + 0.8 * hairStreak);
 		// the locks sink into shadow between one another
 		col *= 0.72 + 0.56 * smoothstep(0.25, 0.8, hairStreak);
 	}

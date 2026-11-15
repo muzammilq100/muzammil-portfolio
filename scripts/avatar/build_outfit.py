@@ -10,9 +10,9 @@ Rebuilds the parts of res/avatar/ that are made here rather than scanned:
                pleated pinstripe trousers, and a narrow maroon scarf: once
                round the neck, one end down the front over the coat, the
                other thrown back over the shoulder
-  the hair     short and wavy, not cropped: a full head of hair combed
-               loosely back from the crown in soft locks, drawn as solid
-               hair (not see-through cards), keeping his own hairline
+  the head, skin and hair
+               see character.py: his scanned head softened into a puppet's,
+               painted skin, and some three hundred sculpted locks of hair
 
 Everything is built round his skeleton in its rest pose (arms straight
 out; x to his left, y up, z in front of him; metres at the model's own
@@ -32,7 +32,10 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 RES = os.path.join(HERE, '..', '..', 'res', 'avatar')
 PI = np.pi
 
-MADE = ['trousers', 'knit', 'coat', 'skirt', 'belt', 'collar', 'lapels', 'scarf', 'hair', 'avaturn_hair_0']
+MADE = ['trousers', 'knit', 'coat', 'skirt', 'belt', 'collar', 'lapels', 'scarf', 'hair', 'avaturn_hair_0',
+        'Head_Mesh', 'Eye_Mesh', 'EyeAO_Mesh', 'Eyelash_Mesh']
+HEAD_PARTS = ['Head_Mesh', 'Eye_Mesh', 'EyeAO_Mesh', 'Eyelash_Mesh']
+LEVEL = 'A'      # how far the head is stylised (character.py)
 
 # ---------------------------------------------------------------- file
 
@@ -473,178 +476,92 @@ def scarf():
 
 # ---------------------------------------------------------------- the hair
 
-def hair(buf, old_hair, head):
-    """
-    Short wavy hair, the waves well defined: full and tousled on top,
-    falling in a loose fringe either side of the forehead, over the top of
-    the ears, and down to the nape, where the ends flick out. Measured
-    outwards from the middle of his head in every direction: there is hair
-    where his old hair was (so the hairline is his own), shaped into ten
-    or so thick locks that run out from the crown, each one swinging from
-    side to side as it goes and rising and falling along its length; the
-    outline breaks up into the tips of the locks.
-    uv: (sin, cos) of the lock's bearing round the crown; their length is
-    1 at the very tips rising to 2 well inside (avatar.js cuts the tips).
-    """
-    P = Part('hair', 9)
-    c0 = np.array([0.0, 1.765, -0.012])
-    # the crown: up and a little back
-    axis = np.array([0.0, 0.94, -0.34]); axis /= np.linalg.norm(axis)
-    ex = np.array([1.0, 0, 0]); ez = np.cross(ex, axis)
-    LA, LO = 56, 160
-    SPAN = PI * 0.80
-    def direction(la, lo):   # la: 0 at the crown, growing towards the chin
-        return axis * np.cos(la) + (ex * np.sin(lo) + ez * np.cos(lo)) * np.sin(la)
-    D = np.array([[direction(i / LA * SPAN, j / LO * 2 * PI) for j in range(LO)] for i in range(LA + 1)])
-    def reach(pts, cone):
-        d = pts - c0; r = np.linalg.norm(d, axis=1); u = d / r[:, None]
-        out = np.zeros((LA + 1, LO))
-        for i in range(LA + 1):
-            for j in range(LO):
-                m = (u @ D[i, j]) > cone
-                out[i, j] = r[m].max() if m.any() else 0
-        return out
-    def cast(mesh):
-        # the distance from the middle of the head to the mesh's surface, along every direction
-        T = mesh['pos'][mesh['idx'].astype(int)]
-        v0 = T[:, 0] - c0; e1 = T[:, 1] - T[:, 0]; e2 = T[:, 2] - T[:, 0]
-        out = np.zeros((LA + 1, LO))
-        for i in range(LA + 1):
-            for j in range(LO):
-                dv = D[i, j]
-                pv = np.cross(dv, e2); det = (e1 * pv).sum(1)
-                ok = np.abs(det) > 1e-12
-                inv = np.where(ok, 1.0 / np.where(ok, det, 1), 0)
-                tv = -v0
-                uu = (tv * pv).sum(1) * inv
-                qv = np.cross(tv, e1)
-                vv = (qv @ dv) * inv
-                tt = (e2 * qv).sum(1) * inv
-                hit = ok & (uu >= -1e-6) & (vv >= -1e-6) & (uu + vv <= 1 + 1e-6) & (tt > 0)
-                out[i, j] = tt[hit].max() if hit.any() else 0
-        return out
-    rh = reach(old_hair['pos'], np.cos(0.11))
-    rs = cast(head)
-    for _ in range(4):   # (a direction that slips between triangles takes its neighbours' value)
-        z = rs <= 0
-        if not z.any(): break
-        nb = np.stack([np.roll(rs, 1, 1), np.roll(rs, -1, 1), np.vstack([rs[:1], rs[:-1]]), np.vstack([rs[1:], rs[-1:]])])
-        rs = np.where(z, nb.max(0), rs)
-    up = lambda m: np.vstack([m[:1], m[:-1]])
-    dn = lambda m: np.vstack([m[1:], m[-1:]])
-    def grow(m): return m | np.roll(m, 1, 1) | np.roll(m, -1, 1) | up(m) | dn(m)
-    def shrink(m): return m & np.roll(m, 1, 1) & np.roll(m, -1, 1) & up(m) & dn(m)
-    has = (rh > rs - 0.003) & (rh > 0)
-    has = shrink(shrink(shrink(grow(grow(grow(has))))))     # fill the gaps the old thin cards left
-    # the length: over the top of the ear at the sides, down to the nape behind
-    Y = c0[1] + D[:, :, 1] * rs
-    ZF = D[:, :, 2]
-    floor = 1.738 + (1.676 - 1.738) * smooth(-0.15, -0.75, ZF)
-    has &= ~((ZF <= 0.55) & (Y < floor))
-    # the fringe: locks fall forward over the forehead, longest either side
-    # of the middle, as hair parted loosely in the centre falls
-    for j in range(LO):
-        col = np.where(has[:, j] & (ZF[:, j] > 0.3))[0]
-        if not len(col): continue
-        ih = col.max()
-        if ZF[ih, j] < 0.55: continue
-        sx = abs(D[ih, j, 0])
-        n = int(round(1.0 + 3.4 * float(smooth(0.06, 0.30, sx)) * (1 - float(smooth(0.55, 0.85, sx)))))
-        has[ih + 1: min(LA, ih + 1 + n), j] = True
-    # smooth the old hair's outline (it was lumpy), keeping the scalp underneath
-    r = np.where(has, np.maximum(rh, rs), rs)
-    for _ in range(6):
-        r = (r + np.roll(r, 1, 1) + np.roll(r, -1, 1) + up(r) + dn(r)) / 5
-    # how far inside the hair each point is (0 at the edge)
-    depth = np.zeros_like(r); cur = has.copy()
-    for k in range(1, 11):
-        er = shrink(cur)
-        depth[er] = k; cur = er
-    depth = np.clip(depth / 7.0, 0, 1)
-    G, U, Wt = [], [], []
-    LOCKS = 10
-    for i in range(LA + 1):
-        la = i / LA * SPAN
-        g, u, w = [], [], []
-        for j in range(LO):
-            lo = j / LO * 2 * PI
-            dv = D[i, j]
-            d = depth[i, j]
-            ds = d * d * (3 - 2 * d)
-            top = np.exp(-(la / 0.95) ** 2)
-            thick = max(r[i, j] - rs[i, j], 0.0)
-            thick = min(max(thick, 0.020 + 0.012 * top), 0.030 + 0.010 * top)
-            # each lock swings from side to side as it runs out from the crown ...
-            lock = lo * LOCKS / (2 * PI) + 0.78 * np.sin(la * 4.6 + lo * 2.0) + 0.24 * np.sin(la * 8.3 - lo * 3.0)
-            ridge = (0.5 + 0.5 * np.cos(2 * PI * lock)) ** 0.8
-            # ... and rises and falls along its length: the wave
-            wave = 0.5 + 0.5 * np.sin(la * 8.6 + lo * 4.0 + 2.0 * np.sin(lo * 3.0))
-            body = float(smooth(0.03, 0.30, la))
-            bump = (0.0135 * ridge + 0.0065 * wave * ridge) * body * (0.45 + 0.55 * ds)
-            # the edge: it does not taper into the skin, the ends stand off a
-            # little and flick out (most at the nape and over the ears)
-            lip = 0.34 + 0.10 * float(smooth(0.2, 0.7, dv[2]))
-            flick = 0.009 * (1 - ds) * ridge * float(smooth(0.3, -0.5, dv[2]))
-            rad = rs[i, j] + thick * (lip + (1 - lip) * ds) + bump + flick
-            g.append(rad)
-            # between the locks the outline is cut back further: the tips
-            e = float(np.clip(d * 1.15 - 0.60 * (1 - ridge) * (1 - d), 0, 1))
-            m = 1.0 + e
-            u.append([np.sin(lo) * m, np.cos(lo) * m]); w.append({'Head': 1.0})
-        G.append(g); U.append(u); Wt.append(w)
-    # (one light pass of smoothing, so a lock running slantwise across the
-    # grid has a clean edge rather than a saw's)
-    RAD = np.array(G)
-    RAD = (RAD * 2 + np.roll(RAD, 1, 1) + np.roll(RAD, -1, 1) + up(RAD) + dn(RAD)) / 6
-    RAD = np.maximum(RAD, rs + 0.003)
-    G = (c0 + D * RAD[:, :, None]).tolist()
-    base = P.add_grid(G, U, Wt, closed=True, flip=True)
-    # keep only where there is hair (and one ring of cells beyond, to cut the tips in)
-    keep = grow(has)
-    idx = np.array(P.idx).reshape(-1, 3)
-    ok = keep.reshape(-1)[idx - base].all(axis=1)
-    P.idx = idx[ok].reshape(-1).tolist()
-    return P
-
 # ---------------------------------------------------------------- write
 
 def main():
+    import character as CH
     meta, buf = read()
     bones = meta['bones']
     byname = {b['name']: i for i, b in enumerate(bones)}
     every = meta['meshes'] + meta.get('unused', [])
-    find = lambda n: next(m for m in every if m['name'] == n)
+    # (the scanned originals: the entries this script did not make)
+    find = lambda n: next(m for m in every if m['name'] == n and not m.get('made'))
     old_hair = mesh_arrays(buf, find('avaturn_hair_0'))
-    head = mesh_arrays(buf, find('Head_Mesh'))
 
-    parts = [trousers(), knit(), collar(), belt(), coat(), skirt(), lapels(), scarf(), hair(buf, old_hair, head)]
+    parts = [trousers(), knit(), collar(), belt(), coat(), skirt(), lapels(), scarf()]
+
+    # ---- his head: the scan, softened and a little larger than life
+    scan = {n: mesh_arrays(buf, find(n)) for n in HEAD_PARTS}
+    S = CH.stylise_head(scan['Head_Mesh'], {n: scan[n]['pos'] for n in HEAD_PARTS[1:]}, LEVEL)
+    grow = CH.LEVELS[LEVEL]['head'] * CH.LEVELS[LEVEL]['eye']
+    # ---- his hair
+    (cp, cu, ci), (kp, ku, ki), nlocks = CH.hair_clumps(S['Head_Mesh'], scan['Head_Mesh']['idx'], CH.head_scale(old_hair['pos'], LEVEL), LEVEL)
+    # ---- his skin
+    face = CH.paint_skin(0.0)
+    face.save(os.path.join(RES, 'Head.jpg'), quality=90)
+    CH.body_skin(face).save(os.path.join(RES, 'Body.jpg'), quality=90)
 
     keep = [m for m in meta['meshes'] if m['name'] not in MADE]
     unused = [m for m in every if m['name'] in MADE and m.get('made') is None]
     # (parts made by an earlier run are dropped; their bytes are cut off the end of the file)
     end = meta.get('made_from', len(buf))
     out = bytearray(buf[:end])
+    def put(arr):
+        while len(out) % 4: out.append(0)
+        o = len(out); out.extend(arr.tobytes()); return o
     made = []
-    built = {}
     for P in parts:
         A = P.finish(byname)
-        built[P.name] = A
         me = dict(name=P.name, n=int(len(A['pos'])), ni=int(A['idx'].size), tex=None, kind=P.kind, blend=False, morphs={}, made=True)
         if P.grid: me['grid'] = P.grid
-        for key in ('pos', 'nrm', 'uv', 'jnt', 'wgt', 'idx'):
-            while len(out) % 4: out.append(0)
-            me[key] = len(out)
-            out += A[key].tobytes()
+        for key in ('pos', 'nrm', 'uv', 'jnt', 'wgt', 'idx'): me[key] = put(A[key])
         made.append(me)
-    # drawn first to last: clothes, then his scan (hair last of the solid parts)
-    order = [m for m in made if m['name'] != 'hair'] + keep + [m for m in made if m['name'] == 'hair']
+    # the head and eyes: the scan's own triangles, bone weights, picture and blink, moved to the new shape
+    heads = []
+    for n in HEAD_PARTS:
+        src = find(n); A = scan[n]
+        pos = S[n].astype(np.float32); idx = A['idx'].astype(int)
+        nr = np.zeros_like(pos, dtype=np.float64)
+        fn = np.cross(pos[idx[:, 1]] - pos[idx[:, 0]], pos[idx[:, 2]] - pos[idx[:, 0]]).astype(np.float64)
+        for k in range(3): np.add.at(nr, idx[:, k], fn)
+        if n == 'Head_Mesh':
+            # (the same point on either side of a seam in the picture shares one direction)
+            key = np.round(pos * 20000).astype(np.int64)
+            _, inv = np.unique(key, axis=0, return_inverse=True); inv = inv.reshape(-1)
+            acc = np.zeros((inv.max() + 1, 3)); np.add.at(acc, inv, nr); nr = acc[inv]
+        nr /= (np.linalg.norm(nr, axis=1, keepdims=True) + 1e-12)
+        me = dict(src); me['made'] = True
+        me['pos'] = put(pos); me['nrm'] = put(nr.astype(np.float32))
+        mo = {}
+        for k, mm in src.get('morphs', {}).items():
+            d = np.frombuffer(buf, np.float32, mm['n'] * 3, mm['d']) * grow
+            mo[k] = dict(mm); mo[k]['d'] = put(d.astype(np.float32))
+        me['morphs'] = mo
+        heads.append(me)
+    # the hair: the locks, and the close cap under them (marked by uv.x = -1)
+    hp = np.vstack([kp, cp]); hu = np.vstack([ku, cu]); hi = np.vstack([ki, ci + len(kp)])
+    nr = np.zeros_like(hp); fn = np.cross(hp[hi[:, 1]] - hp[hi[:, 0]], hp[hi[:, 2]] - hp[hi[:, 0]])
+    for k in range(3): np.add.at(nr, hi[:, k], fn)
+    nr /= (np.linalg.norm(nr, axis=1, keepdims=True) + 1e-12)
+    # (pointing away from the middle of the head)
+    c0 = CH.head_scale(np.array([[0.0, 1.765, -0.012]]), LEVEL)[0]
+    capn = (kp - c0); capn /= np.linalg.norm(capn, axis=1, keepdims=True)
+    nr[:len(kp)] = capn
+    assert len(hp) < 65536
+    jn = np.zeros((len(hp), 4), np.uint8); jn[:, 0] = byname['Head']
+    wg = np.zeros((len(hp), 4), np.float32); wg[:, 0] = 1
+    hm = dict(name='hair', n=int(len(hp)), ni=int(hi.size), tex=None, kind=9, blend=False, morphs={}, made=True)
+    for key, arr in (('pos', hp.astype(np.float32)), ('nrm', nr.astype(np.float32)), ('uv', hu.astype(np.float32)), ('jnt', jn), ('wgt', wg), ('idx', hi.astype(np.uint16))):
+        hm[key] = put(arr)
+    # drawn first to last: clothes, the scan's hands and shoes, the head, the hair
+    order = made + keep + heads + [hm]
     meta['meshes'] = order
     meta['unused'] = unused
     meta['made_from'] = end
     open(os.path.join(RES, 'avatar.bin'), 'wb').write(bytes(out))
     json.dump(meta, open(os.path.join(RES, 'avatar.json'), 'w'), separators=(',', ':'))
-    print('wrote', len(out), 'bytes;', ', '.join('%s %d' % (m['name'], m['n']) for m in made))
-    return meta, bytes(out), built
+    tris = sum(m['ni'] // 3 for m in order)
+    print('wrote', len(out), 'bytes;', nlocks, 'locks;', ', '.join('%s %d' % (m['name'], m['ni'] // 3) for m in order), '; total', tris, 'triangles')
 
 if __name__ == '__main__':
     main()
