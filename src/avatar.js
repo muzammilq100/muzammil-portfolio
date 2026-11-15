@@ -339,8 +339,11 @@ void main() {
 			float s3 = sin(lon * 173.0 + 4.0 * sin(lon * 11.0));
 			hairStreak = 0.5 + 0.22 * s1 + 0.16 * s2 + 0.12 * s3;
 			// the hairline is not a cut edge: it breaks up into the ends of locks
-			if (edge < 0.10 + 0.20 * (0.5 + 0.5 * sin(lon * 29.0)) * (0.5 + 0.5 * s2)) discard;
-			t.rgb = vec3(0.050, 0.037, 0.030) * (0.50 + 1.0 * hairStreak) * (0.75 + 0.25 * edge);
+			// (the outline is cut into the tips of the locks: the builder
+			// marks how far in each tip reaches)
+			if (edge < 0.13 + 0.05 * s2) discard;
+			// very dark brown, the ends a shade lighter
+			t.rgb = vec3(0.072, 0.050, 0.037) * (0.45 + 1.05 * hairStreak) * (1.15 - 0.30 * edge);
 			gloss = 0.0;
 		} else if (kind > 7.5) {
 			// socks: fine charcoal wool in narrow ribs

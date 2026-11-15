@@ -77,12 +77,12 @@ const ROOM = [
 	{ eye: [HIM[0] + 1.0, 1.14, HIM[2] + 1.72], target: [HANDS[0] + 0.05, 0.80, HANDS[2] + 0.05], fov: 40, aperture: 1.0, to: HANDS }
 ];
 const dist3 = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
-const lookOfRoom = (r) => ({ letterbox: 0.55, exposure: 1.3, focus: dist3(r.eye, r.to || HIM), aperture: r.aperture, vignette: 0.42, shafts: 0.0 });
-const LOOK_PEEK = { letterbox: 0.55, exposure: 2.1, focus: 6.2, aperture: 0.55, vignette: 0.45, shafts: 0.0 };
+const lookOfRoom = (r) => ({ fade: 0, letterbox: 0.55, exposure: 1.3, focus: dist3(r.eye, r.to || HIM), aperture: r.aperture, vignette: 0.42, shafts: 0.0 });
+const LOOK_PEEK = { fade: 0, letterbox: 0.55, exposure: 2.1, focus: 6.2, aperture: 0.55, vignette: 0.45, shafts: 0.0 };
 
 // how each part of the visit is seen
-const LOOK_BOOTH = { letterbox: 0.55, exposure: 2.0, focus: 0.82, aperture: 1.1, vignette: 0.48, shafts: 0.0 };
-const LOOK_PAPER = { letterbox: 0.55, exposure: 1.8, focus: 0.42, aperture: 1.3, vignette: 0.5, shafts: 0.0 };
+const LOOK_BOOTH = { fade: 0, letterbox: 0.55, exposure: 2.0, focus: 0.82, aperture: 1.1, vignette: 0.48, shafts: 0.0 };
+const LOOK_PAPER = { fade: 0, letterbox: 0.55, exposure: 1.8, focus: 0.42, aperture: 1.3, vignette: 0.5, shafts: 0.0 };
 
 const CSS = `
 .conf-ui { position: absolute; inset: 0; pointer-events: none; z-index: 6; font-family: 'Cormorant Garamond', Georgia, serif; color: #f4ecdf; }
@@ -362,6 +362,8 @@ module.exports = function createConfession(opts) {
 				seq.u = Math.min(1, seq.u + dt / seq.T);
 				cam = seq.path(seq.raw ? seq.u : ease(seq.u));
 				look = lookMix(seq.lookFrom, seq.lookTo, smooth(0.1, 0.9, seq.u));
+				// (begun with a jump from elsewhere: up from black, quickly)
+				if (seq.raw) look.fade = (fromLook.fade || 0) * (1 - smooth(0.0, 0.12, seq.u));
 				if (seq.u >= 1) { seq.moving = false; seq.rest = 0; hint.textContent = onHint(); show('hint'); }
 			} else {
 				seq.rest += dt;
@@ -453,6 +455,8 @@ module.exports = function createConfession(opts) {
 				: [leaveFrom.target, [-1.5, 1.7, 45.2], [2.0, 1.8, 44.5], [6.0, 1.9, 44.3], back.target];
 			cam = { eye: curve(eyes, e), target: curve(tgts, e), fov: mix(leaveFrom.fov, back.fov, e), roll: back.roll * e };
 			look = lookMix(leaveLook || LOOK_BOOTH, fromLook, smooth(0.1, 0.7, u));
+			// (and back down to black at the very end, if it began that way)
+			look.fade = (fromLook.fade || 0) * smooth(0.82, 1.0, u);
 			if (u >= 1) {
 				active = false;
 				C.STATE.active = false;

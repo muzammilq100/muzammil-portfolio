@@ -475,30 +475,33 @@ def scarf():
 
 def hair(buf, old_hair, head):
     """
-    Short wavy hair. Measured outwards from the middle of his head in every
-    direction: where the old hair stood out from the scalp there is hair,
-    as far out as the old hair reached (so his hairline and the length are
-    his own), smoothed, then shaped into soft locks that run from the crown
-    forwards, down the sides and down the back, each one waving as it goes.
-    uv: (sin, cos) of the lock's bearing round the crown, their length 1
-    at the hairline rising to 2 well inside (avatar.js thins the edge).
+    Short wavy hair, the waves well defined: full and tousled on top,
+    falling in a loose fringe either side of the forehead, over the top of
+    the ears, and down to the nape, where the ends flick out. Measured
+    outwards from the middle of his head in every direction: there is hair
+    where his old hair was (so the hairline is his own), shaped into ten
+    or so thick locks that run out from the crown, each one swinging from
+    side to side as it goes and rising and falling along its length; the
+    outline breaks up into the tips of the locks.
+    uv: (sin, cos) of the lock's bearing round the crown; their length is
+    1 at the very tips rising to 2 well inside (avatar.js cuts the tips).
     """
     P = Part('hair', 9)
     c0 = np.array([0.0, 1.765, -0.012])
     # the crown: up and a little back
     axis = np.array([0.0, 0.94, -0.34]); axis /= np.linalg.norm(axis)
-    ex = np.array([1.0, 0, 0]); ez = np.cross(ex, axis)        # ez points forward-ish and up
-    LA, LO = 44, 128
-    def direction(la, lo):   # la: 0 at the crown .. pi at the chin
+    ex = np.array([1.0, 0, 0]); ez = np.cross(ex, axis)
+    LA, LO = 56, 160
+    SPAN = PI * 0.80
+    def direction(la, lo):   # la: 0 at the crown, growing towards the chin
         return axis * np.cos(la) + (ex * np.sin(lo) + ez * np.cos(lo)) * np.sin(la)
+    D = np.array([[direction(i / LA * SPAN, j / LO * 2 * PI) for j in range(LO)] for i in range(LA + 1)])
     def reach(pts, cone):
         d = pts - c0; r = np.linalg.norm(d, axis=1); u = d / r[:, None]
         out = np.zeros((LA + 1, LO))
         for i in range(LA + 1):
-            la = i / LA * PI * 0.80
             for j in range(LO):
-                dv = direction(la, j / LO * 2 * PI)
-                m = (u @ dv) > cone
+                m = (u @ D[i, j]) > cone
                 out[i, j] = r[m].max() if m.any() else 0
         return out
     def cast(mesh):
@@ -507,9 +510,8 @@ def hair(buf, old_hair, head):
         v0 = T[:, 0] - c0; e1 = T[:, 1] - T[:, 0]; e2 = T[:, 2] - T[:, 0]
         out = np.zeros((LA + 1, LO))
         for i in range(LA + 1):
-            la = i / LA * PI * 0.80
             for j in range(LO):
-                dv = direction(la, j / LO * 2 * PI)
+                dv = D[i, j]
                 pv = np.cross(dv, e2); det = (e1 * pv).sum(1)
                 ok = np.abs(det) > 1e-12
                 inv = np.where(ok, 1.0 / np.where(ok, det, 1), 0)
@@ -523,74 +525,84 @@ def hair(buf, old_hair, head):
         return out
     rh = reach(old_hair['pos'], np.cos(0.11))
     rs = cast(head)
-    # (a direction that slips between triangles takes its neighbours' value)
-    for _ in range(4):
+    for _ in range(4):   # (a direction that slips between triangles takes its neighbours' value)
         z = rs <= 0
         if not z.any(): break
         nb = np.stack([np.roll(rs, 1, 1), np.roll(rs, -1, 1), np.vstack([rs[:1], rs[:-1]]), np.vstack([rs[1:], rs[-1:]])])
         rs = np.where(z, nb.max(0), rs)
+    up = lambda m: np.vstack([m[:1], m[:-1]])
+    dn = lambda m: np.vstack([m[1:], m[-1:]])
+    def grow(m): return m | np.roll(m, 1, 1) | np.roll(m, -1, 1) | up(m) | dn(m)
+    def shrink(m): return m & np.roll(m, 1, 1) & np.roll(m, -1, 1) & up(m) & dn(m)
     has = (rh > rs - 0.003) & (rh > 0)
-    # (fill the gaps the old thin cards left over the temples and behind the ears)
-    def grow(m): return m | np.roll(m, 1, 1) | np.roll(m, -1, 1) | np.vstack([m[:1], m[:-1]]) | np.vstack([m[1:], m[-1:]])
-    def shrink(m): return m & np.roll(m, 1, 1) & np.roll(m, -1, 1) & np.vstack([m[:1], m[:-1]]) & np.vstack([m[1:], m[-1:]])
-    has = shrink(shrink(shrink(grow(grow(grow(has))))))
-    # short, but not cropped: it stops at the top of the ear at the sides
-    # and a little above the collar at the back (the old hair hung to the jaw)
-    for i in range(LA + 1):
-        la = i / LA * PI * 0.80
-        for j in range(LO):
-            dv = direction(la, j / LO * 2 * PI)
-            y = c0[1] + dv[1] * rs[i, j]
-            zf = dv[2]
-            if zf > 0.55: continue                       # the front hairline is his own
-            floor = 1.752 + (1.704 - 1.752) * float(smooth(-0.15, -0.75, zf))
-            if y < floor: has[i, j] = False
+    has = shrink(shrink(shrink(grow(grow(grow(has))))))     # fill the gaps the old thin cards left
+    # the length: over the top of the ear at the sides, down to the nape behind
+    Y = c0[1] + D[:, :, 1] * rs
+    ZF = D[:, :, 2]
+    floor = 1.738 + (1.676 - 1.738) * smooth(-0.15, -0.75, ZF)
+    has &= ~((ZF <= 0.55) & (Y < floor))
+    # the fringe: locks fall forward over the forehead, longest either side
+    # of the middle, as hair parted loosely in the centre falls
+    for j in range(LO):
+        col = np.where(has[:, j] & (ZF[:, j] > 0.3))[0]
+        if not len(col): continue
+        ih = col.max()
+        if ZF[ih, j] < 0.55: continue
+        sx = abs(D[ih, j, 0])
+        n = int(round(1.0 + 3.4 * float(smooth(0.06, 0.30, sx)) * (1 - float(smooth(0.55, 0.85, sx)))))
+        has[ih + 1: min(LA, ih + 1 + n), j] = True
     # smooth the old hair's outline (it was lumpy), keeping the scalp underneath
-    r = np.where(has, rh, rs)
-    for _ in range(5):
-        r = (r + np.roll(r, 1, 1) + np.roll(r, -1, 1) + np.vstack([r[:1], r[:-1]]) + np.vstack([r[1:], r[-1:]])) / 5
-    # how far inside the hair each point is (0 at the hairline)
+    r = np.where(has, np.maximum(rh, rs), rs)
+    for _ in range(6):
+        r = (r + np.roll(r, 1, 1) + np.roll(r, -1, 1) + up(r) + dn(r)) / 5
+    # how far inside the hair each point is (0 at the edge)
     depth = np.zeros_like(r); cur = has.copy()
-    for k in range(1, 10):
-        er = cur & np.roll(cur, 1, 1) & np.roll(cur, -1, 1) & np.vstack([cur[:1], cur[:-1]]) & np.vstack([cur[1:], cur[-1:]])
+    for k in range(1, 11):
+        er = shrink(cur)
         depth[er] = k; cur = er
-    depth = np.clip(depth / 6.0, 0, 1)
-    # body: never thinner than a good layer of hair, fullest on top
+    depth = np.clip(depth / 7.0, 0, 1)
     G, U, Wt = [], [], []
-    LOCKS = 11
+    LOCKS = 10
     for i in range(LA + 1):
-        la = i / LA * PI * 0.80
+        la = i / LA * SPAN
         g, u, w = [], [], []
         for j in range(LO):
             lo = j / LO * 2 * PI
-            dv = direction(la, lo)
+            dv = D[i, j]
             d = depth[i, j]
-            thick = max(r[i, j] - rs[i, j], 0.0)
-            # a good layer of hair everywhere, a little more on top, never a tall block
-            lo_t = 0.017 + 0.009 * np.exp(-(la / 0.9) ** 2)
-            hi_t = 0.026 + 0.008 * np.exp(-(la / 0.9) ** 2)
-            # it tapers into the skin at the sides and the nape (no rim, like a
-            # cap's), and keeps some lift along the front hairline
-            lip = 0.06 + 0.34 * float(smooth(0.2, 0.7, dv[2]))
             ds = d * d * (3 - 2 * d)
-            thick = min(max(thick, lo_t), hi_t) * (lip + (1 - lip) * ds)
-            # the locks: each wanders from side to side as it runs out from the crown
-            lock = lo * LOCKS / (2 * PI) + 0.42 * np.sin(la * 4.2 + lo * 2.0) + 0.16 * np.sin(la * 7.5 - lo * 3.0)
-            ridge = 0.5 + 0.5 * np.cos(2 * PI * lock)
-            wave = 0.5 + 0.5 * np.sin(la * 7.0 + lo * 5.0)
-            bump = (0.0095 * ridge + 0.0050 * wave) * float(smooth(0.05, 0.40, la)) * (0.35 + 0.65 * d)
-            rad = rs[i, j] + thick + bump
-            p = c0 + dv * rad
-            g.append(p.tolist())
-            m = 1.0 + d
+            top = np.exp(-(la / 0.95) ** 2)
+            thick = max(r[i, j] - rs[i, j], 0.0)
+            thick = min(max(thick, 0.020 + 0.012 * top), 0.030 + 0.010 * top)
+            # each lock swings from side to side as it runs out from the crown ...
+            lock = lo * LOCKS / (2 * PI) + 0.78 * np.sin(la * 4.6 + lo * 2.0) + 0.24 * np.sin(la * 8.3 - lo * 3.0)
+            ridge = (0.5 + 0.5 * np.cos(2 * PI * lock)) ** 0.8
+            # ... and rises and falls along its length: the wave
+            wave = 0.5 + 0.5 * np.sin(la * 8.6 + lo * 4.0 + 2.0 * np.sin(lo * 3.0))
+            body = float(smooth(0.03, 0.30, la))
+            bump = (0.0135 * ridge + 0.0065 * wave * ridge) * body * (0.45 + 0.55 * ds)
+            # the edge: it does not taper into the skin, the ends stand off a
+            # little and flick out (most at the nape and over the ears)
+            lip = 0.34 + 0.10 * float(smooth(0.2, 0.7, dv[2]))
+            flick = 0.009 * (1 - ds) * ridge * float(smooth(0.3, -0.5, dv[2]))
+            rad = rs[i, j] + thick * (lip + (1 - lip) * ds) + bump + flick
+            g.append(rad)
+            # between the locks the outline is cut back further: the tips
+            e = float(np.clip(d * 1.15 - 0.60 * (1 - ridge) * (1 - d), 0, 1))
+            m = 1.0 + e
             u.append([np.sin(lo) * m, np.cos(lo) * m]); w.append({'Head': 1.0})
         G.append(g); U.append(u); Wt.append(w)
+    # (one light pass of smoothing, so a lock running slantwise across the
+    # grid has a clean edge rather than a saw's)
+    RAD = np.array(G)
+    RAD = (RAD * 2 + np.roll(RAD, 1, 1) + np.roll(RAD, -1, 1) + up(RAD) + dn(RAD)) / 6
+    RAD = np.maximum(RAD, rs + 0.003)
+    G = (c0 + D * RAD[:, :, None]).tolist()
     base = P.add_grid(G, U, Wt, closed=True, flip=True)
-    # keep only where there is hair (and one ring of cells beyond, to fade out on)
-    keep = has | np.roll(has, 1, 1) | np.roll(has, -1, 1) | np.vstack([has[:1], has[:-1]]) | np.vstack([has[1:], has[-1:]])
+    # keep only where there is hair (and one ring of cells beyond, to cut the tips in)
+    keep = grow(has)
     idx = np.array(P.idx).reshape(-1, 3)
-    vi = idx - base
-    ok = keep.reshape(-1)[vi].all(axis=1)
+    ok = keep.reshape(-1)[idx - base].all(axis=1)
     P.idx = idx[ok].reshape(-1).tolist()
     return P
 

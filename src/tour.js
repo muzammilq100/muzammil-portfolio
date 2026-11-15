@@ -1117,6 +1117,8 @@ const CSS = `
 	gap: 8px;
 }
 .tour-links .tour-free { position: static; }
+.tour-note { display: inline-flex; align-items: center; gap: 8px; }
+.tour-note svg { flex: none; opacity: .9; }
 .tour-icon {
 	display: flex;
 	align-items: center;
@@ -1414,6 +1416,11 @@ button.tour-icon { padding: 0; cursor: pointer; font: inherit; }
 	.tour-links { gap: 6px; }
 	.tour-icon { width: 40px; height: 40px; }
 	.tour-links .tour-free { padding: 0 12px; letter-spacing: .12em; }
+	/* five round buttons in the row: a touch smaller, so his name beside them stays clear */
+	.tour-links { gap: 5px; }
+	.tour-icon { width: 36px; height: 36px; }
+	.tour-links .tour-note { width: 36px; min-height: 36px; height: 36px; padding: 0; justify-content: center; border-radius: 50%; }
+	.tour-note span { display: none; }
 	.tour-contact { font-size: 15px; }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -1504,6 +1511,13 @@ module.exports = function createTour(opts) {
 	// Day / Night, first in the row
 	links.insertBefore(require('./lighttoggle')('tour-icon'), links.firstChild);
 	links.insertBefore(require('./sound').button('tour-icon'), links.firstChild.nextSibling);
+	// "Leave a note": straight to the piano room and the confessional,
+	// from anywhere in the tour (words on a wide screen, a pen on a phone)
+	const noteBtn = el('button', 'tour-free tour-note',
+		'<svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 4c-7 1-11.5 5.5-13 13l-1.5 3 3-1.5c7.500-1.500 12-6 13-13z"/><path d="M5.5 20L13 12.500"/></svg><span>Leave a note</span>');
+	noteBtn.type = 'button';
+	noteBtn.setAttribute('aria-label', 'Leave a note: go to the piano room and the confessional');
+	links.appendChild(noteBtn);
 	if (CAN_WALK) links.appendChild(free);
 
 	const progress = el('div', 'tour-progress', SHOTS.map(() => '<i></i>').join(''));
@@ -1666,8 +1680,9 @@ module.exports = function createTour(opts) {
 		root,
 		avatar: opts.avatar,
 		glyphs: () => HAND,
-		// back at the end of the tour: its words come up again
-		onExit: () => { shown = -1; }
+		// back in the tour: its words come up again (and, if the visit
+		// began with a jump, the picture comes up from black where it was)
+		onExit: () => { shown = -1; if (noteJumped) { fadeIn = { start: now }; noteJumped = false; } }
 	});
 	document.body.classList.add('touring');
 
@@ -1904,6 +1919,26 @@ module.exports = function createTour(opts) {
 	}, true);
 
 	free.addEventListener('click', (e) => { e.stopPropagation(); exit(); });
+	['mousedown', 'pointerdown'].forEach((t) => noteBtn.addEventListener(t, (e) => e.stopPropagation()));
+	noteBtn.addEventListener('click', (e) => { e.stopPropagation(); leaveNote(); });
+
+	// Near the end of the hall already (where the tour itself offers the
+	// confessional) the camera simply sets off. From anywhere else the
+	// picture dips to black and comes up in the hall beside the stair
+	// hall's arch, and sets off from there; leaving, it dips to black
+	// again and the tour comes back where it was.
+	const NOTE_CAM = cam([8.6, 1.75, 44.3], [-3.0, 1.85, 44.5], 55, 0);
+	let noteGo = null;
+	let noteJumped = false;
+	function leaveNote() {
+		if (!active || exiting || conf.active || noteGo) return;
+		hideUI();
+		shown = -2;
+		const e = camNow.eye;
+		const near = e[0] > 0.5 && e[0] < 13.5 && e[2] > 36 && e[2] < 50;
+		if (near) { noteJumped = false; conf.start(camNow, look); return; }
+		noteGo = { t: 0 };
+	}
 	end.addEventListener('click', (e) => {
 		const b = e.target.closest('button');
 		if (!b) return;
@@ -2116,6 +2151,17 @@ module.exports = function createTour(opts) {
 			return null;
 		}
 
+		// "Leave a note" from far off: the picture dips to black, then the
+		// camera is in the hall by the arch and the visit begins
+		if (noteGo) {
+			noteGo.t += dt;
+			if (noteGo.t >= 0.7) {
+				noteGo = null;
+				noteJumped = true;
+				conf.start(NOTE_CAM, Object.assign({}, DEFAULT_LOOK, { fade: 1, fadeColor: [0, 0, 0] }));
+			}
+		}
+
 		// in the confessional: its own camera and look
 		if (conf.active) {
 			const r = conf.update(dt);
@@ -2255,7 +2301,7 @@ module.exports = function createTour(opts) {
 			walker,
 			// the far door: shut until the gust, then open
 			door: M.door ? M.door(u) : (idx >= 12 ? 1 : 0),
-			look,
+			look: noteGo ? Object.assign(look, { fade: Math.max(look.fade || 0, clamp01(noteGo.t / 0.6)), fadeColor: [0, 0, 0] }) : look,
 			leaf: leafState(dt)
 		};
 	}
@@ -2265,6 +2311,7 @@ module.exports = function createTour(opts) {
 		window.__tour = {
 			go, exit, wind,
 			confess() { hideUI(); shown = -2; conf.start(camNow, look); },
+			note: () => leaveNote(),
 			conf,
 			paper: require('./confessional').STATE,
 			seek(i, u) { scroll = target = AT[i] + (AT[i + 1] - AT[i]) * u; vel = 0; auto = false; lastInput = now + 1e6; fadeIn.start = now - 10; started = true; },
