@@ -19,6 +19,12 @@ const NIGHT_GLSL = require('./env').GLSL;   // moonlit by night (see env.js)
  * bent to follow it on the CPU, which is cheap for a model this size and
  * works the same on every phone.
  *
+ * His walk is motion capture (res/avatar/motion.*, made by
+ * scripts/avatar/build_motion.py from clips of a real person moving),
+ * and so is the way his body moves at the piano; what hangs loose on him
+ * (hair, the ends of the scarf, the skirt of the coat) is left a little
+ * behind by every movement and swings back (see "follow-through" below).
+ *
  * When the round stair hall is in view he is there instead, at the
  * piano, playing (see pianoPose below): his hands follow the recording
  * that is sounding (sound.js), his body the music.
@@ -814,6 +820,42 @@ module.exports = (regl) => {
 		ready = build(meta, buf);
 	}).catch((e) => console.error(e));
 
+	// the motion-capture clips (he moves by the older hand-made cycles
+	// until they have arrived, or if they are missing)
+	let motion = null;
+	Promise.all([
+		fetch(base + 'motion.json').then((r) => (r.ok ? r.json() : null)),
+		fetch(base + 'motion.bin').then((r) => (r.ok ? r.arrayBuffer() : null))
+	]).then(([mj, mb]) => {
+		if (!mj || !mb) return;
+		const out = {};
+		for (const k in mj.clips) {
+			const c = mj.clips[k], nbn = c.bones.length;
+			const mean = new Float32Array(mb, c.mean, nbn * 4), meanQ = {};
+			c.bones.forEach((n, i) => { meanQ[n] = [mean[i * 4], mean[i * 4 + 1], mean[i * 4 + 2], mean[i * 4 + 3]]; });
+			out[k] = Object.assign({}, c, { Q: new Int16Array(mb, c.q, c.frames * nbn * 4), H: new Float32Array(mb, c.hips, c.frames * 3), meanQ });
+		}
+		motion = out;
+	}).catch(() => {});
+
+	// a clip at a moment (in frames, going round and round): every bone's
+	// turn from rest, and where the hips are from their rest place
+	function sampleClip(c, fr) {
+		const n = c.frames, nbn = c.bones.length;
+		const f = ((fr % n) + n) % n;
+		const i0 = Math.floor(f) % n, i1 = (i0 + 1) % n, a = f - Math.floor(f);
+		const q = {};
+		for (let b = 0; b < nbn; b++) {
+			const o0 = (i0 * nbn + b) * 4, o1 = (i1 * nbn + b) * 4;
+			let x0 = c.Q[o0], y0 = c.Q[o0 + 1], z0 = c.Q[o0 + 2], w0 = c.Q[o0 + 3];
+			let x1 = c.Q[o1], y1 = c.Q[o1 + 1], z1 = c.Q[o1 + 2], w1 = c.Q[o1 + 3];
+			if (x0 * x1 + y0 * y1 + z0 * z1 + w0 * w1 < 0) { x1 = -x1; y1 = -y1; z1 = -z1; w1 = -w1; }
+			q[c.bones[b]] = qnorm([x0 + (x1 - x0) * a, y0 + (y1 - y0) * a, z0 + (z1 - z0) * a, w0 + (w1 - w0) * a]);
+		}
+		const h0 = i0 * 3, h1 = i1 * 3;
+		return { q, hips: [c.H[h0] + (c.H[h1] - c.H[h0]) * a, c.H[h0 + 1] + (c.H[h1 + 1] - c.H[h0 + 1]) * a, c.H[h0 + 2] + (c.H[h1 + 2] - c.H[h0 + 2]) * a] };
+	}
+
 	const white = regl.texture({ data: [[[255, 255, 255, 255]]] });
 
 	function build(meta, buf) {
@@ -930,6 +972,7 @@ module.exports = (regl) => {
 		const footRest = footBones.map((i) => restWorld[i][13] * S);
 
 		function walkingPose(w) {
+			if (motion && motion.walk) return capturedWalk(w);
 			const P = walkPose(w.phase);
 			const deltas = {};
 			const addPose = (Q) => {
@@ -959,6 +1002,39 @@ module.exports = (regl) => {
 				world[i] = b.parent < 0 ? mmul(place, local) : mmul(world[b.parent], local);
 			}
 			// lower (or raise) him so the foot that is down rests on the floor
+			let drop = Infinity;
+			footBones.forEach((i, k) => { drop = Math.min(drop, world[i][13] - footRest[k]); });
+			for (let i = 0; i < nb; i++) {
+				world[i] = world[i].slice();
+				world[i][13] -= drop;
+				skinMats[i] = mmul(world[i], ibm[i]);
+			}
+			return { blink: 0 };
+		}
+
+		// THE CAPTURED WALK: a real person's walk, a whole cycle for each
+		// stride the tour moves him (phase 0 = his left foot furthest ahead,
+		// as before). The clip walks on the spot; the tour carries him along.
+		function capturedWalk(w) {
+			const c = motion.walk;
+			const smp = sampleClip(c, (w.phase + c.phase0) * c.frames);
+			const place = standAt(w.x, w.z, w.heading);
+			const world = new Array(nb);
+			const hipsI = byName.Hips;
+			for (let i = 0; i < nb; i++) {
+				const b = bones[i];
+				let local = restLocal[i];
+				const D = smp.q[b.name];
+				if (D) {
+					const W = restWorldQ[i];
+					const L = qmul(qconj(W), qmul(D, W));
+					// (the hips also sway from side to side and bob)
+					const tr = i === hipsI ? [b.t[0] + smp.hips[0], b.t[1] + smp.hips[1], b.t[2] + smp.hips[2]] : b.t;
+					local = trs(tr, qmul(b.r, L), b.s);
+				}
+				world[i] = b.parent < 0 ? mmul(place, local) : mmul(world[b.parent], local);
+			}
+			// set him down so the foot that is down rests on the floor
 			let drop = Infinity;
 			footBones.forEach((i, k) => { drop = Math.min(drop, world[i][13] - footRest[k]); });
 			for (let i = 0; i < nb; i++) {
@@ -1124,6 +1200,22 @@ module.exports = (regl) => {
 			}
 			const deltas = {};
 			for (const k in P) { const e = P[k]; deltas[k] = qeuler(e[0], e[1], e[2]); }
+
+			// and through all of it, the way a real pianist's back, neck and
+			// head move while playing (motion capture), laid over the pose
+			if (motion && motion.piano) {
+				const c = motion.piano;
+				const smp = sampleClip(c, t * c.fps);
+				[['Hips', 0.35], ['Spine', 0.7], ['Spine1', 0.7], ['Spine2', 0.7], ['Neck', 0.75], ['Head', 0.75]].forEach(([bn, k]) => {
+					const m = smp.q[bn], mean = c.meanQ[bn];
+					if (!m || !mean) return;
+					// the movement about its own average, so his posture stays his
+					let rel = qmul(m, qconj(mean));
+					if (rel[3] < 0) rel = [-rel[0], -rel[1], -rel[2], -rel[3]];
+					rel = qnorm([rel[0] * k, rel[1] * k, rel[2] * k, 1 + (rel[3] - 1) * k]);
+					deltas[bn] = deltas[bn] ? qmul(rel, deltas[bn]) : rel;
+				});
+			}
 
 			// on the front half of the stool, the hips lowered onto it
 			const hipRest = restWorld[byName.Hips][13] * S;
@@ -1304,6 +1396,7 @@ module.exports = (regl) => {
 				outN[i * 3] = qx / l; outN[i * 3 + 1] = qy / l; outN[i * 3 + 2] = qz / l;
 			}
 			if (m.grid && !walking && !seat && !piano) drape(p);
+			if (p.sway) follow(p);
 			p.pb.subdata(outP);
 			p.nbuf.subdata(outN);
 		}
@@ -1328,9 +1421,80 @@ module.exports = (regl) => {
 
 		let walking = false;
 
+		/* FOLLOW-THROUGH
+		 * What hangs loose on him does not move as one with his body. When
+		 * he starts, stops or turns, it is left a little behind, and then
+		 * swings back and settles; when he walks it trails. Three things
+		 * are loose: his hair (it follows his head), the ends of his scarf
+		 * (his chest) and the skirt of his coat (his hips). Each is one
+		 * weight on a spring; how far each point of the cloth or hair goes
+		 * with it was set when he was loaded (the tips most, the roots not
+		 * at all).
+		 */
+		const mkSpring = (bone, rate, damp, drag, most) => ({ bone: byName[bone], rate, damp, drag, most, x: [0, 0, 0], v: [0, 0, 0], p: null, vel: [0, 0, 0] });
+		const springs = { head: mkSpring('Head', 15, 0.32, 0.012, 0.035), chest: mkSpring('Spine2', 9, 0.38, 0.030, 0.10), hips: mkSpring('Hips', 7, 0.42, 0.045, 0.16) };
+		let springT = -1;
+		function stepSprings(t) {
+			const dt = springT < 0 ? 0 : t - springT;
+			springT = t;
+			for (const k in springs) {
+				const sp = springs[k];
+				const m = skinMats[sp.bone], r = restWorld[sp.bone];
+				const x = r[12], y = r[13], z = r[14];
+				const p = [m[0] * x + m[4] * y + m[8] * z + m[12], m[1] * x + m[5] * y + m[9] * z + m[13], m[2] * x + m[6] * y + m[10] * z + m[14]];
+				// (a cut to another place, or a long pause: start again at rest)
+				if (!sp.p || !(dt > 0) || dt > 0.25 || Math.hypot(p[0] - sp.p[0], p[1] - sp.p[1], p[2] - sp.p[2]) > 0.5) {
+					sp.p = p; sp.x = [0, 0, 0]; sp.v = [0, 0, 0]; sp.vel = [0, 0, 0];
+					continue;
+				}
+				const vel = [(p[0] - sp.p[0]) / dt, (p[1] - sp.p[1]) / dt, (p[2] - sp.p[2]) / dt];
+				const steps = Math.max(1, Math.ceil(dt / 0.016)), h = dt / steps;
+				for (let j = 0; j < 3; j++) {
+					const acc = Math.max(-30, Math.min(30, (vel[j] - sp.vel[j]) / dt));
+					const rest = -vel[j] * sp.drag;                  // trailing behind a steady move
+					for (let q = 0; q < steps; q++) {
+						sp.v[j] += ((rest - sp.x[j]) * sp.rate * sp.rate - 2 * sp.damp * sp.rate * sp.v[j] - acc) * h;
+						sp.x[j] += sp.v[j] * h;
+					}
+				}
+				const len = Math.hypot(sp.x[0], sp.x[1], sp.x[2]);
+				if (len > sp.most) { const f = sp.most / len; sp.x = [sp.x[0] * f, sp.x[1] * f, sp.x[2] * f]; }
+				sp.p = p; sp.vel = vel;
+			}
+		}
+		// how much of its spring's swing each point takes
+		for (const p of parts) {
+			const m = p.m, n = m.n;
+			let w = null, group = null;
+			if (m.kind === 9) {
+				group = 'head'; w = new Float32Array(n);
+				for (let i = 0; i < n; i++) { const a = p.uv[i * 2] < -0.5 ? 0 : p.uv[i * 2 + 1]; w[i] = a * a; }
+			} else if (m.name === 'scarf') {
+				group = 'chest'; w = new Float32Array(n);
+				for (let i = 0; i < n; i++) w[i] = smooth(1.52, 1.12, p.pos[i * 3 + 1]);
+			} else if (m.grid) {
+				group = 'hips'; w = new Float32Array(n);
+				const R = m.grid[0], Cn = m.grid[1];
+				for (let i = 0; i < n; i++) w[i] = Math.pow(Math.floor(i / Cn) / (R - 1), 1.6);
+			}
+			if (w) { p.sway = w; p.spring = springs[group]; p.loose = group; }
+		}
+		function follow(p) {
+			// (lying on the bench the coat is spread on the stone and his hair
+			// rests: nothing swings)
+			if (!walking && !piano && !seat) return;
+			const x = p.spring.x, w = p.sway, o = p.outP;
+			if (Math.abs(x[0]) + Math.abs(x[1]) + Math.abs(x[2]) < 1e-5) return;
+			for (let i = 0, n = w.length; i < n; i++) {
+				const k = w[i];
+				if (k > 0) { o[i * 3] += x[0] * k; o[i * 3 + 1] += x[1] * k; o[i * 3 + 2] += x[2] * k; }
+			}
+		}
+
 		function update(t, w) {
 			walking = !!w;
 			const st = pose(t, w);
+			stepSprings(t);
 			const morphW = { eyeBlinkLeft: st.blink, eyeBlinkRight: st.blink };
 			for (const p of parts) skin(p, Object.keys(p.morphs).length ? morphW : null);
 			state.pose = st;
