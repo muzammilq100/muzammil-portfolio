@@ -71,7 +71,20 @@ const stAngle = (t) => ST.a0 - t;
 const stLine = (t) => t * ST.k;
 
 // the piano: centre, turn (radians) and size
-const PIANO = { x: C.x + 0.1, z: C.z - 0.15, yaw: -PI / 2, scale: 1.1 };
+const PIANO = { x: C.x + 0.1, z: C.z - 0.15, yaw: -PI / 2, scale: 1.3 };
+// where its player sits and plays (measured from the model, which was
+// packed at scale 1.1): the keyboard runs along x, its front edge
+// towards +z, the stool behind that; he faces -z
+const PK = PIANO.scale / 1.1;
+const PLAY = {
+	keyX0: PIANO.x - 0.524 * PK, keyX1: PIANO.x + 0.491 * PK,    // the ends of the keyboard
+	keyTop: 0.647 * PK,                                            // the top of the white keys
+	keyFront: PIANO.z + 0.808 * PK,                                // their front edge
+	keyBack: PIANO.z + 0.72 * PK,                                  // where the black keys begin
+	stoolX: PIANO.x - 0.041 * PK, stoolZ: PIANO.z + 1.122 * PK,   // the stool's middle
+	stoolFront: PIANO.z + 0.96 * PK, stoolTop: 0.370 * PK,
+	heading: PI                                                    // facing -z
+};
 
 // the way the camera goes in to the confessional (and out again): through
 // the arch, round the piano on its far side, to the booth's open curtain
@@ -255,6 +268,11 @@ function roomGLSL() {
 		float up = smoothstep(0.0, ${f(TOP)}, p.y);
 		vec3 sky = mix(vec3(0.10, 0.095, 0.085), vec3(0.030, 0.045, 0.085), night);
 		col += sky * (0.35 + 0.65 * up) * (0.55 + 0.45 * max(N.y, 0.0)) * (0.6 + 0.4 * max(-dot(N, normalize(p - vec3(${f(C.x)}, ${f(TOP)}, ${f(C.z)}))), 0.0));
+		// and straight down from it a soft pool falls on the piano and
+		// whoever is playing it: it catches his shoulders, his hair, the
+		// edge of the lid, and lifts them out of the dark
+		float pool = 1.0 - smoothstep(0.5, 2.9, length(p.xz - vec2(${f(PLAY.stoolX)}, ${f(PLAY.keyFront + 0.1)})));
+		col += mix(vec3(0.34, 0.32, 0.29), vec3(0.16, 0.24, 0.42), night) * pool * pool * (0.12 + 0.88 * max(N.y, 0.0)) * 1.15;
 		// a little of the hall's light comes in through the arch
 		float near = smoothstep(-4.5, 0.4, p.x) * (1.0 - smoothstep(4.4, 6.5, p.y));
 		vec3 hall = mix(vec3(0.55, 0.50, 0.42), vec3(0.16, 0.15, 0.17), night);
@@ -909,14 +927,36 @@ module.exports = (regl) => {
 			vec3 V = normalize(v_eye - v_pos);
 			// v_info: 0 at the foot .. 1 at the rim, 2 the wick's dish; height; phase
 			float t = v_info.x;
-			vec3 base = vec3(0.86, 0.80, 0.68);
+			float ph = v_info.z;
+			// no two candles are the same wax: ivory, cream, a few yellowed
+			vec3 base = mix(vec3(0.88, 0.83, 0.72), vec3(0.80, 0.70, 0.50), fract(ph * 0.371));
+			// wax that has run down the side and set: paler ridges, each
+			// ending in a bead, more of them on a candle that has burned low
+			float ang = atan(N.z, N.x);
+			float run = vnoise(vec2(ang * 3.2 + ph, ph * 7.0));
+			float len = 0.25 + 0.75 * vnoise(vec2(ang * 3.2 + ph + 9.0, 2.0));
+			float drip = smoothstep(0.58, 0.72, run) * smoothstep(1.0 - len, 1.0 - len + 0.08, t) * step(t, 1.5);
+			float bead = smoothstep(0.58, 0.75, run) * (1.0 - smoothstep(0.0, 0.07, abs(t - (1.0 - len)))) * step(t, 1.5);
+			N = normalize(N + vec3(-sin(ang), 0.0, cos(ang)) * (vnoise(vec2(ang * 3.2 + ph + 0.15, ph * 7.0)) - run) * 2.5 * drip);
+			base = mix(base, base * 1.12 + 0.03, drip * 0.7);
 			vec3 spec;
-			vec3 light = roomLight(v_pos, N, V, 0.25, spec);
-			vec3 col = base * light + spec * 0.4;
-			// the wax glows from within near the flame
-			float fl = 0.85 + 0.15 * sin(time * 9.0 + v_info.z * 3.0) * sin(time * 2.3 + v_info.z);
-			float glow = t > 1.5 ? 1.0 : smoothstep(0.35, 1.0, t) * smoothstep(0.30, 0.04, v_info.y * (1.0 - t) + 0.02);
-			col += vec3(1.0, 0.62, 0.28) * glow * 0.85 * fl;
+			vec3 light = roomLight(v_pos, N, V, 0.35, spec);
+			vec3 col = base * light + spec * (0.35 + 0.6 * bead + 0.25 * drip);
+			// each flame gutters to its own rhythm (three unrelated beats,
+			// and now and then it nearly goes out and catches again)
+			float fl = 0.80 + 0.12 * sin(time * 9.0 + ph * 3.0) * sin(time * 2.3 + ph) + 0.08 * sin(time * 17.0 + ph * 5.0);
+			fl *= 1.0 - 0.45 * smoothstep(0.93, 1.0, sin(time * 0.7 + ph * 13.0));
+			// the wax is lit from inside by its flame: brightest in the rim,
+			// reddening as the light sinks down through it
+			float depth = v_info.y * (1.0 - t);
+			float glow = t > 1.5 ? 1.0 : smoothstep(0.30, 0.0, depth);
+			vec3 inner = mix(vec3(1.0, 0.34, 0.08), vec3(1.0, 0.70, 0.36), smoothstep(0.12, 0.0, depth));
+			col += inner * glow * glow * 0.95 * fl;
+			// the pool of melted wax round the wick: clear, dark at the wick,
+			// with one small bright point of the flame in it
+			if (t > 1.5) {
+				col = mix(col, vec3(1.0, 0.78, 0.45) * 1.1 * fl, 0.55);
+			}
 			col = roomHaze(v_pos, v_eye, col);
 			gl_FragColor = vec4(col, 1.0);
 		}`,
@@ -934,39 +974,65 @@ module.exports = (regl) => {
 		attribute vec2 corner;
 		attribute float ph;
 		varying vec2 v_uv;
-		varying float v_fl;
+		varying float v_fl, v_lean, v_ph;
 		void main() {
 			vec3 right = vec3(view[0][0], view[1][0], view[2][0]);
-			float fl = 0.85 + 0.10 * sin(time * 8.0 + ph * 2.0) + 0.05 * sin(time * 19.0 + ph);
-			float sway = 0.0025 * sin(time * 3.1 + ph * 5.0);
-			float w = halo > 0.5 ? 0.075 : 0.0075;
-			float h = halo > 0.5 ? 0.075 : 0.030 * fl;
-			vec3 c = ctr + vec3(0.0, halo > 0.5 ? 0.012 : 0.0, 0.0);
-			vec3 p = c + right * corner.x * w + vec3(sway * corner.y, (halo > 0.5 ? corner.y * 2.0 - 1.0 : corner.y) * h, 0.0);
-			v_uv = corner; v_fl = fl;
+			// a flame is never still: it stretches and shrinks, leans with
+			// the air in the room (a slow draught they all share, plus each
+			// one's own tremble), and now and then gutters low
+			float fl = 0.80 + 0.12 * sin(time * 9.0 + ph * 3.0) * sin(time * 2.3 + ph) + 0.08 * sin(time * 17.0 + ph * 5.0);
+			float gutter = smoothstep(0.93, 1.0, sin(time * 0.7 + ph * 13.0));
+			fl *= 1.0 - 0.45 * gutter;
+			float draught = sin(time * 0.31 + ctr.x * 0.9 + ctr.z * 0.6) * 0.6 + sin(time * 0.83 + ctr.z * 1.7) * 0.4;
+			float lean = draught * 0.55 + 0.45 * sin(time * 3.1 + ph * 5.0) + gutter * sin(time * 23.0 + ph) * 0.8;
+			// (each candle's flame is its own size)
+			float size = 0.8 + 0.5 * fract(ph * 0.618);
+			float w = halo > 0.5 ? 0.10 : 0.0105 * size;
+			float h = halo > 0.5 ? 0.10 : 0.040 * size * (0.7 + 0.45 * fl);
+			vec3 c = ctr + vec3(0.0, halo > 0.5 ? 0.016 : 0.004, 0.0);
+			vec3 p = c + right * corner.x * w + vec3(0.0, (halo > 0.5 ? corner.y * 2.0 - 1.0 : corner.y) * h, 0.0);
+			v_uv = corner; v_fl = fl; v_lean = lean; v_ph = ph;
 			gl_Position = proj * view * vec4(p, 1.0);
 		}`,
 		frag: `
 		precision highp float;
-		uniform float halo, night;
+		uniform float halo, night, time;
 		varying vec2 v_uv;
-		varying float v_fl;
+		varying float v_fl, v_lean, v_ph;
 		void main() {
 			if (halo > 0.5) {
+				// the glow in the air round it: tight and hot at the flame,
+				// wide and faint beyond
 				vec2 d = vec2(v_uv.x, v_uv.y * 2.0 - 1.0);
-				float g = exp(-dot(d, d) * 5.0) * 0.16 * v_fl;
-				gl_FragColor = vec4(vec3(1.0, 0.55, 0.20) * g, 1.0);
+				float r2 = dot(d, d);
+				float g = (exp(-r2 * 22.0) * 0.30 + exp(-r2 * 4.5) * 0.11) * v_fl;
+				gl_FragColor = vec4(vec3(1.0, 0.50, 0.17) * g, 1.0);
 				return;
 			}
-			// a teardrop: round at the bottom, drawn to a point at the top
 			float y = v_uv.y;
-			float wid = sqrt(max(0.0, y * (1.0 - y))) * 2.0 * (1.0 - 0.45 * y);
-			float x = abs(v_uv.x);
-			float a = 1.0 - smoothstep(wid * 0.6, wid, x);
-			a *= smoothstep(0.0, 0.12, y);
-			vec3 core = mix(vec3(1.0, 0.90, 0.62), vec3(1.0, 0.55, 0.18), smoothstep(0.2, 0.9, y));
-			core = mix(vec3(0.35, 0.40, 0.85), core, smoothstep(0.02, 0.18, y));   // blue at the root
-			gl_FragColor = vec4(core * a * 3.2 * v_fl, 1.0);
+			// the tip bends with the air, and wavers
+			float bend = clamp(v_lean, -1.2, 1.2) * 0.26 * y * y + 0.06 * sin(time * 13.0 + v_ph * 7.0 + y * 6.0) * y;
+			float x = v_uv.x - bend;
+			// a teardrop: full low down, drawn out to a point at the top
+			float wid = pow(max(0.0, y * (1.0 - y)) * 4.0, 0.55) * (1.0 - 0.62 * y) * 0.78;
+			float ax = abs(x);
+			float body = 1.0 - smoothstep(wid * 0.45, wid, ax);
+			body *= smoothstep(0.0, 0.10, y);
+			// inside it: almost clear and blue where it leaves the wick, a
+			// dark heart just above, then the bright yellow body, and a
+			// thin orange skin at the edge and the tip
+			float k = ax / max(wid, 1e-3);
+			vec3 yellow = vec3(1.0, 0.86, 0.50);
+			vec3 orange = vec3(1.0, 0.46, 0.10);
+			vec3 col = mix(yellow, orange, smoothstep(0.35, 1.0, k) * 0.8 + smoothstep(0.55, 1.0, y) * 0.6);
+			float dark = (1.0 - smoothstep(0.0, 0.5, k)) * (1.0 - smoothstep(0.10, 0.36, y));
+			col = mix(col, vec3(0.30, 0.12, 0.03), dark * 0.75);
+			float root = 1.0 - smoothstep(0.03, 0.20, y);
+			col = mix(col, vec3(0.22, 0.34, 0.95), root * 0.85);
+			float bright = mix(3.4, 1.1, root) * (0.75 + 0.35 * v_fl);
+			// the wick: a short dark curl standing in the root of the flame
+			float wick = (1.0 - smoothstep(0.02, 0.07, abs(v_uv.x - 0.10 * y))) * (1.0 - smoothstep(0.10, 0.20, y));
+			gl_FragColor = vec4(col * body * bright * (1.0 - 0.9 * wick), 1.0);
 		}`,
 		attributes: { ctr: fl.ctr, corner: fl.corner, ph: fl.ph },
 		elements: new Uint32Array(fl.idx),
@@ -1037,6 +1103,62 @@ module.exports = (regl) => {
 		})
 		.catch((e) => console.error(e));
 
+	// the light from the oculus, seen in the air: one tall soft shaft
+	// coming down onto the piano, with slow wisps drifting through it
+	const shaftGeo = (() => {
+		const pos = [], nrm = [], hh = [], idx = [];
+		const N = 40;
+		const top = [C.x, TOP - 0.3, C.z], bot = [PLAY.stoolX, 0.02, PLAY.keyFront + 0.1];
+		const rt = 1.25, rb = 2.35;
+		for (let i = 0; i <= N; i++) {
+			const a = (i / N) * 2 * PI, ca = Math.cos(a), sa = Math.sin(a);
+			pos.push(top[0] + ca * rt, top[1], top[2] + sa * rt, bot[0] + ca * rb, bot[1], bot[2] + sa * rb);
+			nrm.push(ca, 0.08, sa, ca, 0.08, sa);
+			hh.push(1, 0);
+		}
+		for (let i = 0; i < N; i++) { const k = i * 2; idx.push(k, k + 1, k + 3, k, k + 3, k + 2); }
+		return { pos, nrm, hh, idx };
+	})();
+	const shaft = regl({
+		vert: `
+		precision highp float;
+		uniform mat4 proj, view;
+		attribute vec3 position, normal;
+		attribute float hh;
+		varying vec3 v_pos, v_n, v_eye;
+		varying float v_h;
+		void main() {
+			v_pos = position; v_n = normal; v_h = hh;
+			v_eye = -vec3(dot(view[0].xyz, view[3].xyz), dot(view[1].xyz, view[3].xyz), dot(view[2].xyz, view[3].xyz));
+			gl_Position = proj * view * vec4(position, 1.0);
+		}`,
+		frag: `
+		precision highp float;
+		uniform float night, time;
+		varying vec3 v_pos, v_n, v_eye;
+		varying float v_h;
+		float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+		float vnoise(vec2 p) {
+			vec2 i = floor(p), f = fract(p);
+			vec2 u = f * f * (3.0 - 2.0 * f);
+			return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y);
+		}
+		void main() {
+			vec3 V = normalize(v_eye - v_pos);
+			// thick where you look through the middle of it, nothing at its edge
+			float thick = pow(abs(dot(normalize(v_n), V)), 1.6);
+			float wisps = 0.55 + 0.45 * vnoise(vec2(atan(v_n.z, v_n.x) * 2.0 + time * 0.03, v_pos.y * 0.35 - time * 0.05));
+			float fade = smoothstep(0.0, 0.12, v_h) * (0.45 + 0.55 * v_h);
+			vec3 col = mix(vec3(1.0, 0.93, 0.82) * 0.030, vec3(0.50, 0.66, 1.0) * 0.060, night);
+			gl_FragColor = vec4(col * thick * wisps * fade, 1.0);
+		}`,
+		attributes: { position: shaftGeo.pos, normal: shaftGeo.nrm, hh: shaftGeo.hh },
+		elements: shaftGeo.idx,
+		depth: { enable: true, mask: false },
+		cull: { enable: false },
+		blend: { enable: true, func: { srcRGB: 'one', dstRGB: 'one', srcAlpha: 'zero', dstAlpha: 'one' } }
+	});
+
 	function draw(opts) {
 		const reflected = opts && opts.reflected;
 		room();
@@ -1044,6 +1166,7 @@ module.exports = (regl) => {
 		candles();
 		if (piano) piano();
 		if (!reflected) {
+			shaft();
 			flames({ halo: 1 });
 			flames({ halo: 0 });
 		}
@@ -1059,5 +1182,7 @@ module.exports.OFF = OFF;
 module.exports.BAY = BAY;
 module.exports.PATH = PATH;
 module.exports.PIANO = PIANO;
+module.exports.PLAY = PLAY;
+module.exports.TOP = TOP;
 module.exports.roomGLSL = roomGLSL;
 module.exports.segments = segments;

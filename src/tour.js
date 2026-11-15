@@ -1503,6 +1503,7 @@ module.exports = function createTour(opts) {
 	const links = el('div', 'tour-links', contact.icons('tour-icon'));
 	// Day / Night, first in the row
 	links.insertBefore(require('./lighttoggle')('tour-icon'), links.firstChild);
+	links.insertBefore(require('./sound').button('tour-icon'), links.firstChild.nextSibling);
 	if (CAN_WALK) links.appendChild(free);
 
 	const progress = el('div', 'tour-progress', SHOTS.map(() => '<i></i>').join(''));

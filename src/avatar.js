@@ -19,6 +19,10 @@ const NIGHT_GLSL = require('./env').GLSL;   // moonlit by night (see env.js)
  * bent to follow it on the CPU, which is cheap for a model this size and
  * works the same on every phone.
  *
+ * When the round stair hall is in view he is there instead, at the
+ * piano, playing (see pianoPose below): his hands follow the recording
+ * that is sounding (sound.js), his body the music.
+ *
  * Poses are written as turns about the gallery's own axes (x to his left,
  * y up, z in front of him), applied at each joint as if the body were
  * still standing straight, which keeps them easy to read and adjust.
@@ -26,6 +30,8 @@ const NIGHT_GLSL = require('./env').GLSL;   // moonlit by night (see env.js)
 
 const { A, BENCH, oculusGLSL } = require('./alcove');
 const quality = require('./quality');
+const SH = require('./stairhall');
+const sound = require('./sound');
 
 const HEIGHT = 1.74;              // his real height
 const MODEL_HEIGHT = 1.877;       // top of the head in the model
@@ -67,6 +73,25 @@ const qslerp = (a, b, t) => {
 	const th = Math.acos(d), s = Math.sin(th);
 	const wa = Math.sin((1 - t) * th) / s, wb = Math.sin(t * th) / s;
 	return a.map((c, i) => c * wa + bb[i] * wb);
+};
+
+const vsub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+const vadd = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+const vscale = (a, k) => [a[0] * k, a[1] * k, a[2] * k];
+const vdot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+const vlen = (a) => Math.hypot(a[0], a[1], a[2]);
+const vnorm = (a) => { const l = vlen(a) || 1; return [a[0] / l, a[1] / l, a[2] / l]; };
+const vcross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+// a vector turned by a quaternion
+const qrot = (q, v) => {
+	const u = [q[0], q[1], q[2]], t = vscale(vcross(u, v), 2);
+	return vadd(vadd(v, vscale(t, q[3])), vcross(u, t));
+};
+// the shortest turn that takes direction a to direction b
+const qfromto = (a, b) => {
+	const c = vcross(a, b), w = 1 + vdot(a, b);
+	if (w < 1e-6) return [0, 0, 1, 0];
+	return qnorm([c[0], c[1], c[2], w]);
 };
 
 // column-major 4x4 from translation, rotation, scale
@@ -239,10 +264,11 @@ void main() {
 }`;
 
 const LANTERN = require('./lanterns');
-const FRAG = `
+const FRAG = `#extension GL_OES_standard_derivatives : enable
 precision highp float;
 ${NIGHT_GLSL}
 uniform float time;
+${SH.roomGLSL()}
 ${LANTERN.lanternGLSL(LANTERN.TREE_LANTERN)}
 uniform sampler2D tex;
 uniform float alphaCut, skin, glowLight, kind, alphaScale;
@@ -251,9 +277,26 @@ uniform vec3 glowPos;
 // the court's own light reaches him (0 there)
 uniform vec4 boothLamp;
 uniform float court;
+// 1 in the stair hall: lit by the candles round the piano
+uniform float candle;
 varying vec3 v_pos, v_n, v_eye;
 varying vec2 v_uv;
 ${oculusGLSL()}
+float chash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float cnoise(vec2 p) {
+	vec2 i = floor(p), g = fract(p);
+	g = g * g * (3.0 - 2.0 * g);
+	return mix(mix(chash(i), chash(i + vec2(1.0, 0.0)), g.x), mix(chash(i + vec2(0.0, 1.0)), chash(i + vec2(1.0, 1.0)), g.x), g.y);
+}
+// bends the surface by a height h (no need for the cloth's own directions)
+vec3 bump(vec3 N, vec3 p, float h, float k) {
+	vec3 dpx = dFdx(p), dpy = dFdy(p);
+	float dhx = dFdx(h), dhy = dFdy(h);
+	vec3 r1 = cross(dpy, N), r2 = cross(N, dpx);
+	float det = dot(dpx, r1);
+	vec3 g = sign(det) * (dhx * r1 + dhy * r2);
+	return normalize(abs(det) * N - k * g);
+}
 void main() {
 	vec4 t = texture2D(tex, v_uv);
 	t.a *= alphaScale;
@@ -299,6 +342,18 @@ void main() {
 	vec3 N = normalize(v_n);
 	if (!gl_FrontFacing) N = -N;
 	vec3 V = normalize(v_eye - v_pos);
+	// cloth is never smooth: it lies in soft folds and creases (long
+	// ones down the coat and trousers, shorter across the knit), and a
+	// woven surface has a grain that breaks the light up
+	float cloth = step(0.5, kind) * (1.0 - step(3.5, kind)) + step(6.5, kind);
+	if (cloth > 0.5) {
+		float folds = cnoise(v_uv * vec2(34.0, 9.0)) * 0.6 + cnoise(v_uv * vec2(70.0, 22.0) + 5.0) * 0.4;
+		float grain = cnoise(v_uv * 520.0);
+		float fade = 1.0 - smoothstep(0.0005, 0.004, fwidth(v_uv.x) + fwidth(v_uv.y));
+		N = bump(N, v_pos, folds * 0.012 + grain * 0.0006 * fade, 1.0);
+		// the hollows of the folds hold a little shadow
+		t.rgb *= 0.82 + 0.36 * folds;
+	}
 	// soft daylight in the court, mostly from above
 	float up = 0.55 + 0.45 * N.y;
 	float light = (0.36 + 0.22 * up) * mix(0.5, 1.0, court);
@@ -318,8 +373,21 @@ void main() {
 	// polish on leather and metal, and a soft sheen on the cloth
 	vec3 R = reflect(-V, N);
 	col += vec3(0.9, 0.88, 0.85) * gloss * (pow(max(dot(R, SHAFT), 0.0), 30.0) * (0.3 + sun) + 0.08 * smoothstep(0.2, 1.0, R.y));
-	col += vec3(0.05, 0.05, 0.055) * step(0.5, kind) * pow(1.0 - max(dot(N, V), 0.0), 3.0);
+	// wool has a nap: where the cloth turns away from you its fibres
+	// catch whatever light there is, a soft pale edge, never a shine
+	col += vec3(0.11, 0.11, 0.12) * cloth * pow(1.0 - max(dot(N, V), 0.0), 2.6) * (0.35 + light);
+	col += vec3(0.05, 0.05, 0.055) * step(0.5, kind) * (1.0 - cloth) * pow(1.0 - max(dot(N, V), 0.0), 3.0);
 	col = toNight(col, 0.85);
+	// at the piano: nothing but the candles on the floor round him and
+	// the pale light falling from the oculus
+	if (candle > 0.5) {
+		vec3 spc;
+		vec3 rl = roomLight(v_pos, N, V, clamp(gloss, 0.0, 1.0), spc);
+		col = t.rgb * rl * mix(1.3, 0.95, skin) + spc * (0.15 + gloss);
+		col += skin * t.rgb * vec3(0.16, 0.05, 0.02) * rl;
+		float edge = pow(1.0 - max(dot(N, V), 0.0), 2.6);
+		col += (vec3(0.16) * cloth + vec3(0.05) * (1.0 - cloth)) * edge * rl * 1.6;
+	}
 	// the confessional's lamp, warm, in front of him and to the side, with
 	// a soft rim on his hair where it wraps round
 	if (boothLamp.w > 0.0) {
@@ -337,7 +405,7 @@ void main() {
 	}
 	// at night, the little lantern by his head: warm on his face and coat,
 	// and a glint on the leather
-	vec3 lan = lanternLight(v_pos, N);
+	vec3 lan = lanternLight(v_pos, N) * (1.0 - candle);
 	col += t.rgb * lan * (1.3 + 1.2 * skin) + lan * gloss * 0.4;
 	gl_FragColor = vec4(col, t.a);
 }`;
@@ -744,7 +812,7 @@ module.exports = (regl) => {
 				tex: regl.prop('tex'), alphaCut: regl.prop('alphaCut'), skin: regl.prop('skin'),
 				kind: regl.prop('kind'), alphaScale: regl.prop('alphaScale'),
 				glowPos: () => state.glowPos, glowLight: () => state.glow,
-				boothLamp: () => (seat ? seat.lamp : [0, 0, 0, 0]), court: () => (seat ? 0 : 1)
+				boothLamp: () => (seat && !piano ? seat.lamp : [0, 0, 0, 0]), court: () => (seat || piano ? 0 : 1), candle: () => (piano ? 1 : 0)
 			},
 			cull: { enable: false }
 		});
@@ -756,7 +824,7 @@ module.exports = (regl) => {
 				tex: regl.prop('tex'), alphaCut: regl.prop('alphaCut'), skin: regl.prop('skin'),
 				kind: regl.prop('kind'), alphaScale: regl.prop('alphaScale'),
 				glowPos: () => state.glowPos, glowLight: () => state.glow,
-				boothLamp: () => (seat ? seat.lamp : [0, 0, 0, 0]), court: () => (seat ? 0 : 1)
+				boothLamp: () => (seat && !piano ? seat.lamp : [0, 0, 0, 0]), court: () => (seat || piano ? 0 : 1), candle: () => (piano ? 1 : 0)
 			},
 			cull: { enable: false },
 			depth: { enable: true, mask: false },
@@ -885,7 +953,195 @@ module.exports = (regl) => {
 			return { blink: blinkT < 0.16 ? Math.sin(blinkT / 0.16 * Math.PI) : 0 };
 		}
 
+		/* AT THE PIANO
+		 * He sits on the stool, leaning in a little, and plays what is
+		 * sounding. sound.js knows where the music is and when keys go
+		 * down in the bass (his left hand) and the treble (his right), how
+		 * hard, and roughly where along the keyboard. Each hand travels to
+		 * its next note ahead of time, lifting more over a longer wait; a
+		 * finger goes down on the beat and the wrist gives with it. His
+		 * arms are worked out backwards from where the hands must be
+		 * (shoulder, elbow, wrist), elbows hanging out and down. His body
+		 * leans into the louder passages and towards the busier hand, his
+		 * head nods with the phrases, and his right foot works the pedal.
+		 */
+		const P3 = (i) => [restWorld[i][12], restWorld[i][13], restWorld[i][14]];
+		// the turn that sets a limb along `dir`, the back of the hand as
+		// near `up` as it can be
+		const frameQ = (dir, up) => {
+			const x = vnorm(dir);
+			const y = vnorm(vsub(up, vscale(x, vdot(up, x))));
+			const z = vcross(x, y);
+			return mquat([x[0], x[1], x[2], 0, y[0], y[1], y[2], 0, z[0], z[1], z[2], 0, 0, 0, 0, 1]);
+		};
+		const ARMS = {};
+		for (const side of ['Left', 'Right']) {
+			const a = byName[side + 'Arm'], f = byName[side + 'ForeArm'], h = byName[side + 'Hand'], m = byName[side + 'HandMiddle1'];
+			ARMS[side] = {
+				a, f, h,
+				upper: vlen(vsub(P3(f), P3(a))) * S,
+				fore: vlen(vsub(P3(h), P3(f))) * S,
+				dir0: vnorm(vsub(P3(f), P3(a))),
+				qf0: frameQ(vsub(P3(h), P3(f)), [0, 1, 0]),
+				qh0: frameQ(vsub(P3(m), P3(h)), [0, 1, 0])
+			};
+		}
+		const ikOf = {};
+		for (const side of ['Left', 'Right']) {
+			ikOf[ARMS[side].a] = { side, part: 0 };
+			ikOf[ARMS[side].f] = { side, part: 1 };
+			ikOf[ARMS[side].h] = { side, part: 2 };
+		}
+
+		// where a hand is in the music: x along its half of the keyboard
+		// (0..1), how high it is lifted, how far its finger is down, which finger
+		function handAt(ev, tm, dur) {
+			if (!ev || !ev.length) return { x: 0.5, lift: 0, press: 0, finger: 1, busy: 0 };
+			let lo = 0, hi = ev.length - 1, i = -1;
+			while (lo <= hi) { const mid = (lo + hi) >> 1; if (ev[mid].t <= tm) { i = mid; lo = mid + 1; } else hi = mid - 1; }
+			const last = ev[ev.length - 1], first = ev[0];
+			const a = i >= 0 ? ev[i] : { t: last.t - dur, x: last.x, w: last.w };
+			const b = i + 1 < ev.length ? ev[i + 1] : { t: first.t + dur, x: first.x, w: first.w };
+			const gap = Math.max(0.05, b.t - a.t);
+			const hold = Math.min(0.14, gap * 0.45);
+			const u = Math.max(0, Math.min(1, (tm - a.t - hold) / Math.max(gap - hold - 0.03, 0.02)));
+			const e = u * u * (3 - 2 * u);
+			const since = tm - a.t;
+			const down = (0.55 + 0.45 * a.w) * Math.exp(-since / 0.11);
+			const until = b.t - tm;
+			const coming = until < 0.05 ? (0.55 + 0.45 * b.w) * (1 - until / 0.05) : 0;
+			return {
+				x: a.x + (b.x - a.x) * e,
+				// over a long silence the hand comes to rest on the keys
+				lift: Math.sin(Math.PI * u) * Math.min(0.05, 0.012 + gap * 0.03) * (gap > 2.5 ? 0.4 : 1),
+				press: Math.max(down, coming),
+				finger: coming > down ? ((i + 1) * 7 + 3) % 4 : ((Math.max(i, 0)) * 7 + 3) % 4,
+				busy: Math.exp(-since / 0.9)
+			};
+		}
+
+		const pn = { lean: 0, turn: 0, nod: 0, pedal: 0, last: -1 };
+		const FINGERS = ['Index', 'Middle', 'Ring', 'Pinky'];
+
+		function pianoPose(t) {
+			const K = SH.PLAY, cues = sound.cues, tm = sound.time();
+			const dur = (cues && cues.dur) || 158;
+			const hands = { Left: handAt(cues && cues.left, tm, dur), Right: handAt(cues && cues.right, tm, dur) };
+			// how loud the music is just now (0..1)
+			let lv = 0.35;
+			if (cues && cues.level && cues.level.length) {
+				const x = tm * 8, i0 = Math.floor(x) % cues.level.length, i1 = (i0 + 1) % cues.level.length;
+				lv = cues.level[i0] + (cues.level[i1] - cues.level[i0]) * (x - Math.floor(x));
+			}
+			const dt = pn.last < 0 ? 0 : Math.min(0.1, Math.max(0, t - pn.last));
+			pn.last = t;
+			const ease = (k) => Math.min(1, dt * k);
+			pn.lean += (lv - pn.lean) * ease(1.2);
+			pn.turn += ((hands.Right.busy - hands.Left.busy) - pn.turn) * ease(1.5);
+			pn.nod += (Math.max(hands.Right.press, hands.Left.press * 0.7) - pn.nod) * ease(6);
+			pn.pedal += ((hands.Left.busy > 0.35 ? 1 : 0.15) - pn.pedal) * ease(5);
+			const br = Math.sin(t * 2 * Math.PI / 4.6);
+			const phrase = Math.sin(tm * 0.41) * 0.6 + Math.sin(tm * 0.17 + 1.0) * 0.4;
+
+			const P = {
+				LeftUpLeg: [-80, -9, 0], RightUpLeg: [-77, 9, 0],
+				LeftLeg: [86, 0, 0], RightLeg: [64, 0, 0],
+				LeftFoot: [-2, 0, 0], RightFoot: [12 - 10 * pn.pedal, 0, 0],
+				Spine: [9 + 3.5 * pn.lean + phrase * 1.6, pn.turn * 2.5, -pn.turn * 1.6],
+				Spine1: [7 + br * 0.8 + 2.5 * pn.lean, pn.turn * 2.5, -pn.turn * 1.2],
+				Spine2: [6 + br * 0.6 + phrase * 0.8, pn.turn * 1.5, 0],
+				Neck: [13 + 3 * pn.lean, pn.turn * 3, 0],
+				Head: [15 + pn.nod * 3.5 + phrase * 1.5, pn.turn * 5, phrase * 1.5]
+			};
+			// fingers arched over the keys; the one that plays goes down
+			for (const side of ['Left', 'Right']) {
+				const sg = side === 'Left' ? -1 : 1, H = hands[side];
+				FINGERS.forEach((fn, k) => {
+					const hit = k === H.finger ? H.press : H.press * 0.2;
+					P[side + 'Hand' + fn + '1'] = [0, 0, sg * (20 + 3 * k + 20 * hit)];
+					P[side + 'Hand' + fn + '2'] = [0, 0, sg * (26 + 4 * k - 6 * hit)];
+					P[side + 'Hand' + fn + '3'] = [0, 0, sg * 14];
+				});
+				P[side + 'HandThumb1'] = [0, sg * -18, sg * 10];
+			}
+			const deltas = {};
+			for (const k in P) { const e = P[k]; deltas[k] = qeuler(e[0], e[1], e[2]); }
+
+			// on the front half of the stool, the hips lowered onto it
+			const hipRest = restWorld[byName.Hips][13] * S;
+			const place = mmul(
+				trs([K.stoolX, K.stoolTop + 0.10 - hipRest, K.stoolFront + 0.15], qaxis([0, 1, 0], K.heading), [1, 1, 1]),
+				trs([0, 0, 0], [0, 0, 0, 1], [S, S, S])
+			);
+
+			// where each wrist must be for the fingers to rest on its note
+			const mid = (K.keyX0 + K.keyX1) / 2;
+			const wrist = {};
+			for (const side of ['Left', 'Right']) {
+				const H = hands[side];
+				const x = side === 'Left' ? mid - 0.40 + 0.33 * H.x : mid + 0.07 + 0.33 * H.x;
+				wrist[side] = [x, K.keyTop + 0.062 + H.lift - H.press * 0.012, K.keyFront + 0.075];
+			}
+
+			const world = new Array(nb);
+			const tot = {};          // an arm bone's whole turn from its rest, in the room
+			const DOWN = [0, 1, 0];
+			for (let i = 0; i < nb; i++) {
+				const b = bones[i];
+				let local = restLocal[i];
+				let D = deltas[b.name];
+				const ik = ikOf[i];
+				if (ik) {
+					const A = ARMS[ik.side];
+					if (ik.part === 0) {
+						const pw = world[b.parent];
+						const j = mmul(pw, restLocal[i]);
+						const sh = [j[12], j[13], j[14]];
+						const dP = qmul(mquat(pw), qconj(restWorldQ[b.parent]));
+						let d = vsub(wrist[ik.side], sh);
+						let dl = vlen(d);
+						const reach = (A.upper + A.fore) * 0.995;
+						if (dl > reach) { d = vscale(d, reach / dl); dl = reach; }
+						const dir = vscale(d, 1 / dl);
+						const along = (A.upper * A.upper - A.fore * A.fore + dl * dl) / (2 * dl);
+						const out = Math.sqrt(Math.max(0, A.upper * A.upper - along * along));
+						// the elbow hangs out to the side and down, a little back
+						let pole = [ik.side === 'Left' ? -0.6 : 0.6, -0.8, 0.3];
+						pole = vnorm(vsub(pole, vscale(dir, vdot(pole, dir))));
+						const elbow = vadd(sh, vadd(vscale(dir, along), vscale(pole, out)));
+						A.T = vadd(sh, d);
+						A.elbow = elbow;
+						const up = vnorm(vsub(elbow, sh));
+						const Ra = qmul(qfromto(qrot(dP, A.dir0), up), dP);
+						tot[i] = Ra;
+						D = qmul(qconj(dP), Ra);
+					} else if (ik.part === 1) {
+						const Rf = qmul(frameQ(vsub(A.T, A.elbow), DOWN), qconj(A.qf0));
+						tot[i] = Rf;
+						D = qmul(qconj(tot[b.parent]), Rf);
+					} else {
+						// the hand lies along the keys, fingers a little down and in
+						const H = hands[ik.side];
+						const Rh = qmul(frameQ([ik.side === 'Left' ? 0.12 : -0.12, -0.20 - 0.10 * H.press, -1], DOWN), qconj(A.qh0));
+						tot[i] = Rh;
+						D = qmul(qconj(tot[b.parent]), Rh);
+					}
+				}
+				if (D) {
+					const W = restWorldQ[i];
+					const L = qmul(qconj(W), qmul(D, W));
+					local = trs(b.t, qmul(b.r, L), b.s);
+				}
+				world[i] = b.parent < 0 ? mmul(place, local) : mmul(world[b.parent], local);
+			}
+			for (let i = 0; i < nb; i++) skinMats[i] = mmul(world[i], ibm[i]);
+			state.pianist = { head: [world[byName.Head][12], world[byName.Head][13], world[byName.Head][14]] };
+			const blinkT = (t % 4.3);
+			return { blink: blinkT < 0.16 ? Math.sin(blinkT / 0.16 * Math.PI) : 0 };
+		}
+
 		function pose(t, w) {
+			if (piano) return pianoPose(t);
 			if (seat) return seatedPose(t, seat);
 			if (w) return walkingPose(w);
 			const breath = Math.sin(t * 2 * Math.PI / 4.2);
@@ -894,9 +1150,18 @@ module.exports = (regl) => {
 			// the raised arm sways slowly through the light from the dome
 			// while the fingers ripple, as if playing with it
 			const sway = Math.sin(t * 0.45);
+			// (and the small things a body does when it is at ease: the hand
+			// turns over in the light, the raised knee sways, a foot rocks,
+			// and every so often the arm sinks and rises again)
+			const turnHand = Math.sin(t * 0.31 + 0.8);
+			const tire = Math.max(0, Math.sin(t * 0.085) - 0.75) * 4;      // 0..1, now and then
 			const PLAY = {
-				RightArm: [0, 0, 11 * sway],
-				RightForeArm: [0, 8, 0]
+				RightArm: [0, -22 * tire, 11 * sway],
+				RightForeArm: [0, 8 + 26 * tire, 0],
+				RightHand: [38 * turnHand, 0, 6 * Math.sin(t * 0.7)],
+				LeftUpLeg: [0, 0, 3.2 * Math.sin(t * 0.36)],
+				RightFoot: [5 * Math.sin(t * 0.52 + 0.4), 0, 0],
+				Head: [0, 1.6 * Math.sin(t * 0.21), 0]
 			};
 			['Index', 'Middle', 'Ring', 'Pinky'].forEach((f, k) => {
 				const w = Math.sin(t * 1.1 - k * 0.5);
@@ -980,7 +1245,7 @@ module.exports = (regl) => {
 				const l = Math.hypot(qx, qy, qz) || 1;
 				outN[i * 3] = qx / l; outN[i * 3 + 1] = qy / l; outN[i * 3 + 2] = qz / l;
 			}
-			if (m.grid && !walking && !seat) drape(p);
+			if (m.grid && !walking && !seat && !piano) drape(p);
 			p.pb.subdata(outP);
 			p.nbuf.subdata(outN);
 		}
@@ -1072,13 +1337,15 @@ module.exports = (regl) => {
 	let walk = null;
 	// in the confessional: { x, z, y (seat), heading, lamp: [x, y, z, strength] }
 	let seat = null;
+	// at the piano in the stair hall (see pianoPose)
+	let piano = false;
 
 	function draw(ctx) {
 		if (!ready) return;
 		const t = quality.motion ? clock() : clock();
 		const wk = walk ? [walk.x, walk.z, walk.heading, walk.phase].map((v) => v.toFixed(4)).join() : '';
 		// on phones the figure is re-posed at most 30 times a second
-		if (seat || wk !== lastWalk || (!walk && Math.abs(t - lastT) > (quality.isPhone ? 1 / 30 : 0))) {
+		if (seat || piano || wk !== lastWalk || (!walk && Math.abs(t - lastT) > (quality.isPhone ? 1 / 30 : 0))) {
 			ready.update(t, walk);
 			lastT = t;
 			lastWalk = wk;
@@ -1090,7 +1357,7 @@ module.exports = (regl) => {
 		}
 		// the book over his face, and the brush floating above him
 		const st = ready.state;
-		if (st.headM && !walk && !seat) {
+		if (st.headM && !walk && !seat && !piano) {
 			drawBook({ model: bookMatrix(st) });
 			const hp = st.headPos;
 			const bob = Math.sin(t * 1.3) * 0.02;
@@ -1113,6 +1380,7 @@ module.exports = (regl) => {
 	draw.place = PLACE;
 	draw.setWalk = (w) => { walk = w || null; if (walk) state.glow = 0; };
 	draw.setSeat = (s) => { seat = s || null; state.glow = seat ? 0 : state.glow; lastT = -1; };
+	draw.setPiano = (on) => { on = !!on; if (on !== piano) { piano = on; if (piano) state.glow = 0; lastT = -1; } };
 	return draw;
 };
 

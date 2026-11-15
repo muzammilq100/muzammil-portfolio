@@ -172,6 +172,7 @@ const visit = require('./visit');
 const env = require('./env');
 const cull = require('./cull');
 const cine = require('./cine');
+const sound = require('./sound');
 const { A: COURT } = require('./alcove');
 
 fps = require('./fps')(
@@ -669,6 +670,7 @@ const museumLinks = document.createElement('div');
 museumLinks.className = 'museum-links';
 museumLinks.innerHTML = contact.icons('museum-link');
 museumLinks.insertBefore(require('./lighttoggle')('museum-link'), museumLinks.firstChild);
+museumLinks.insertBefore(sound.button('museum-link'), museumLinks.firstChild.nextSibling);
 // (clicks on the links must not grab the mouse for walking)
 ['mousedown', 'pointerdown', 'click'].forEach((t) => museumLinks.addEventListener(t, (e) => e.stopPropagation()));
 document.body.appendChild(museumLinks);
@@ -1168,6 +1170,7 @@ function applyAboutZoom(time) {
 const FREE_LOOK = { fade: 0, fadeColor: [0, 0, 0], letterbox: 0, focus: 6, aperture: 0, exposure: 1, shafts: 1, vignette: 0 };
 let leafNow = null;
 let walkerNow = false;
+let atPiano = false;
 
 function lookAtRolled(out, eye, target, roll) {
 	const f = [target[0] - eye[0], target[1] - eye[1], target[2] - eye[2]];
@@ -1368,6 +1371,11 @@ regl.frame(
 
 		setCamera(time);
 		cull.update(camView, camProj, camEye);
+		sound.listen(camEye);
+		// he is at the piano whenever the stair hall is what the camera
+		// sees (and under his tree whenever the court is)
+		atPiano = !walkerNow && cull.room('stair') && (!cull.room('court') || camEye[0] < 0.5 || camEye[2] > 30);
+		drawAvatar.setPiano(atPiano);
 		updateDust(time);
 
 		post.capture(
@@ -1393,7 +1401,7 @@ regl.frame(
 										drawConfessional({ reflected: true, view: camView });
 									}
 									if (cull.room('court', true)) drawTree();
-									if (cull.room('court', true) || walkerNow) drawAvatar();
+									if (atPiano || cull.room('court', true) || walkerNow) drawAvatar();
 									drawPainting(
 										placement.batch()
 									);
@@ -1416,7 +1424,7 @@ regl.frame(
 							drawConfessional({ view: camView });
 						}
 						if (cull.room('court')) drawTree();
-						if (cull.room('court') || walkerNow) drawAvatar();
+						if (atPiano || cull.room('court') || walkerNow) drawAvatar();
 						drawPainting(
 							placement.batch()
 						);

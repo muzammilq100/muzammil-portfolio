@@ -71,6 +71,14 @@ const SHOTS = {
 	bay: { eye: [4.2, 2.1, 44.6], target: [-1.0, 1.9, 44.5], fov: 55 }
 };
 
+// a pierced brass screen fills the half of the open booth's arch nearer
+// the priest (the curtain is drawn back from the other half, which is
+// the way in): sitting inside, you look out through its holes at the
+// stair hall, the candles and whoever is at the piano
+const SCREEN = { z0: (ZA + ZB) / 2 + 0.03, z1: (ZA + ZB) / 2 + 0.56, y0: 0.98, y1: 1.78, x: FRONT + 0.03, cell: 0.047 };
+// where the camera rests behind it, and what it looks at through it
+SHOTS.peek = { eye: [-1.20, 1.42, 42.95], target: [SH.PLAY.stoolX - SH.OFF[0], 0.85, SH.PLAY.keyFront + 0.2], fov: 30 };
+
 // what the visit has done to the paper (set by confession.js)
 const STATE = {
 	ink: null,            // a canvas with the words on it
@@ -350,6 +358,17 @@ function build() {
 		B.box(gx0 - fw - 0.02, gy1 + fw, fz - 0.015, gx1 + fw + 0.02, gy1 + fw + 0.03, z0, W);
 		// a brass lip round the slit
 		B.box(SLIT.x0 - 0.01, SLIT.y1, z0 - 0.006, SLIT.x1 + 0.01, SLIT.y1 + 0.008, z0, K.BRASS);
+	}
+	// the brass screen's frame in the front arch, and a low panelled
+	// half-door under it
+	{
+		const S = SCREEN, xa = FRONT + 0.008, xb2 = FRONT + 0.052;
+		B.box(xa, S.y0, S.z0 - 0.035, xb2, S.y1, S.z0, DK);                 // the post beside the way in
+		B.box(xa, S.y0, S.z0, xb2, S.y0 + 0.04, S.z1, DK);                  // bottom rail
+		B.box(xa, S.y1 - 0.04, S.z0, xb2, S.y1, S.z1, DK);                  // top rail
+		B.box(xa + 0.008, PLINTH, S.z0 - 0.035, xb2 - 0.008, S.y0, S.z1, W);  // the half-door
+		B.box(xb2 - 0.008, PLINTH + 0.12, S.z0 + 0.03, xb2, S.y0 - 0.08, S.z1 - 0.06, DK);
+		B.box(xa - 0.004, S.y0 - 0.012, S.z0 - 0.045, xb2 + 0.012, S.y0, S.z1, K.BRASS);   // a brass cap on it
 	}
 	// the other partition (plain)
 	B.box(BACK, PLINTH, ZC - 0.02, FRONT, H - 0.06, ZC + 0.02, W);
@@ -803,6 +822,42 @@ module.exports = (regl) => {
 		cull: { enable: false }
 	});
 
+	// the brass screen in the front arch: the same quatrefoils, larger
+	const screen = regl({
+		vert: `
+		precision highp float;
+		uniform mat4 proj, view;
+		uniform float yScale;
+		attribute vec2 corner;
+		varying vec3 v_pos, v_eye;
+		void main() {
+			vec3 p = vec3(${f(SCREEN.x)}, ${f((SCREEN.y0 + SCREEN.y1) / 2)} + corner.y * ${f((SCREEN.y1 - SCREEN.y0) / 2 - 0.04)}, ${f((SCREEN.z0 + SCREEN.z1) / 2)} + corner.x * ${f((SCREEN.z1 - SCREEN.z0) / 2)});
+			v_pos = p; v_eye = -vec3(dot(view[0].xyz, view[3].xyz), dot(view[1].xyz, view[3].xyz), dot(view[2].xyz, view[3].xyz));
+			p.y *= yScale;
+			gl_Position = proj * view * vec4(p, 1.0);
+		}`,
+		frag: `${COMMON}
+		varying vec3 v_pos, v_eye;
+		void main() {
+			vec2 g = (v_pos.zy - vec2(${f((SCREEN.z0 + SCREEN.z1) / 2)}, ${f((SCREEN.y0 + SCREEN.y1) / 2)})) * ${f(GRILLE.cell / SCREEN.cell)};
+			float hole = grilleHole(g);
+			if (hole > 0.5) discard;
+			vec3 N = vec3(v_eye.x < ${f(SCREEN.x)} ? -1.0 : 1.0, 0.0, 0.0);
+			vec3 V = normalize(v_eye - v_pos);
+			vec3 spec;
+			vec3 light = boothLight(v_pos + N * 0.01, N, V, 0.8, spec);
+			vec3 base = vec3(0.16, 0.10, 0.05);
+			vec3 col = base * light + spec * 0.6;
+			// the rims of the holes catch the candles in the hall beyond
+			float edge = smoothstep(0.25, 0.5, hole);
+			col += vec3(1.0, 0.62, 0.30) * edge * (N.x < 0.0 ? 0.30 : 0.10);
+			gl_FragColor = vec4(col, 1.0);
+		}`,
+		attributes: { corner: [[-1, -1], [1, -1], [1, 1], [-1, -1], [1, 1], [-1, 1]] },
+		count: 6,
+		cull: { enable: false }
+	});
+
 	// the priest's compartment glows behind the brass: a soft warm haze
 	// filling it, seen through the holes
 	const glowBox = regl({
@@ -1081,6 +1136,7 @@ module.exports = (regl) => {
 		booth();
 		curtains();
 		grille();
+		screen();
 		if (STATE.ink && STATE.inkDirty) {
 			const c = STATE.ink;
 			if (inkShape[0] !== c.width || inkShape[1] !== c.height) {
