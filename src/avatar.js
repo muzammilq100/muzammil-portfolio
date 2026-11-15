@@ -302,8 +302,10 @@ void main() {
 	t.a *= alphaScale;
 	if (t.a < alphaCut) discard;
 	float gloss = 0.0;
-	// the outfit: black wool coat, ribbed turtleneck, pinstriped trousers,
-	// leather belt and shoes
+	float hairStreak = 0.5;
+	// the outfit: a long black wool overcoat, a ribbed roll-neck, pleated
+	// pinstripe trousers, a leather belt and shoes, a maroon scarf
+	// (scripts/avatar/build_outfit.py makes them)
 	if (kind > 0.5) {
 		float n = fract(sin(dot(floor(v_uv * vec2(900.0, 900.0)), vec2(12.9898, 78.233))) * 43758.5453);
 		if (kind < 1.5) {
@@ -326,6 +328,20 @@ void main() {
 			float l = dot(t.rgb, vec3(0.33));
 			t.rgb = vec3(0.022, 0.02, 0.019) + vec3(0.05) * l * l;
 			gloss = 0.55;
+		} else if (kind > 8.5) {
+			// his hair: near black, with the brown in it showing where the
+			// light catches. uv is the bearing of each lock round the crown
+			// (as sine and cosine), its length 1 at the hairline, 2 well inside
+			float lon = atan(v_uv.x, v_uv.y);
+			float edge = clamp(length(v_uv) - 1.0, 0.0, 1.0);
+			float s1 = sin(lon * 37.0 + 1.3 * sin(lon * 5.0));
+			float s2 = sin(lon * 91.0 + 2.0);
+			float s3 = sin(lon * 173.0 + 4.0 * sin(lon * 11.0));
+			hairStreak = 0.5 + 0.22 * s1 + 0.16 * s2 + 0.12 * s3;
+			// the hairline is not a cut edge: it breaks up into the ends of locks
+			if (edge < 0.10 + 0.20 * (0.5 + 0.5 * sin(lon * 29.0)) * (0.5 + 0.5 * s2)) discard;
+			t.rgb = vec3(0.050, 0.037, 0.030) * (0.50 + 1.0 * hairStreak) * (0.75 + 0.25 * edge);
+			gloss = 0.0;
 		} else if (kind > 7.5) {
 			// socks: fine charcoal wool in narrow ribs
 			float rib = abs(fract(v_uv.x * 900.0) - 0.5) * 2.0;
@@ -345,7 +361,9 @@ void main() {
 	// cloth is never smooth: it lies in soft folds and creases (long
 	// ones down the coat and trousers, shorter across the knit), and a
 	// woven surface has a grain that breaks the light up
-	float cloth = step(0.5, kind) * (1.0 - step(3.5, kind)) + step(6.5, kind);
+	float cloth = step(0.5, kind) * (1.0 - step(3.5, kind)) + step(6.5, kind) * (1.0 - step(8.5, kind));
+	float isHair = step(8.5, kind);
+	vec3 hairT = vec3(0.0, 1.0, 0.0);
 	if (cloth > 0.5) {
 		float folds = cnoise(v_uv * vec2(34.0, 9.0)) * 0.6 + cnoise(v_uv * vec2(70.0, 22.0) + 5.0) * 0.4;
 		float grain = cnoise(v_uv * 520.0);
@@ -353,6 +371,21 @@ void main() {
 		N = bump(N, v_pos, folds * 0.012 + grain * 0.0006 * fade, 1.0);
 		// the hollows of the folds hold a little shadow
 		t.rgb *= 0.82 + 0.36 * folds;
+	}
+	if (isHair > 0.5) {
+		// the strands run at right angles to the way the bearing changes
+		// across the surface; each one tilts the light a little its own way
+		vec2 q = v_uv / max(dot(v_uv, v_uv), 1e-4);
+		vec3 dpx = dFdx(v_pos), dpy = dFdy(v_pos);
+		float dlx = q.y * dFdx(v_uv.x) - q.x * dFdx(v_uv.y);
+		float dly = q.y * dFdy(v_uv.x) - q.x * dFdy(v_uv.y);
+		vec3 across = cross(dpy, N) * dlx + cross(N, dpx) * dly;
+		float al = length(across);
+		if (al > 1e-7) {
+			across /= al;
+			hairT = normalize(cross(N, across));
+			N = normalize(N + across * (hairStreak - 0.5) * 0.7);
+		}
 	}
 	// soft daylight in the court, mostly from above
 	float up = 0.55 + 0.45 * N.y;
@@ -405,6 +438,21 @@ void main() {
 	}
 	// at night, the little lantern by his head: warm on his face and coat,
 	// and a glint on the leather
+	if (isHair > 0.5) {
+		// hair shines along its length, not like a surface: a narrow pale
+		// band where the light meets the strands square on, and a wider,
+		// warmer one beside it
+		vec3 Lh = normalize(vec3(0.25, 1.0, 0.2));
+		vec3 Hh = normalize(Lh + V);
+		float a1 = dot(normalize(hairT + N * (hairStreak - 0.5) * 0.4), Hh);
+		float a2 = dot(normalize(hairT - N * 0.28), Hh);
+		float band1 = pow(max(1.0 - a1 * a1, 0.0), 26.0);
+		float band2 = pow(max(1.0 - a2 * a2, 0.0), 7.0);
+		float lit = (candle > 0.5 ? 0.85 : 0.45 + sun) * mix(1.0, 0.4, night) * max(dot(N, Lh) * 0.6 + 0.4, 0.0);
+		col += (vec3(0.80, 0.76, 0.70) * band1 * 0.17 + vec3(0.36, 0.22, 0.12) * band2 * 0.11) * lit * (0.5 + hairStreak);
+		// the locks sink into shadow between one another
+		col *= 0.72 + 0.56 * smoothstep(0.25, 0.8, hairStreak);
+	}
 	vec3 lan = lanternLight(v_pos, N) * (1.0 - candle);
 	col += t.rgb * lan * (1.3 + 1.2 * skin) + lan * gloss * 0.4;
 	gl_FragColor = vec4(col, t.a);
@@ -790,7 +838,7 @@ module.exports = (regl) => {
 			const work = new Float32Array(m.n * 3);
 			const pb = regl.buffer({ data: outP, usage: 'dynamic' });
 			const nbuf = regl.buffer({ data: outN, usage: 'dynamic' });
-			const isHair = /hair/.test(m.name), isEyeAO = /EyeAO|Eyelash/.test(m.name);
+			const isHair = /avaturn_hair/.test(m.name), isEyeAO = /EyeAO|Eyelash/.test(m.name);
 			const isSkin = /Body|Head/.test(m.name);
 			const kind = m.kind || 0;
 			return {

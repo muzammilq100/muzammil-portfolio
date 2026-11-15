@@ -5,12 +5,12 @@
  * --------------
  * At the end of the tour the visitor may leave the artist a note. The
  * camera crosses the hall into the round stair hall, where he is at the
- * piano among the candles, playing. It does not go straight to the
- * confessional: each scroll or swipe is another way of seeing him play
- * (never his face: from behind, over his shoulder, down on his hands,
- * low through the flames, high from the stair). Only then does it back
- * in through the booth's open curtain, where the music can still be
- * watched through the holes of the brass screen, and turn at last to
+ * piano among the candles, playing, and sweeps quickly round behind
+ * him, pulling out. Three swipes follow, one sight each (never his
+ * face): from behind on one side, straight down from above, over his
+ * shoulder on the other; the third swipe backs the camera in through
+ * the booth's open curtain, where for a few moments he can still be
+ * watched through the holes of the brass screen, before it turns to
  * the window to write.
  *
  * The visitor writes. When they slide the note, the camera looks down at
@@ -59,21 +59,22 @@ function mixCam(a, b, t) {
 const PL = SH.PLAY;
 const HIM = [PL.stoolX, 1.0, PL.keyFront + 0.25];
 const HANDS = [PL.stoolX, PL.keyTop + 0.03, PL.keyFront - 0.05];
+// The way in ends with a quick sweep round behind him, pulling out; then
+// there are three sights, one swipe each: this side, from above, the
+// other side. (The "sides" are from behind his shoulder, so his face is
+// never in the picture.)
+const orbitAt = (k) => {
+	const th = (15 + 110 * k) * Math.PI / 180;          // from his right, round behind, to his left
+	const r = 2.1 + 0.4 * k;
+	return [HIM[0] + Math.cos(th) * r, 1.15 + 0.40 * k, HIM[2] + Math.sin(th) * r];
+};
 const ROOM = [
-	// the room: the sea of candles, the piano, his back
-	{ eye: [-3.9, 1.9, 47.9], target: [-7.0, 0.9, 44.8], fov: 50, aperture: 0.5 },
-	// low, through the flames, from behind
-	{ eye: [-6.2, 0.22, 46.9], target: [-6.95, 0.5, 45.5], fov: 38, aperture: 1.3 },
-	// over his right shoulder
-	{ eye: [-6.5, 1.3, 46.05], target: [-7.0, 0.80, 45.2], fov: 42, aperture: 1.0, to: HANDS },
-	// his hands on the keys
-	{ eye: [-6.35, 1.05, 45.75], target: [-6.85, 0.78, 45.3], fov: 44, aperture: 1.2, to: HANDS },
+	// where the sweep comes to rest: behind him on his left, the candles all round
+	{ eye: orbitAt(1), target: [HIM[0], 0.92, HIM[2] - 0.15], fov: 46, aperture: 0.6 },
 	// straight down on the keyboard
 	{ eye: [-6.93, 3.2, 45.85], target: [-6.93, 0.77, 45.3], fov: 34, aperture: 0.6, to: HANDS },
-	// from behind on his left, the hall beyond
-	{ eye: [-8.0, 0.95, 47.4], target: [-6.9, 0.85, 45.3], fov: 34, aperture: 1.0 },
-	// high up, from the turn of the stair
-	{ eye: [-9.6, 4.3, 46.3], target: [-7.0, 0.8, 45.0], fov: 44, aperture: 0.6 }
+	// the other side: over his right shoulder, down to his hands
+	{ eye: [HIM[0] + 1.0, 1.14, HIM[2] + 1.72], target: [HANDS[0] + 0.05, 0.80, HANDS[2] + 0.05], fov: 40, aperture: 1.0, to: HANDS }
 ];
 const dist3 = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
 const lookOfRoom = (r) => ({ letterbox: 0.55, exposure: 1.3, focus: dist3(r.eye, r.to || HIM), aperture: r.aperture, vignette: 0.42, shafts: 0.0 });
@@ -209,19 +210,32 @@ module.exports = function createConfession(opts) {
 		C.STATE.ink = inkCanvas; C.STATE.inkDirty = true;
 		// (the booth behind the brass is empty: only the lamp burns there)
 		document.body.classList.add('confessing');
-		// across the hall, in through the arch, to the first sight of him
+		// across the hall and in through the arch, gathering speed, and
+		// straight into a quick sweep round behind him that pulls out as it
+		// goes and settles on the first sight
 		const R0 = ROOM[0];
-		seq.i = 0; seq.u = 0; seq.T = REDUCED ? 0.6 : 10.0; seq.moving = true; seq.rest = 0;
+		const TA = REDUCED ? 0.3 : 5.5, TO = REDUCED ? 0.3 : 3.6;
+		seq.i = 0; seq.u = 0; seq.T = TA + TO; seq.moving = true; seq.rest = 0; seq.raw = true;
 		seq.lookFrom = fromLook; seq.lookTo = lookOfRoom(R0);
-		const eyes = [from.eye, [3.4, 1.75, 44.5], [0.3, 1.72, 44.5], [-2.4, 1.85, 46.4], R0.eye];
-		const tgts = [from.target, [-3.0, 1.9, 44.5], [-6.5, 1.3, 44.8], [-7.0, 1.0, 44.9], R0.target];
-		seq.path = (e) => ({ eye: curve(eyes, e), target: curve(tgts, smooth(0, 1, e * 1.03)), fov: mix(from.fov, R0.fov, smooth(0.5, 0.97, e)), roll: (from.roll || 0) * (1 - e) });
+		const eyes = [from.eye, [3.4, 1.75, 44.5], [0.3, 1.72, 44.7], [-2.8, 1.5, 45.4], orbitAt(0)];
+		const tgts = [from.target, [-3.0, 1.9, 44.5], [-6.5, 1.3, 44.9], [HIM[0], 1.0, HIM[2] - 0.1], R0.target];
+		seq.path = (u) => {
+			const t = u * (TA + TO);
+			if (t < TA) {
+				const x = t / TA;
+				const e = 1 - Math.cos(x * Math.PI / 2);        // eases in, arrives moving
+				return { eye: curve(eyes, e), target: curve(tgts, smooth(0, 1, e * 1.05)), fov: mix(from.fov, 52, smooth(0.4, 1, e)), roll: (from.roll || 0) * (1 - e) };
+			}
+			const x = (t - TA) / TO;
+			const k = 1 - Math.pow(1 - x, 2.4);                // quick, then settling
+			return { eye: orbitAt(k), target: R0.target, fov: mix(52, R0.fov, k), roll: 0.05 * Math.sin(Math.PI * k) };
+		};
 		go('room');
 		show('');
 	}
 
 	// the piano room: which shot, and the move towards it
-	const seq = { i: 0, u: 0, T: 1, moving: false, rest: 0, path: null, lookFrom: null, lookTo: null };
+	const seq = { i: 0, u: 0, T: 1, moving: false, rest: 0, raw: false, path: null, lookFrom: null, lookTo: null };
 	const onHint = () => (fine ? 'Scroll on' : 'Swipe up');
 	function moveTo(j) {
 		const a = lastCam, b = ROOM[j];
@@ -241,7 +255,7 @@ module.exports = function createConfession(opts) {
 		};
 		seq.lookFrom = lastLook || lookOfRoom(ROOM[seq.i]);
 		seq.lookTo = lookOfRoom(b);
-		seq.i = j; seq.u = 0; seq.moving = true; seq.rest = 0;
+		seq.i = j; seq.u = 0; seq.moving = true; seq.rest = 0; seq.raw = false;
 		seq.T = REDUCED ? 0.4 : Math.max(2.8, Math.min(4.4, dist3(A.eye, b.eye) * 1.0 + 1.6));
 		show('');
 	}
@@ -346,7 +360,7 @@ module.exports = function createConfession(opts) {
 		if (stage === 'room') {
 			if (seq.moving) {
 				seq.u = Math.min(1, seq.u + dt / seq.T);
-				cam = seq.path(ease(seq.u));
+				cam = seq.path(seq.raw ? seq.u : ease(seq.u));
 				look = lookMix(seq.lookFrom, seq.lookTo, smooth(0.1, 0.9, seq.u));
 				if (seq.u >= 1) { seq.moving = false; seq.rest = 0; hint.textContent = onHint(); show('hint'); }
 			} else {
@@ -358,16 +372,19 @@ module.exports = function createConfession(opts) {
 			// round to the confessional, turning to keep him in view, and
 			// backwards in through the open half of its arch, until the
 			// brass screen slides across the picture
-			const T = REDUCED ? 0.6 : 8.0;
+			const T = REDUCED ? 0.6 : 9.0;
 			const u = clamp01(clock / T);
 			const e = ease(u);
-			const eyes = [enterFrom.eye, [-9.5, 1.9, 44.6], at([0.75, 1.5, 42.95]), at([-0.25, 1.42, 42.82]), at([-0.9, 1.42, 42.82]), peekCam.eye];
+			const eyes = [enterFrom.eye, [-7.6, 1.9, 47.6], [-9.6, 1.85, 45.6], at([0.75, 1.5, 42.95]), at([-0.25, 1.42, 42.82]), at([-0.9, 1.42, 42.82]), peekCam.eye];
 			cam = { eye: curve(eyes, e), target: mix3(enterFrom.target, peekCam.target, smooth(0, 0.35, e)), fov: mix(enterFrom.fov, peekCam.fov, smooth(0.3, 1, e)), roll: 0 };
 			look = lookMix(enterLook, LOOK_PEEK, smooth(0.2, 0.9, u));
-			if (u >= 1) { go('peek'); hint.textContent = fine ? 'Scroll to sit and write' : 'Swipe up to sit and write'; show('hint'); }
+			if (u >= 1) go('peek');
 		} else if (stage === 'peek') {
+			// a few moments watching him through the holes of the brass, then
+			// the camera turns to the window by itself
 			cam = breathe(peekCam, 1.5);
 			look = LOOK_PEEK;
+			if (clock > (REDUCED ? 0.5 : 3.2)) go('turn');
 		} else if (stage === 'turn') {
 			const u = clamp01(clock / (REDUCED ? 0.4 : 3.2));
 			cam = mixCam(peekCam, winCam, ease(u));
@@ -465,7 +482,7 @@ module.exports = function createConfession(opts) {
 			else { enterFrom = lastCam; enterLook = lastLook; show(''); go('enter'); }
 			return;
 		}
-		if (stage === 'peek') { if (clock > 0.4) { show(''); go('turn'); } return; }
+		if (stage === 'peek') { if (clock > 0.4) go('turn'); return; }
 		if (stage === 'ready') fold();
 		else if (stage === 'writing' && pen) { pen.finish(); clock = Math.max(clock, writeDone); }
 	}

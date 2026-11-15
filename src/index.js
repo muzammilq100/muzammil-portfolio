@@ -1198,8 +1198,10 @@ function setCamera(time) {
 		look = t.look;
 		leafNow = t.leaf;
 		// the artist leaves his bench to walk past the camera
-		drawAvatar.setWalk(t.walker || null);
-		walkerNow = !!t.walker;
+		// (tests may stand him anywhere: ?tourdebug, window.__walkOverride)
+		const wk = (window.__walkOverride && /tourdebug/.test(location.search)) ? window.__walkOverride : (t.walker || null);
+		drawAvatar.setWalk(wk);
+		walkerNow = !!wk;
 		drawFarDoor.setOpen(t.door || 0);
 	} else {
 		leafNow = tour.restingLeaf();
