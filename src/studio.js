@@ -77,6 +77,10 @@ const SUN = (() => {
 
 const toW = (p) => [p[0] + O[0], p[1] + O[1], p[2] + O[2]];
 
+// the weather over the studio: 0 sun, 1 rain (eased between)
+const weather = { rain: /[?&]rain\b/.test(typeof location !== 'undefined' ? location.search : '') ? 1 : 0, target: 0, last: 0 };
+weather.target = weather.rain;
+
 // ------------------------------------------------------------------
 // SHARED GLSL: the sun through the openings
 // ------------------------------------------------------------------
@@ -835,9 +839,13 @@ const LIGHT = `
 		vec3 dayZen = vec3(0.30, 0.48, 0.80), dayHor = vec3(0.92, 0.88, 0.80);
 		vec3 day = mix(dayHor, dayZen, pow(max(up, 0.0), 0.55));
 		float sd = max(dot(d, STUDIO_SUN), 0.0);
-		day += vec3(1.0, 0.86, 0.62) * (pow(sd, 6.0) * 0.45 + pow(sd, 60.0) * 0.8);
+		day += vec3(1.0, 0.86, 0.62) * (pow(sd, 6.0) * 0.45 + pow(sd, 60.0) * 0.8) * (1.0 - rain);
+		// rain: a low, even, pearl-grey sky
+		vec3 grey = mix(vec3(0.60, 0.61, 0.62), vec3(0.47, 0.50, 0.54), pow(max(up, 0.0), 0.6)) * 0.78;
+		day = mix(day, grey, rain);
 		vec3 nZen = vec3(0.012, 0.022, 0.05), nHor = vec3(0.05, 0.065, 0.10);
-		vec3 nite = mix(nHor, nZen, pow(max(up, 0.0), 0.5)) + vec3(0.55, 0.65, 0.9) * pow(sd, 40.0) * 0.3;
+		vec3 nite = mix(nHor, nZen, pow(max(up, 0.0), 0.5)) + vec3(0.55, 0.65, 0.9) * pow(sd, 40.0) * 0.3 * (1.0 - rain);
+		nite = mix(nite, vec3(0.03, 0.035, 0.045), rain * 0.6);
 		return mix(day, nite, night);
 	}
 
@@ -848,7 +856,7 @@ const LIGHT = `
 		vec3 p = pw - vec3(${f(O[0])}, ${f(O[1])}, ${f(O[2])});
 		float vis = studioSun(pw + N * 0.03);
 		sunVis = vis;
-		vec3 sunC = mix(vec3(1.0, 0.80, 0.56) * 4.6, vec3(0.42, 0.55, 0.95) * 0.75, night);
+		vec3 sunC = mix(vec3(1.0, 0.80, 0.56) * 4.6, vec3(0.42, 0.55, 0.95) * 0.75, night) * (1.0 - 0.97 * rain);
 		float lam = max(dot(N, STUDIO_SUN), 0.0);
 		vec3 col = sunC * vis * lam;
 		vec3 Hh = normalize(STUDIO_SUN + V);
@@ -861,11 +869,14 @@ const LIGHT = `
 		float dw = min(min(p.x, ${f(W)} - p.x), min(p.z, ${f(L)} - p.z));
 		float occ = mix(0.55, 1.0, smoothstep(0.0, 2.2, dw)) * mix(0.72, 1.0, smoothstep(0.0, 2.5, p.y));
 		vec3 skyC = mix(vec3(0.70, 0.65, 0.58), vec3(0.035, 0.05, 0.09), night);
+		// under a rain sky the glass roof floods the room with soft grey light
+		skyC = mix(skyC, mix(vec3(0.74, 0.77, 0.80) * 1.45, vec3(0.03, 0.04, 0.06), night), rain);
 		col += skyC * (0.22 + 0.62 * upF) * occ * (0.85 + 0.3 * hgt) * 0.36;
 		// the bright left windows, seen from walls and things facing them
-		col += mix(vec3(1.0, 0.86, 0.66), vec3(0.06, 0.08, 0.14), night) * max(-N.x, 0.0) * 0.16 * occ;
+		vec3 winC = mix(vec3(1.0, 0.86, 0.66), vec3(0.62, 0.66, 0.70) * 1.2, rain);
+		col += mix(winC, vec3(0.06, 0.08, 0.14), night) * (max(-N.x, 0.0) + rain * max(N.x, 0.0)) * 0.16 * occ;
 		// light thrown back up off the sunlit floor: warm, from below
-		float pools = mix(1.0, 0.15, night);
+		float pools = mix(1.0, 0.15, night) * (1.0 - 0.75 * rain);
 		col += vec3(0.95, 0.68, 0.42) * pools * (0.12 + 0.26 * max(-N.y, 0.0)) * (1.0 - smoothstep(0.5, 6.0, p.y)) * smoothstep(0.0, 1.2, dw);
 
 		// the lamps (by night)
@@ -889,8 +900,8 @@ const LIGHT = `
 	vec3 studioAir(vec3 col, vec3 pw, vec3 eye) {
 		float d = length(pw - eye);
 		float h = 1.0 - exp(-d * 0.035);
-		vec3 airC = mix(vec3(0.36, 0.30, 0.24), vec3(0.02, 0.03, 0.05), night);
-		return mix(col, airC, h * 0.25);
+		vec3 airC = mix(mix(vec3(0.36, 0.30, 0.24), vec3(0.50, 0.53, 0.56), rain), vec3(0.02, 0.03, 0.05), night);
+		return mix(col, airC, h * mix(0.25, 0.34, rain));
 	}
 `;
 
@@ -944,7 +955,7 @@ const VERT = `
 
 const FRAG = `
 	precision highp float;
-	uniform float night, time, yScale, mirrorOn;
+	uniform float night, time, yScale, mirrorOn, rain;
 	varying vec3 v_pos, v_nrm, v_eye;
 	varying float v_kind;
 	varying vec2 v_uv;
@@ -1167,6 +1178,7 @@ module.exports = function (regl) {
 		},
 		elements: new Uint32Array(g.idx),
 		count: count || g.idx.length,
+		uniforms: { rain: () => weather.rain },
 		cull: { enable: false },
 		blend: BLEND
 	});
@@ -1218,7 +1230,7 @@ module.exports = function (regl) {
 		}`,
 		frag: `
 		precision highp float;
-		uniform float night, time;
+		uniform float night, time, rain;
 		uniform sampler2D tex;
 		varying vec3 v_pos, v_nrm, v_eye;
 		varying vec2 v_uv;
@@ -1241,7 +1253,7 @@ module.exports = function (regl) {
 		}`,
 		attributes: { position: lv.pos, normal: lv.nrm, uv: lv.uv, shade: lv.shade },
 		elements: new Uint32Array(lv.idx),
-		uniforms: { tex: leafTex.tex },
+		uniforms: { tex: leafTex.tex, rain: () => weather.rain },
 		cull: { enable: false }
 	});
 
@@ -1251,26 +1263,111 @@ module.exports = function (regl) {
 		vert: VERT,
 		frag: `
 		precision highp float;
-		uniform float night, time;
+		uniform float night, time, rain;
 		varying vec3 v_pos, v_nrm, v_eye;
 		varying float v_kind;
 		varying vec2 v_uv;
 		${LIGHT}
+
+		vec2 hash22(vec2 p) {
+			vec3 a = fract(vec3(p.xyx) * vec3(0.1031, 0.1030, 0.0973));
+			a += dot(a, a.yzx + 33.33);
+			return fract((a.xx + a.yz) * a.zy);
+		}
+		// beads of rain sitting on the glass: returns coverage, and the
+		// drop's local position (for its highlight and its dark rim)
+		float beads(vec2 q, float cell, float fill, out vec2 local) {
+			vec2 c = floor(q / cell), f = fract(q / cell);
+			float best = 0.0; local = vec2(0.0);
+			for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) {
+				vec2 o = vec2(float(i), float(j));
+				vec2 h = hash22(c + o);
+				if (h.x > fill) continue;
+				vec2 ctr = o + 0.15 + 0.7 * hash22(c + o + 17.0);
+				float r = (0.12 + 0.28 * h.y);
+				vec2 d = (f - ctr) * vec2(1.0, 0.85);
+				float m = smoothstep(r, r * 0.75, length(d));
+				if (m > best) { best = m; local = d / r; }
+			}
+			return best;
+		}
+		// rivulets running down: a drop sliding down each column with a
+		// thin wet trail behind it
+		float runs(vec2 q, float speed, out float head) {
+			float colW = 0.07;
+			float c = floor(q.x / colW);
+			vec2 h = hash22(vec2(c, 3.0));
+			head = 0.0;
+			if (h.x > 0.45) return 0.0;
+			float x = (fract(q.x / colW) - 0.5) * colW;
+			// the path wanders a little
+			x += sin(q.y * 7.0 + h.y * 20.0) * 0.004;
+			float len = 2.6 + 3.0 * h.y;
+			float y = mod(-q.y + time * speed * (0.6 + h.x * 2.0) + h.y * 10.0, len);
+			float head0 = smoothstep(0.012, 0.006, length(vec2(x, (y - 0.025) * 0.6)));
+			float trail = smoothstep(0.004, 0.0012, abs(x)) * smoothstep(0.0, 0.03, y) * (1.0 - smoothstep(0.3, 1.6, y));
+			head = head0;
+			return max(head0, trail * 0.7);
+		}
+
 		void main() {
 			vec3 V = normalize(v_eye - v_pos);
 			vec3 N = normalize(v_nrm);
 			if (dot(N, V) < 0.0) N = -N;
 			float F = 0.04 + 0.96 * pow(1.0 - max(dot(N, V), 0.0), 5.0);
 			vec3 p = v_pos - vec3(${f(O[0])}, ${f(O[1])}, ${f(O[2])});
-			float dust = fbm3(p * vec3(1.5, 3.0, 1.5)) * (v_kind > 0.5 ? 1.0 : 0.6);
-			// streaks where rain has run down the roof
-			float streak = v_kind > 0.5 ? smoothstep(0.55, 0.9, vnoise3(vec3(p.z * 9.0, p.x * 0.6, 0.0))) * 0.5 : 0.0;
+			bool roof = v_kind > 0.5;
+			float dust = fbm3(p * vec3(1.5, 3.0, 1.5)) * (roof ? 1.0 : 0.6);
+			float streak = roof ? smoothstep(0.55, 0.9, vnoise3(vec3(p.z * 9.0, p.x * 0.6, 0.0))) * 0.5 : 0.0;
 			vec3 c = mix(vec3(0.85, 0.80, 0.72), vec3(0.12, 0.13, 0.17), night) * (dust * 0.5 + streak);
 			float a = clamp(0.05 + dust * 0.16 + streak * 0.2 + F * 0.4, 0.0, 0.6);
-			vec3 col = mix(c, studioSky(reflect(-V, N)), F / max(a, 0.01) * 0.4);
+			vec3 sky = studioSky(reflect(-V, N));
+			vec3 col = mix(c, sky, F / max(a, 0.01) * 0.4);
+
+			if (rain > 0.001) {
+				// the pane's own coordinates, "down" along the glass
+				vec2 q = roof ? vec2(p.z, -abs(p.x - ${f(W / 2)}) * 1.25) : vec2(p.z, p.y);
+				q.y = -q.y;
+				// mist: the glass fogs from the cold, thickest low down
+				float mist = roof ? 0.55 : mix(0.75, 0.42, smoothstep(${f(WIN.sill)}, ${f(WIN.top)}, p.y));
+				mist *= 0.75 + 0.5 * fbm3(vec3(p.z * 2.0, p.y * 2.0 + p.x, 4.0));
+				vec3 mistC = mix(vec3(0.70, 0.72, 0.74), vec3(0.06, 0.07, 0.09), night);
+				// beads, big and small
+				vec2 l1, l2;
+				vec2 qb = roof ? q * 0.7 : q;
+				float b1 = beads(qb, 0.065, 0.55, l1);
+				float b2 = beads(qb + 7.3, 0.026, 0.75, l2);
+				float bead = max(b1, b2 * 0.9);
+				vec2 l = b1 > b2 ? l1 : l2;
+				// running rivulets wipe clear lines through the mist
+				float hd;
+				float run = runs(q, roof ? 0.35 : 0.55, hd);
+				// spatter: fresh drops landing on the roof
+				float splat = 0.0;
+				if (roof) {
+					vec2 sc = floor(q / 0.22);
+					vec2 sh = hash22(sc + 5.0);
+					float ph = fract(time * (0.8 + sh.x) + sh.y);
+					vec2 sp = (sc + 0.2 + 0.6 * hash22(sc + 9.0)) * 0.22;
+					float rr = ph * 0.05;
+					splat = smoothstep(0.004, 0.0, abs(length(q - sp) - rr)) * (1.0 - ph);
+				}
+				float wet = max(bead, run);
+				// a drop is a little lens: dark at the rim, the sky's light
+				// caught in its upper side, a tiny bright point
+				vec3 dropC = mix(vec3(0.26, 0.27, 0.29), vec3(0.98, 0.99, 1.0), smoothstep(-0.1, 0.9, -l.y));
+				dropC += vec3(1.0) * smoothstep(0.35, 0.0, length(l - vec2(-0.25, -0.35))) * 0.8;
+				dropC = mix(dropC, dropC * vec3(0.06, 0.07, 0.1), night);
+				vec3 rc = mix(mistC, dropC, wet);
+				rc = mix(rc, mistC * 1.15, splat * 0.7);
+				float ra = mix(mist * 0.6 * (1.0 - run * 0.8), 0.8, bead) + splat * 0.4;
+				col = mix(col, rc, rain);
+				a = mix(a, clamp(ra, 0.0, 0.85), rain);
+			}
 			gl_FragColor = vec4(sqrt(max(col, 0.0)), a);
 		}`,
 		attributes: { position: gl.pos, normal: gl.nrm, kind: gl.kind, uv: gl.uv },
+		uniforms: { rain: () => weather.rain },
 		elements: new Uint32Array(gl.idx),
 		cull: { enable: false },
 		depth: { mask: false },
@@ -1312,7 +1409,7 @@ module.exports = function (regl) {
 		}`,
 		frag: `
 		precision highp float;
-		uniform float night, time;
+		uniform float night, time, rain;
 		varying vec3 v_pos, v_eye;
 		${LIGHT}
 		void main() {
@@ -1326,18 +1423,38 @@ module.exports = function (regl) {
 			trees = mix(trees, studioSky(vec3(d.x, 0.02, d.z)), 0.45);
 			trees = mix(trees, toNightC(trees), night);
 			float inTrees = smoothstep(tl + 0.004, tl - 0.004, d.y) * (1.0 - ground);
+			trees = mix(trees, studioSky(vec3(d.x, 0.05, d.z)), rain * 0.55);
 			col = mix(col, trees * 1.15, inTrees);
 			vec3 meadow = mix(vec3(0.55, 0.55, 0.32), vec3(0.75, 0.70, 0.50), vnoise3(vec3(d.xz * 80.0, 0.0)));
 			meadow = mix(meadow, toNightC(meadow), night);
+			meadow = mix(meadow, vec3(0.38, 0.40, 0.36), rain * 0.7);
 			col = mix(col, meadow, ground);
+			// the rain itself: two layers of falling streaks
+			if (rain > 0.001) {
+				float streaks = 0.0;
+				for (int k = 0; k < 2; k++) {
+					float sc = k == 0 ? 160.0 : 90.0;
+					vec2 q = vec2(az * sc, d.y * sc * 0.25 + time * (k == 0 ? 9.0 : 6.0));
+					vec2 cc = floor(q), ff = fract(q);
+					float r = hash13(vec3(cc, float(k)));
+					float x = abs(ff.x - 0.2 - 0.6 * hash13(vec3(cc, 7.0 + float(k))));
+					streaks += smoothstep(0.06, 0.0, x) * smoothstep(0.0, 0.2, ff.y) * smoothstep(1.0, 0.5, ff.y) * step(0.55, r);
+				}
+				col = mix(col, vec3(0.86, 0.88, 0.9) * mix(1.0, 0.08, night), clamp(streaks, 0.0, 1.0) * 0.28 * rain);
+			}
 			gl_FragColor = vec4(sqrt(max(col, 0.0)), 1.0);
 		}`.replace('${LIGHT}', '') .replace('void main() {', `vec3 toNightC(vec3 c) { float l = dot(c, vec3(0.3, 0.59, 0.11)); return vec3(l) * vec3(0.06, 0.08, 0.14); }\n\t\tvoid main() {`),
 		attributes: { position: sky.pos },
+		uniforms: { rain: () => weather.rain },
 		elements: new Uint32Array(sky.idx),
 		cull: { enable: false }
 	});
 
 	function draw(opts) {
+		const now = performance.now() / 1000;
+		const dt = Math.min(0.1, Math.max(0, now - weather.last));
+		weather.last = now;
+		weather.rain += (weather.target - weather.rain) * Math.min(1, dt * 0.8);
 		drawSky();
 		drawRoom();
 		if (drawVenus) drawVenus();
@@ -1370,6 +1487,9 @@ function previewCam(time) {
 
 // for the light shafts (post.js) and the culling (cull.js)
 module.exports.previewCam = previewCam;
+module.exports.setRain = (on) => { weather.target = on ? 1 : 0; };
+module.exports.raining = () => weather.rain;
+module.exports.rainTarget = () => weather.target;
 module.exports.sunGLSL = sunGLSL;
 module.exports.O = O;
 module.exports.SIZE = { W, L, H, RIDGE };

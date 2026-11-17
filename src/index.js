@@ -1176,8 +1176,17 @@ if (STUDIO_PREVIEW) {
 	const st = document.createElement('style');
 	st.textContent = '.tour, #museum-mobile-controls, .painting-plaque { display: none !important; }';
 	document.head.appendChild(st);
-	window.addEventListener('pointerdown', () => require('./env').toggle());
-	window.addEventListener('keydown', (e) => { if (e.key === 'n' || e.key === ' ') require('./env').toggle(); });
+	// a tap moves through the weather: sun, rain, a rainy night, a clear night
+	const nextWeather = () => {
+		const S = require('./studio'), E = require('./env');
+		const r = S.rainTarget() > 0.5, n = E.isNight;
+		if (!r && !n) S.setRain(true);
+		else if (r && !n) E.toggle();
+		else if (r && n) S.setRain(false);
+		else E.toggle();
+	};
+	window.addEventListener('pointerdown', nextWeather);
+	window.addEventListener('keydown', (e) => { if (e.key === 'n' || e.key === ' ') nextWeather(); });
 }
 const FREE_LOOK = { fade: 0, fadeColor: [0, 0, 0], letterbox: 0, focus: 6, aperture: 0, exposure: 1, shafts: 1, vignette: 0 };
 let leafNow = null;
