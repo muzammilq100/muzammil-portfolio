@@ -35,6 +35,7 @@ const { A: COURT } = require('./alcove');
 const { C: WING } = require('./wing');
 const { DOOR } = require('./entrance');
 const SH = require('./stairhall');
+const STUDIO = require('./studio');
 
 const HALL_END = WING.hallEnd + 0.35;
 
@@ -54,7 +55,9 @@ const ROOM = {
 	stair: [SH.C.x - SH.R - 2.6, 0, SH.C.z - SH.R - 1.5, 0.5, 15.6, SH.C.z + SH.R + 1.5],
 	street: [-60, -1, -140, 74, 60, 0.6],
 	garden: [10, -1, WING.z1, 46, 60, WING.z1 + 110],
-	florence: [WING.x1, -1, WING.zc - 30, WING.x1 + 80, 60, WING.zc + 30]
+	florence: [WING.x1, -1, WING.zc - 30, WING.x1 + 80, 60, WING.zc + 30],
+	// the studio is a room of its own for now: seen only from inside it
+	studio: STUDIO.BOX
 };
 
 // the polished floors (for the reflection)
@@ -62,7 +65,8 @@ const FLOORS = [
 	[0, 0, 0, 14, 0, HALL_END],
 	[13.6, 0, WING.z0, WING.x1 + 0.4, 0, WING.z1],
 	[COURT.x0 - 0.4, 0, COURT.z0, COURT.x1, 0, COURT.z1],
-	[SH.C.x - SH.R - 2.6, 0, SH.C.z - SH.R, 0.4, 0, SH.C.z + SH.R]
+	[SH.C.x - SH.R - 2.6, 0, SH.C.z - SH.R, 0.4, 0, SH.C.z + SH.R],
+	[STUDIO.BOX[0], 0, STUDIO.BOX[2], STUDIO.BOX[3], 0, STUDIO.BOX[5]]
 ];
 
 // the openings to pass through, from each room the camera can be in
@@ -80,8 +84,8 @@ let zone = 'out';
 let enabled = true;
 try { if (/[?&]nocull\b/.test(location.search)) enabled = false; } catch (e) { /* on */ }
 
-const seen = { court: true, stair: true, street: true, garden: true, florence: true };
-const seenR = { court: true, stair: true, street: true, garden: true, florence: true };
+const seen = { court: true, stair: true, street: true, garden: true, florence: true, studio: false };
+const seenR = { court: true, stair: true, street: true, garden: true, florence: true, studio: false };
 let floorSeen = true;
 
 function setPlanes(m) {
@@ -150,6 +154,8 @@ function through(names, target, mirrored) {
 
 function whichZone() {
 	const x = eye[0], z = eye[2];
+	const sb = STUDIO.BOX;
+	if (x > sb[0] && x < sb[3] && z > sb[2] && z < sb[5]) return 'studio';
 	if (x < 0.0 && z > SH.C.z - SH.R - 1.5 && x > SH.C.x - SH.R - 2.6) return 'stair';
 	if (x > 14.1 && z > COURT.z0 - 0.3 && z < COURT.z1 + 0.3 && x < COURT.x1 + 0.3) return 'court';
 	if (x > 13.9 && z > WING.z0 - 0.4 && z < WING.z1 + 0.1 && x < WING.x1 + 0.3) return 'wing';
@@ -177,6 +183,11 @@ const cull = {
 		zone = whichZone();
 
 		for (const r in ROOM) {
+			// the studio and the rest of the gallery cannot see each other
+			if (r === 'studio' || zone === 'studio') {
+				seen[r] = seenR[r] = (r === 'studio' && zone === 'studio');
+				continue;
+			}
 			if (!enabled || zone === 'out' || zone === r || inside(ROOM[r], 0.3)) {
 				seen[r] = boxIn(ROOM[r], false) || zone === r;
 				seenR[r] = boxIn(ROOM[r], true) || zone === r;

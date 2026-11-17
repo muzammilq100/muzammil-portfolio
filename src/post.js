@@ -32,6 +32,7 @@ const { windowLightGLSL, C: WING } = require('./wing');
 const { doorLightGLSL } = require('./entrance');
 const env = require('./env');
 const cull = require('./cull');
+const studio = require('./studio');
 
 const f = (x) => x.toFixed(4);
 
@@ -165,6 +166,7 @@ module.exports = (regl, quality) => {
 	const COURT_BOX = [COURT.x0 - 0.2, 0.0, COURT.z0, COURT.x1, COURT.domeTop, COURT.z1];
 	const WIN_BOX = [WING.x0, 0.0, WING.z0, WING.x1, 7.6, WING.z1];
 	const DOOR_BOX = [0.35, 0.0, 0.35, 13.65, 7.6, 9.0];
+	const STUDIO_BOX = studio.AIR_BOX;
 
 	const box = (b) => `vec3(${f(b[0])}, ${f(b[1])}, ${f(b[2])}), vec3(${f(b[3])}, ${f(b[4])}, ${f(b[5])})`;
 
@@ -177,6 +179,7 @@ module.exports = (regl, quality) => {
 	uniform float time;
 	uniform float night;
 	uniform vec4 strength;   // skylight, dome, windows, door
+	uniform float strength5; // the studio's windows and glass roof
 
 	float hash12(vec2 p) {
 		vec3 p3 = fract(vec3(p.x, p.y, p.x) * 0.1031);
@@ -195,6 +198,7 @@ module.exports = (regl, quality) => {
 	${oculusGLSL()}
 	${windowLightGLSL()}
 	${doorLightGLSL()}
+	${studio.sunGLSL()}
 
 	// the air is not perfectly even: slow drifting wisps of dust
 	float air(vec3 p) {
@@ -301,6 +305,22 @@ module.exports = (regl, quality) => {
 			}
 		}
 
+		// the studio: its windows and its glass roof
+		if (strength5 > 0.0) {
+			vec2 t = hitBox(eye, rd, ${box(STUDIO_BOX)});
+			t.y = min(t.y, len);
+			if (t.y > t.x) {
+				float st = (t.y - t.x) / float(N);
+				float acc = 0.0;
+				for (int i = 0; i < N; i++) {
+					vec3 p = eye + rd * (t.x + (float(i) + jit) * st);
+					acc += studioSun(p) * air(p);
+				}
+				float ph = phase(dot(rd, STUDIO_SUN), 0.6) + 0.04;
+				sum += mix(vec3(1.0, 0.84, 0.62), vec3(0.62, 0.74, 1.0) * 1.15, night) * acc * st * ph * strength5;
+			}
+		}
+
 		gl_FragColor = vec4(sum, 1.0);
 	}`, {
 		depthTex: () => sceneDepth,
@@ -308,12 +328,14 @@ module.exports = (regl, quality) => {
 		eye: () => eye,
 		time: regl.context('time'),
 		night: () => env.night,
-		strength: () => volStrength
+		strength: () => volStrength,
+		strength5: () => volStrength5
 	});
 
 	// how strong each lit volume is this frame: nothing for the ones the
 	// camera cannot see, so their samples are never taken
 	const volStrength = [0, 0, 0, 0];
+	let volStrength5 = 0;
 	function setVolumes() {
 		const k = LOOK.shafts * shot.shafts;
 		// at night the moonbeams are the brightest thing in the air
@@ -322,7 +344,12 @@ module.exports = (regl, quality) => {
 		volStrength[1] = cull.box(COURT_BOX, false, 'court') ? 0.1 * k * (1 + 0.9 * n) : 0;
 		volStrength[2] = cull.box(WIN_BOX) ? 0.07 * k * (1 + 0.4 * n) : 0;
 		volStrength[3] = cull.box(DOOR_BOX) ? 0.04 * k * (1 - 0.75 * n) : 0;
-		return volStrength[0] + volStrength[1] + volStrength[2] + volStrength[3] > 0.0005;
+		// in the studio, only its own sunbeams
+		if (cull.zone === 'studio') {
+			volStrength[0] = volStrength[1] = volStrength[2] = volStrength[3] = 0;
+			volStrength5 = 0.03 * k * (1 + 0.6 * n);
+		} else volStrength5 = 0;
+		return volStrength[0] + volStrength[1] + volStrength[2] + volStrength[3] + volStrength5 > 0.0005;
 	}
 
 

@@ -193,6 +193,8 @@ const drawFireflies = require('./fireflies')(regl, quality);
 const drawLanterns = require('./lanterns')(regl);
 const drawConfessional = require('./confessional')(regl);
 const drawStairHall = require('./stairhall')(regl);
+// the painter's studio (studio.js): a room of its own, not yet joined to the rest
+const drawStudio = require('./studio')(regl);
 
 // the cinematic tour the visit opens with (see tour.js)
 const tour = require('./tour')({
@@ -1167,6 +1169,16 @@ function applyAboutZoom(time) {
    over, the view glides from the tour's last shot into their own.
 =========================================================== */
 
+// ?studio in the address: show the painter's studio (not joined to the
+// gallery yet) instead of the tour; a tap turns day to night and back
+const STUDIO_PREVIEW = /[?&]studio\b/.test(location.search);
+if (STUDIO_PREVIEW) {
+	const st = document.createElement('style');
+	st.textContent = '.tour, #museum-mobile-controls, .painting-plaque { display: none !important; }';
+	document.head.appendChild(st);
+	window.addEventListener('pointerdown', () => require('./env').toggle());
+	window.addEventListener('keydown', (e) => { if (e.key === 'n' || e.key === ' ') require('./env').toggle(); });
+}
 const FREE_LOOK = { fade: 0, fadeColor: [0, 0, 0], letterbox: 0, focus: 6, aperture: 0, exposure: 1, shafts: 1, vignette: 0 };
 let leafNow = null;
 let walkerNow = false;
@@ -1223,6 +1235,13 @@ function setCamera(time) {
 
 	// the operator's hand on the tour's camera (see cine.js)
 	if (c && t) c = cine.apply(c, time);
+
+	// ?studio: a preview of the painter's studio (see studio.js)
+	if (STUDIO_PREVIEW && !(/tourdebug/.test(location.search) && window.__camOverride)) {
+		const sc = require('./studio').previewCam(time);
+		c = sc;
+		look = Object.assign({}, FREE_LOOK, { fade: sc.fade, focus: 8 });
+	}
 
 	if (c) {
 		lookAtRolled(camView, c.eye, c.target, c.roll || 0);
@@ -1395,6 +1414,8 @@ regl.frame(
 							// (only the rooms whose reflection is in view)
 							reflexion(
 								() => {
+									if (cull.room('studio', true)) drawStudio({ reflected: true });
+									if (cull.zone === 'studio') return;
 									drawMap();
 									drawStatues({ reflected: true });
 									drawLanterns();
@@ -1418,6 +1439,8 @@ regl.frame(
 							);
 						}
 
+						if (cull.room('studio')) drawStudio();
+						if (cull.zone !== 'studio') {
 						drawMap();
 						drawStatues();
 						drawLanterns();
@@ -1450,6 +1473,7 @@ regl.frame(
 						// glass last, over everything
 						drawGlass();
 						drawFarDoor.glass();
+						}
 					}
 				);
 			}
