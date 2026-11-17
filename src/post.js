@@ -347,7 +347,7 @@ module.exports = (regl, quality) => {
 		// in the studio, only its own sunbeams
 		if (cull.zone === 'studio') {
 			volStrength[0] = volStrength[1] = volStrength[2] = volStrength[3] = 0;
-			volStrength5 = 0.03 * k * (1 + 0.6 * n);
+			volStrength5 = 0.03 * k * (1 + 1.3 * n);
 		} else volStrength5 = 0;
 		return volStrength[0] + volStrength[1] + volStrength[2] + volStrength[3] + volStrength5 > 0.0005;
 	}

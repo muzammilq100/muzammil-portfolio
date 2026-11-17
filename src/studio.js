@@ -4,15 +4,15 @@
  * THE STUDIO
  * ----------
  * The painter's studio: a big, tall room of old warm plaster under a
- * glass roof on black steel trusses, with tall arched steel windows down
- * both long walls. Low afternoon sun pours in through the left-hand
+ * glass roof of leaded, patterned panes on black steel trusses, with tall
+ * arched steel windows down both long walls. Bright morning sun pours in through the left-hand
  * windows and the roof, and every bar of the glazing shows in the light
  * on the floor, the walls and the dusty air.
  *
  * In the middle, the highlight: a long reflecting pool in pale
  * travertine, dark still water full of lily pads and pink water lilies,
- * and at its far end, standing in the water on a plinth, a marble
- * Venus (the same scan as the hall's). Behind her, on the end wall, a
+ * and at its far end, in the water on a plinth, a marble nymph seated
+ * and preparing for her bath (res/nymph.bin, from his own scan file). Behind her, on the end wall, a
  * classical aedicule half lost under hanging ivy.
  *
  * Down the right-hand side, his work in progress: three canvases on
@@ -64,13 +64,14 @@ const TRUSS_Z = [5.5, 11.0, 16.5];
 // the pool
 const POOL = { x0: W / 2 - 1.9, x1: W / 2 + 1.9, z0: 5.6, z1: 16.6, curb: 0.5, top: 0.36 };
 // the statue in it, on a plinth near the far end
-const VENUS = { x: W / 2, z: 14.9, plinth: 0.86, height: 2.35, yaw: PI + 0.35 };
+const VENUS = { x: W / 2, z: 14.9, plinth: 0.86, height: 2.05, yaw: PI + 0.35, file: 'res/nymph.bin' };
 
-// the sun: the direction towards it. Low afternoon light from the left,
-// a little from the far end, so it comes in through the left windows
-// and the roof and falls across the floor towards the entrance.
+// the sun: the direction towards it. Bright morning sun, fairly low, from
+// the east wall (x = 0) and a little from the far end, so it pours in
+// through those windows and the roof and falls across the floor towards
+// the entrance. At night the moon comes in the same way.
 const SUN = (() => {
-	const v = [-0.70, 0.56, 0.44];
+	const v = [-0.68, 0.60, 0.40];
 	const l = Math.hypot(v[0], v[1], v[2]);
 	return v.map((x) => x / l);
 })();
@@ -120,6 +121,25 @@ function sunGLSL() {
 		return bar;
 	}
 
+	// the leaded pattern in each pane of the roof: q is the pane's own
+	// coordinates (centre 0, half size ${f(ROOF.purlin / 2)} x ${f(ROOF.rafter / 2)}),
+	// b the softness. Returns how much light gets through.
+	float studioRoofPattern(vec2 q, float b) {
+		vec2 hs = vec2(${f(ROOF.purlin / 2)}, ${f(ROOF.rafter / 2)});
+		vec2 a = abs(q);
+		float w = 0.022;
+		float d = abs(length(q * vec2(1.0, 0.62)) - 0.36);               // the ring
+		d = min(d, abs(dot(a, hs.yx) - hs.x * hs.y) / length(hs));       // the diamond
+		d = min(d, abs(length(q) - 0.11));                               // the rondel
+		d = min(d, abs(length(a - hs) - 0.30));                          // quarter rings
+		d = min(d, abs(length(a - vec2(0.0, hs.y)) - 0.16));             // and at the ends
+		float lead = 1.0 - smoothstep(w - b, w + b, d);
+		// textured, faintly frosted glass in the rondel and the ring's petals
+		float frost = smoothstep(0.11 + b, 0.11 - b, length(q)) * 0.35
+			+ smoothstep(0.36 + b, 0.36 - b, length(q * vec2(1.0, 0.62))) * smoothstep(0.1, 0.16, length(q)) * 0.12;
+		return (1.0 - lead) * (1.0 - frost);
+	}
+
 	float studioSun(vec3 pw) {
 		vec3 p = pw - vec3(${f(O[0])}, ${f(O[1])}, ${f(O[2])});
 		vec3 S = STUDIO_SUN;
@@ -164,7 +184,11 @@ function sunGLSL() {
 		bar = max(bar, 1.0 - smoothstep(${f(ROOF.purlinW * 0.5)} - b, ${f(ROOF.purlinW * 0.5)} + b, rx));
 		// the ridge beam
 		bar = max(bar, 1.0 - smoothstep(0.14 - b, 0.14 + b, abs(h.x - ${f(W / 2)})));
-		return vis * (1.0 - bar) * 0.58;
+		// the leaded pattern in the panes (its shadow is crisper than
+		// the sun's disc would allow, for the drawing to read)
+		vec2 pq = vec2(ux - ${f(ROOF.purlin)} * floor(ux / ${f(ROOF.purlin)}) - ${f(ROOF.purlin / 2)}, h.z - ${f(ROOF.rafter)} * floor(h.z / ${f(ROOF.rafter)}) - ${f(ROOF.rafter / 2)});
+		float pat = studioRoofPattern(pq, 0.004 + 0.0035 * t);
+		return vis * (1.0 - bar) * pat * 0.78;
 	}`;
 }
 
@@ -832,12 +856,17 @@ const LIGHT = `
 	// lights the room when the sun does not
 	vec3 studioSky(vec3 d) {
 		float up = clamp(d.y, -0.2, 1.0);
-		vec3 dayZen = vec3(0.30, 0.48, 0.80), dayHor = vec3(0.92, 0.88, 0.80);
+		vec3 dayZen = vec3(0.22, 0.45, 0.85), dayHor = vec3(0.86, 0.90, 0.92);
 		vec3 day = mix(dayHor, dayZen, pow(max(up, 0.0), 0.55));
 		float sd = max(dot(d, STUDIO_SUN), 0.0);
 		day += vec3(1.0, 0.86, 0.62) * (pow(sd, 6.0) * 0.45 + pow(sd, 60.0) * 0.8);
 		vec3 nZen = vec3(0.012, 0.022, 0.05), nHor = vec3(0.05, 0.065, 0.10);
-		vec3 nite = mix(nHor, nZen, pow(max(up, 0.0), 0.5)) + vec3(0.55, 0.65, 0.9) * pow(sd, 40.0) * 0.3;
+		vec3 nite = mix(nHor, nZen, pow(max(up, 0.0), 0.5));
+		// the moon, its halo, and the stars
+		nite += vec3(0.55, 0.65, 0.9) * (pow(sd, 12.0) * 0.12 + pow(sd, 120.0) * 0.4) + vec3(0.95, 0.97, 1.0) * smoothstep(0.99955, 0.9997, sd) * 3.0;
+		vec3 sg = floor(d * 260.0);
+		float star = step(0.9965, hash13(sg)) * smoothstep(0.02, 0.2, d.y) * (0.5 + 0.5 * sin(time * 2.0 + hash13(sg + 3.0) * 30.0));
+		nite += vec3(0.9, 0.93, 1.0) * star * 0.7;
 		return mix(day, nite, night);
 	}
 
@@ -848,7 +877,7 @@ const LIGHT = `
 		vec3 p = pw - vec3(${f(O[0])}, ${f(O[1])}, ${f(O[2])});
 		float vis = studioSun(pw + N * 0.03);
 		sunVis = vis;
-		vec3 sunC = mix(vec3(1.0, 0.80, 0.56) * 4.6, vec3(0.42, 0.55, 0.95) * 0.75, night);
+		vec3 sunC = mix(vec3(1.0, 0.88, 0.70) * 5.4, vec3(0.50, 0.64, 1.0) * 1.35, night);
 		float lam = max(dot(N, STUDIO_SUN), 0.0);
 		vec3 col = sunC * vis * lam;
 		vec3 Hh = normalize(STUDIO_SUN + V);
@@ -860,7 +889,7 @@ const LIGHT = `
 		// corners and the foot of the walls get less of the sky
 		float dw = min(min(p.x, ${f(W)} - p.x), min(p.z, ${f(L)} - p.z));
 		float occ = mix(0.55, 1.0, smoothstep(0.0, 2.2, dw)) * mix(0.72, 1.0, smoothstep(0.0, 2.5, p.y));
-		vec3 skyC = mix(vec3(0.70, 0.65, 0.58), vec3(0.035, 0.05, 0.09), night);
+		vec3 skyC = mix(vec3(0.70, 0.65, 0.58), vec3(0.028, 0.042, 0.08), night);
 		col += skyC * (0.22 + 0.62 * upF) * occ * (0.85 + 0.3 * hgt) * 0.36;
 		// the bright left windows, seen from walls and things facing them
 		col += mix(vec3(1.0, 0.86, 0.66), vec3(0.06, 0.08, 0.14), night) * max(-N.x, 0.0) * 0.16 * occ;
@@ -877,7 +906,7 @@ const LIGHT = `
 				vec3 Ld = d * inversesqrt(dd);
 				// the shade throws the light downwards
 				float cone = smoothstep(0.05, 0.55, Ld.y);
-				float w = night * 14.0 * cone / (1.0 + dd * 0.9);
+				float w = night * 6.5 * cone / (1.0 + dd * 0.9);
 				col += vec3(1.0, 0.66, 0.36) * w * (max(dot(N, Ld), 0.0) * 0.85 + 0.15);
 				spec += vec3(1.0, 0.7, 0.4) * w * pow(max(dot(N, normalize(Ld + V)), 0.0), mix(16.0, 300.0, gloss)) * gloss;
 			}`).join('')}
@@ -1174,8 +1203,8 @@ module.exports = function (regl) {
 
 	// the statue, loaded when it arrives
 	let drawVenus = null;
-	fetch('res/venus.bin')
-		.then((r) => { if (!r.ok) throw new Error('Could not load venus.bin'); return r.arrayBuffer(); })
+	fetch(VENUS.file)
+		.then((r) => { if (!r.ok) throw new Error('Could not load ' + VENUS.file); return r.arrayBuffer(); })
 		.then((buf) => {
 			const m = decodeStatue(buf);
 			const g = { pos: [], nrm: [], kind: [], uv: [], idx: [] };
@@ -1263,11 +1292,25 @@ module.exports = function (regl) {
 			float F = 0.04 + 0.96 * pow(1.0 - max(dot(N, V), 0.0), 5.0);
 			vec3 p = v_pos - vec3(${f(O[0])}, ${f(O[1])}, ${f(O[2])});
 			float dust = fbm3(p * vec3(1.5, 3.0, 1.5)) * (v_kind > 0.5 ? 1.0 : 0.6);
-			// streaks where rain has run down the roof
+			// streaks where old rain has run down the roof
 			float streak = v_kind > 0.5 ? smoothstep(0.55, 0.9, vnoise3(vec3(p.z * 9.0, p.x * 0.6, 0.0))) * 0.5 : 0.0;
 			vec3 c = mix(vec3(0.85, 0.80, 0.72), vec3(0.12, 0.13, 0.17), night) * (dust * 0.5 + streak);
 			float a = clamp(0.05 + dust * 0.16 + streak * 0.2 + F * 0.4, 0.0, 0.6);
 			vec3 col = mix(c, studioSky(reflect(-V, N)), F / max(a, 0.01) * 0.4);
+			// the roof's leaded pattern: dark cames, frosted rondels lit
+			// from behind by the sky
+			if (v_kind > 0.5) {
+				float ux = p.x < ${f(W / 2)} ? p.x : ${f(W)} - p.x;
+				vec2 pq = vec2(ux - ${f(ROOF.purlin)} * floor(ux / ${f(ROOF.purlin)}) - ${f(ROOF.purlin / 2)}, p.z - ${f(ROOF.rafter)} * floor(p.z / ${f(ROOF.rafter)}) - ${f(ROOF.rafter / 2)});
+				float pat = studioRoofPattern(pq, 0.004);
+				float lead = 1.0 - smoothstep(0.2, 0.6, pat);
+				float frost = clamp(1.0 - pat, 0.0, 1.0) * (1.0 - lead);
+				vec3 frostC = mix(vec3(0.95, 0.93, 0.88), vec3(0.10, 0.13, 0.20), night);
+				col = mix(col, frostC, frost * 0.9);
+				a = max(a, frost * 0.45);
+				col = mix(col, vec3(0.03, 0.03, 0.035), lead);
+				a = mix(a, 1.0, lead);
+			}
 			gl_FragColor = vec4(sqrt(max(col, 0.0)), a);
 		}`,
 		attributes: { position: gl.pos, normal: gl.nrm, kind: gl.kind, uv: gl.uv },
