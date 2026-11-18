@@ -637,53 +637,120 @@ function fallState(pt, t) {
 const KOI = [
 	{ at: [W / 2 - 0.8, 7.4], dir: 0.9, len: 0.52, kind: 0, f: [0.31, 0.17, 0.07], sip: 21, first: 9 },
 	{ at: [W / 2 + 0.9, 11.6], dir: 3.6, len: 0.46, kind: 1, f: [0.23, 0.13, 0.05], sip: 29, first: 17 },
-	{ at: [W / 2 - 0.3, 12.8], dir: 5.2, len: 0.41, kind: 2, f: [0.37, 0.11, 0.09], sip: 25, first: 4 }
+	{ at: [W / 2 - 0.3, 12.8], dir: 5.2, len: 0.41, kind: 2, f: [0.37, 0.11, 0.09], sip: 25, first: 4 },
+	{ at: [W / 2 + 1.1, 6.7], dir: 2.2, len: 0.48, kind: 1, f: [0.27, 0.19, 0.06], sip: 33, first: 23 },
+	{ at: [W / 2 - 1.2, 10.4], dir: 4.4, len: 0.38, kind: 0, f: [0.35, 0.15, 0.08], sip: 27, first: 13 },
+	{ at: [W / 2 + 0.4, 9.0], dir: 1.4, len: 0.55, kind: 2, f: [0.21, 0.12, 0.05], sip: 31, first: 28 },
+	{ at: [W / 2 - 0.9, 13.3], dir: 5.9, len: 0.36, kind: 1, f: [0.39, 0.21, 0.1], sip: 23, first: 6 },
+	{ at: [W / 2 + 1.3, 12.9], dir: 3.0, len: 0.44, kind: 0, f: [0.29, 0.14, 0.07], sip: 35, first: 31 }
 ];
 // where they may swim: inside the pool, short of the statue's plinth
 const KOI_BOX = [POOL.x0 + 0.38, POOL.z0 + 0.38, POOL.x1 - 0.38, VENUS.z - 0.95];
+// where a crumb may be cast (it drifts in from the edges to here)
+const FEED_BOX = [POOL.x0 + 0.22, POOL.z0 + 0.22, POOL.x1 - 0.22, VENUS.z - 0.75];
+const CRUMB_N = 12;
 // each koi steers itself: a slow, wandering turn, an easy change of
 // pace, turning away from the walls and from each other, now and then
-// a rise to sip at the surface. Returns a stepper and the state.
+// a rise to sip at the surface; and when crumbs land, a rush to them.
 function koiSim() {
-	const fish = KOI.map((k, i) => ({ k, x: k.at[0], z: k.at[1], th: k.dir, w: 0, v: 0.12, y: -0.15, ph: i * 2.1, pitch: 0, nextSip: k.first, sipT: -1, kappa: 0 }));
+	const fish = KOI.map((k, i) => ({ k, i, x: k.at[0], z: k.at[1], th: k.dir, w: 0, v: 0.12, y: -0.15, ph: i * 2.1, pitch: 0, nextSip: k.first, sipT: -1, kappa: 0, bite: 0, notice: 0 }));
 	const events = [];
+	const crumbs = [];
+	for (let i = 0; i < CRUMB_N; i++) crumbs.push({ x: 0, z: 0, alive: 0, born: 0, seed: i * 0.37 });
+	const feed = { on: false, x: 0, z: 0, t0: 0 };
 	let simT = 0;
 	const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
+	const rnd = (n) => { const r = Math.sin(n * 12.9898 + 78.233) * 43758.5453; return r - Math.floor(r); };
+	// a handful of crumbs lands at x, z (studio coordinates)
+	const drop = (x, z) => {
+		x = Math.max(FEED_BOX[0], Math.min(FEED_BOX[2], x));
+		z = Math.max(FEED_BOX[1], Math.min(FEED_BOX[3], z));
+		Object.assign(feed, { on: true, x, z, t0: simT });
+		crumbs.forEach((c, i) => {
+			const a = rnd(simT + i) * Math.PI * 2, r = 0.03 + 0.11 * Math.sqrt(rnd(simT * 1.7 + i * 3.1));
+			Object.assign(c, { x: x + Math.cos(a) * r, z: z + Math.sin(a) * r, alive: 1, born: simT + rnd(i * 5.3 + simT) * 0.35 });
+		});
+		events.push([x, z, simT, 1.0]);
+		// the farther a koi is, the later it notices
+		for (const F of fish) F.notice = simT + 0.25 + Math.hypot(F.x - x, F.z - z) * 0.35 + rnd(F.i * 9.1 + simT) * 0.6;
+	};
 	const step = (dt) => {
 		simT += dt;
 		const t = simT;
+		// crumbs drift apart a little on the water
+		let left = 0;
+		for (const c of crumbs) {
+			if (!c.alive) continue;
+			if (t < c.born) continue;
+			left++;
+			c.x += Math.sin(t * 0.7 + c.seed * 11) * 0.004 * dt;
+			c.z += Math.cos(t * 0.6 + c.seed * 7) * 0.004 * dt;
+		}
+		if (feed.on && (left === 0 && t > feed.t0 + 1) || feed.on && t > feed.t0 + 40) {
+			feed.on = false;
+			for (const c of crumbs) c.alive = 0;
+		}
 		for (const F of fish) {
 			const { k } = F;
+			const hungry = feed.on && t > F.notice;
 			// the wander: a slow, uneven turning
 			let w = 0.38 * Math.sin(t * k.f[0] + k.dir * 3) + 0.22 * Math.sin(t * k.f[1] * 2.3 + 1.7 * k.kind) + 0.12 * Math.sin(t * 1.1 + k.dir);
+			let vt = 0.11 + 0.08 * Math.sin(t * k.f[2] + k.dir) + 0.05 * Math.max(0, Math.sin(t * 0.19 + k.kind * 4) - 0.6) * 4;
+			let yt = -(0.10 + 0.09 * (0.5 + 0.5 * Math.sin(t * 0.043 + k.dir * 2)));
+			let maxTurn = 1.3, crowd = 1;
+			if (hungry) {
+				// make for the nearest crumb, fast, rising as it nears
+				let best = null, bd = 1e9;
+				for (const c of crumbs) {
+					if (!c.alive || t < c.born) continue;
+					const d = Math.hypot(c.x - F.x, c.z - F.z) + 0.08 * Math.sin(F.i * 3.3 + c.seed * 9);
+					if (d < bd) { bd = d; best = c; }
+				}
+				const tx = best ? best.x : feed.x, tz = best ? best.z : feed.z;
+				const dist = Math.hypot(tx - F.x, tz - F.z);
+				const want = Math.atan2(tz - F.z, tx - F.x);
+				const off = wrap(want - F.th);
+				w = Math.max(-2.4, Math.min(2.4, off * 2.6)) + 0.25 * Math.sin(t * 2.3 + F.i);
+				maxTurn = 2.6;
+				// fast while far, easing in close, slower when facing away
+				vt = (0.13 + 0.38 * Math.min(1, dist / 1.2)) * (0.55 + 0.45 * Math.max(0, Math.cos(off)));
+				yt = yt + (-0.035 - yt) * (1 - Math.min(1, Math.max(0, (dist - 0.15) / 0.8)));
+				crowd = 0.25;
+				// a gulp when the mouth reaches it at the surface
+				if (best && t > F.bite && F.y > -0.08) {
+					const mx = F.x + Math.cos(F.th) * 0.01, mz = F.z + Math.sin(F.th) * 0.01;
+					if (Math.hypot(best.x - mx, best.z - mz) < 0.075) {
+						best.alive = 0;
+						F.bite = t + 1.4;
+						events.push([best.x, best.z, t, 0.75]);
+					}
+				}
+			}
 			// look ahead: turn for open water when a wall is coming
-			const look = 0.55 + F.v * 2.5;
+			const look = 0.55 + F.v * (hungry ? 1.2 : 2.5);
 			const ax = F.x + Math.cos(F.th) * look, az = F.z + Math.sin(F.th) * look;
-			const [x0, z0, x1, z1] = KOI_BOX;
+			const [x0, z0, x1, z1] = hungry ? FEED_BOX : KOI_BOX;
 			const out = Math.max(x0 - ax, ax - x1, z0 - az, az - z1, 0);
 			if (out > 0) {
 				const cx = (x0 + x1) / 2 + Math.sin(t * 0.07 + k.kind) * 0.6, cz = (z0 + z1) / 2 + Math.sin(t * 0.05 + k.kind * 2) * 2.0;
 				const want = Math.atan2(cz - F.z, cx - F.x);
-				w += Math.sign(wrap(want - F.th)) * Math.min(out * 3.0, 1.3);
+				w += Math.sign(wrap(want - F.th)) * Math.min(out * 3.0, 1.3) * (hungry ? 0.5 : 1);
 			}
-			// and keep a little apart from the others
+			// and keep a little apart from the others (less so at the food)
 			for (const G of fish) {
 				if (G === F) continue;
 				const dx = G.x - F.x, dz = G.z - F.z, d = Math.hypot(dx, dz);
-				if (d < 0.6) {
+				const r = hungry ? 0.32 : 0.6;
+				if (d < r) {
 					const side = Math.sign(wrap(Math.atan2(dz, dx) - F.th)) || 1;
-					w -= side * (0.6 - d) * 2.0 * Math.max(0, Math.cos(Math.atan2(dz, dx) - F.th) + 0.3);
+					w -= side * (r - d) * 2.0 * crowd * 4 * Math.max(0, Math.cos(Math.atan2(dz, dx) - F.th) + 0.3) / (hungry ? 1 : 4);
 				}
 			}
-			w = Math.max(-1.3, Math.min(1.3, w));
-			F.w += (w - F.w) * Math.min(dt * 1.6, 1);
+			w = Math.max(-maxTurn, Math.min(maxTurn, w));
+			F.w += (w - F.w) * Math.min(dt * (hungry ? 4 : 1.6), 1);
 			F.th += F.w * dt;
-			// pace: mostly an unhurried cruise, sometimes almost still,
-			// now and then a few quicker strokes; slower to sip
-			let vt = 0.11 + 0.08 * Math.sin(t * k.f[2] + k.dir) + 0.05 * Math.max(0, Math.sin(t * 0.19 + k.kind * 4) - 0.6) * 4;
-			// the sip
-			if (F.sipT < 0 && t > F.nextSip) { F.sipT = 0; F.nextSip = t + k.sip * (0.7 + 0.6 * ((Math.sin(t * 12.9898 + k.kind) * 43758.5) % 1 + 1) % 1); }
-			let yt = -(0.10 + 0.09 * (0.5 + 0.5 * Math.sin(t * 0.043 + k.dir * 2)));
+			// now and then a rise to sip (not while feeding)
+			if (!hungry && F.sipT < 0 && t > F.nextSip) { F.sipT = 0; F.nextSip = t + k.sip * (0.7 + 0.6 * rnd(t + k.kind)); }
 			if (F.sipT >= 0) {
 				const st = F.sipT;
 				F.sipT += dt;
@@ -692,24 +759,24 @@ function koiSim() {
 				vt *= 1 - 0.65 * lift;
 				if (st < 1.5 && F.sipT >= 1.5) events.push([F.x + Math.cos(F.th) * 0.02, F.z + Math.sin(F.th) * 0.02, t, 0.9]);
 				if (st < 2.2 && F.sipT >= 2.2) events.push([F.x, F.z, t, 0.55]);
-				if (F.sipT > 3.8) F.sipT = -1;
+				if (F.sipT > 3.8 || hungry) F.sipT = -1;
 			}
-			F.v += (Math.max(vt, 0.03) - F.v) * Math.min(dt * 0.9, 1);
+			F.v += (Math.max(vt, 0.03) - F.v) * Math.min(dt * (hungry ? 2.2 : 0.9), 1);
 			F.x += Math.cos(F.th) * F.v * dt;
 			F.z += Math.sin(F.th) * F.v * dt;
 			F.x = Math.max(POOL.x0 + 0.12, Math.min(POOL.x1 - 0.12, F.x));
 			F.z = Math.max(POOL.z0 + 0.12, Math.min(VENUS.z - 0.62, F.z));
-			const dy = (yt - F.y) * Math.min(dt * 1.2, 1);
+			const dy = (yt - F.y) * Math.min(dt * (hungry ? 2.5 : 1.2), 1);
 			F.y += dy;
 			F.pitch += (Math.max(-0.5, Math.min(0.5, dy / dt / Math.max(F.v, 0.05))) - F.pitch) * Math.min(dt * 3, 1);
 			// the body bends round the turn
-			F.kappa = Math.max(-3.2, Math.min(3.2, F.w / Math.max(F.v, 0.09)));
+			F.kappa = Math.max(-3.4, Math.min(3.4, F.w / Math.max(F.v, 0.09)));
 			// the tail beats faster the faster it swims, and harder in a turn
 			F.ph += dt * (3.2 + 32 * F.v + 2.5 * Math.abs(F.w));
 		}
 		while (events.length && t - events[0][2] > 10) events.shift();
 	};
-	return { fish, events, step, get t() { return simT; } };
+	return { fish, events, crumbs, feed, drop, step, get t() { return simT; } };
 }
 
 // one koi's mesh in its own frame: along (0 nose .. 1.12 tail tip),
@@ -1986,13 +2053,13 @@ module.exports = function (regl) {
 		attribute vec3 loc, nrm;
 		attribute vec4 km;
 		varying vec3 v_pos, v_nrm, v_eye, v_loc;
-		varying float v_kind, v_part, v_depth;
+		varying float v_kind, v_part, v_depth, v_seed;
 		${WAVES}
 		void main() {
 			float len = km.x, part = km.z;
+			int fi = int(km.w + 0.5);
 			vec4 A = koiA[0], B = koiB[0];
-			if (km.w > 0.5) { A = koiA[1]; B = koiB[1]; }
-			if (km.w > 1.5) { A = koiA[2]; B = koiB[2]; }
+			for (int i = 1; i < ${KOI.length}; i++) if (i == fi) { A = koiA[i]; B = koiB[i]; }
 			float th = A.w, kap = B.x, ph = B.y, v = B.z, pitch = B.w;
 			vec3 f = vec3(cos(th), 0.0, sin(th));
 			vec3 nl = vec3(-sin(th), 0.0, cos(th));
@@ -2027,7 +2094,7 @@ module.exports = function (regl) {
 			vec2 grad = vec2(poolHeight(q.xz + vec2(0.02, 0.0)) - h0, poolHeight(q.xz + vec2(0.0, 0.02)) - h0) / 0.02;
 			q.xz -= grad * (-q.y) * 1.3;
 			q.y = min(q.y, -0.006);
-			v_pos = q; v_nrm = n; v_loc = vec3(u, L.y, L.z); v_kind = km.y; v_part = part; v_depth = max(-q.y, 0.0);
+			v_pos = q; v_nrm = n; v_loc = vec3(u, L.y, L.z); v_kind = km.y; v_seed = km.w; v_part = part; v_depth = max(-q.y, 0.0);
 			vec3 tr = view[3].xyz;
 			vec3 eye = -vec3(dot(view[0].xyz, tr), dot(view[1].xyz, tr), dot(view[2].xyz, tr));
 			v_eye = eye;
@@ -2042,7 +2109,7 @@ module.exports = function (regl) {
 		precision highp float;
 		uniform float night, time;
 		varying vec3 v_pos, v_nrm, v_eye, v_loc;
-		varying float v_kind, v_part, v_depth;
+		varying float v_kind, v_part, v_depth, v_seed;
 		${WAVES}
 		${LIGHT}
 		float kh(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -2068,7 +2135,7 @@ module.exports = function (regl) {
 			float u = v_loc.x, lat = v_loc.y, up = v_loc.z;
 			// the pattern, fixed to the fish
 			vec3 orange = vec3(0.95, 0.36, 0.035), gold = vec3(0.98, 0.58, 0.10), white = vec3(0.86, 0.85, 0.80);
-			float blot = kn(vec2(u * 7.0, lat * 9.0 + up * 6.0) + v_kind * 13.0) * 0.65 + kn(vec2(u * 15.0, (lat + up) * 18.0)) * 0.35;
+			float blot = kn(vec2(u * 7.0, lat * 9.0 + up * 6.0) + v_kind * 13.0 + v_seed * 7.31) * 0.65 + kn(vec2(u * 15.0, (lat + up) * 18.0)) * 0.35;
 			vec3 base;
 			float gloss = 0.5;
 			if (v_kind < 0.5) {
@@ -2134,6 +2201,76 @@ module.exports = function (regl) {
 		blend: BLEND
 	});
 	const drawKoi = () => { drawKoiPart({ els: koiEls.fins, cull: false }); drawKoiPart({ els: koiEls.body, cull: true }); };
+
+	// the crumbs, floating where they were cast, riding the swell
+	const crumbGeo = (() => {
+		const g = { cp: [], ci: [], idx: [] };
+		for (let c = 0; c < CRUMB_N; c++) {
+			const base = g.cp.length / 3;
+			const R = 5, S = 7;
+			for (let i = 0; i <= R; i++) for (let j = 0; j < S; j++) {
+				const a = i / R * Math.PI, b = j / S * Math.PI * 2;
+				const wob = 1 + 0.35 * Math.sin(b * 3 + c * 1.7) * Math.sin(a * 2 + c);
+				g.cp.push(Math.sin(a) * Math.cos(b) * wob, Math.cos(a) * 0.6, Math.sin(a) * Math.sin(b) * wob * (0.8 + 0.4 * ((c * 0.37) % 1)));
+				g.ci.push(c);
+			}
+			for (let i = 0; i < R; i++) for (let j = 0; j < S; j++) {
+				const a = base + i * S + j, b = base + i * S + (j + 1) % S, d = base + (i + 1) * S + j, e = base + (i + 1) * S + (j + 1) % S;
+				g.idx.push(a, b, e, a, e, d);
+			}
+		}
+		return g;
+	})();
+	const crumbUniforms = Object.assign({}, POOL_UNIFORMS);
+	for (let i = 0; i < CRUMB_N; i++) crumbUniforms['crumbs[' + i + ']'] = () => {
+		const c = koi.sim.crumbs[i], t = koi.sim.t;
+		const k = c.alive ? Math.min(1, Math.max(0, (t - c.born) / 0.25)) : 0;
+		return [c.x + O[0], c.z + O[2], k, c.seed];
+	};
+	const drawCrumbs = regl({
+		vert: `
+		precision highp float;
+		uniform mat4 proj, view;
+		uniform vec4 crumbs[${CRUMB_N}];
+		attribute vec3 cp;
+		attribute float ci;
+		varying vec3 v_pos, v_nrm, v_eye;
+		${WAVES}
+		void main() {
+			int k = int(ci + 0.5);
+			vec4 c = crumbs[0];
+			for (int i = 1; i < ${CRUMB_N}; i++) if (i == k) c = crumbs[i];
+			float sz = 0.016 * (0.8 + 0.5 * fract(c.w * 3.7)) * c.z;
+			float h0 = poolHeight(c.xy);
+			vec3 q = vec3(c.x, 0.003 + h0 * 1.4, c.y) + cp * sz;
+			v_pos = q; v_nrm = normalize(cp);
+			vec3 tr = view[3].xyz;
+			v_eye = -vec3(dot(view[0].xyz, tr), dot(view[1].xyz, tr), dot(view[2].xyz, tr));
+			gl_Position = proj * view * vec4(q, 1.0);
+			if (c.z < 0.01) gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+		}`,
+		frag: `
+		precision highp float;
+		uniform float night, time;
+		varying vec3 v_pos, v_nrm, v_eye;
+		${LIGHT}
+		void main() {
+			vec3 V = normalize(v_eye - v_pos);
+			vec3 N = normalize(v_nrm);
+			vec3 spec; float sv;
+			vec3 light = studioLight(v_pos, N, V, 0.2, spec, sv);
+			vec3 base = vec3(0.78, 0.60, 0.36) * (0.85 + 0.3 * fract(sin(dot(floor(v_pos.xz * 900.0), vec2(12.9, 78.2))) * 43758.5));
+			// wet underneath
+			base *= mix(0.55, 1.0, smoothstep(-0.4, 0.4, N.y));
+			vec3 col = studioAir(base * light + spec * 0.1, v_pos, v_eye);
+			gl_FragColor = vec4(sqrt(max(col, 0.0)), 1.0);
+		}`,
+		attributes: { cp: crumbGeo.cp, ci: crumbGeo.ci },
+		elements: new Uint32Array(crumbGeo.idx),
+		uniforms: crumbUniforms,
+		cull: { enable: false }
+	});
+	ACTIVE = koi.sim;
 
 	// the glass: a faint sheen, a little dust, the sky's reflection
 	const gl = buildGlass();
@@ -2246,7 +2383,7 @@ module.exports = function (regl) {
 		if (!(opts && opts.reflected)) tick();
 		drawSky();
 		drawRoom();
-		if (!(opts && opts.reflected)) drawKoi();
+		if (!(opts && opts.reflected)) { drawKoi(); drawCrumbs(); }
 		if (drawVenus) drawVenus();
 		drawLeaves();
 		drawFalling();
@@ -2255,12 +2392,29 @@ module.exports = function (regl) {
 	return draw;
 };
 
+// feeding the koi (from the page): which koi pond is live, where a ray
+// from the eye meets the water, and a handful of crumbs cast there
+let ACTIVE = null;
+function poolHit(eye, dir) {
+	if (dir[1] >= -1e-4) return null;
+	const k = -eye[1] / dir[1];
+	const x = eye[0] + dir[0] * k - O[0], z = eye[2] + dir[2] * k - O[2];
+	if (x < POOL.x0 || x > POOL.x1 || z < POOL.z0 || z > POOL.z1) return null;
+	// not on the statue's plinth
+	if (Math.abs(x - VENUS.x) < 0.45 && Math.abs(z - VENUS.z) < 0.45) return null;
+	return [x + O[0], z + O[2]];
+}
+function feedAt(wx, wz) { if (ACTIVE) ACTIVE.drop(wx - O[0], wz - O[2]); }
+function feeding() { return !!(ACTIVE && ACTIVE.feed.on); }
+
 // A preview of the room (?studio in the address): the camera drifts
 // slowly through a few shots, with a dip to black between them.
 const PREVIEW = [
 	{ from: [12.6, 1.65, 0.9], to: [11.4, 1.75, 2.6], at: [6.2, 2.6, 15.5], fov: 60 },
 	{ from: [8.0, 1.45, 1.4], to: [8.0, 1.25, 4.4], at: [8.0, 1.7, 16.0], fov: 50 },
 	{ from: [7.2, 1.6, 3.8], to: [8.3, 1.55, 5.2], at: [13.0, 1.4, 10.4], fov: 52 },
+	// over the pond, looking down into it (the koi can be fed here)
+	{ from: [7.1, 3.9, 6.4], to: [8.6, 3.7, 7.6], at: [8.0, -0.2, 10.6], fov: 50, pond: true },
 	{ from: [6.2, 1.45, 10.4], to: [7.0, 1.75, 11.6], at: [8.0, 2.3, 15.2], fov: 44 },
 	{ from: [2.6, 1.5, 2.6], to: [3.6, 1.6, 4.4], at: [7.0, 6.8, 12.0], fov: 62 }
 ];
@@ -2273,11 +2427,14 @@ function previewCam(time) {
 	const S = PREVIEW[k];
 	const eye = S.from.map((a, i) => a + (S.to[i] - a) * e);
 	const fade = Math.max(0, 1 - Math.min(u * SHOT_LEN, (1 - u) * SHOT_LEN) / 0.7);
-	return { eye: toW(eye), target: toW(S.at), fov: S.fov, roll: 0, fade };
+	return { eye: toW(eye), target: toW(S.at), fov: S.fov, roll: 0, fade, pond: !!S.pond && fade < 0.05, shot: Math.floor(time / SHOT_LEN) };
 }
 
 // for the light shafts (post.js) and the culling (cull.js)
 module.exports.previewCam = previewCam;
+module.exports.poolHit = poolHit;
+module.exports.feedAt = feedAt;
+module.exports.feeding = feeding;
 module.exports.sunGLSL = sunGLSL;
 module.exports.O = O;
 module.exports.SIZE = { W, L, H, RIDGE };
