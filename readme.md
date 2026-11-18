@@ -40,6 +40,13 @@ The two statues are real 3D scans, slimmed down for the web and stored in `res/v
 - Venus de Milo, scan by SMK (Statens Museum for Kunst), via Scan the World / MyMiniFactory
 - Michelangelo's David, scan via Scan the World / MyMiniFactory
 
+## The studio pond: credits
+
+- Koi model: "Koi Fish" by SDPM Esare (https://sketchfab.com/3d-models/koi-fish-3e1b80c3653f43349252aab3b4fb1d86), licensed under CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/). Straightened along its spine and repacked as `res/koi.bin` and `res/koi.webp`; recoloured in the shader for the yamabuki and orange koi.
+- Lily pad and petal textures: "Water lily" by ivanzubak on TurboSquid (free), in `res/pond/`.
+- Gravel: Gravel030 from ambientCG (CC0), in `res/pond/gravel.jpg`.
+- Water drops: `res/audio/water-drops.mp3`, from a recording supplied by Muzammil.
+
 ## The street outside
 
 The view through the entrance door and windows is built from a photograph of a street in Padua taken by Muzammil (`res/street/photo.jpg`). The photo's camera was measured from its perspective lines and the street rebuilt as simple 3D surfaces, so the photo lines up from where it was taken and gains real depth as you move.

@@ -21,6 +21,15 @@
  * of brushes stands under the left windows; pendant lamps hang from the
  * trusses (lit at night).
  *
+ * Under the water: a gravel bed and the pool's marble walls, eight koi
+ * (a real model, res/koi.bin, bent live along each fish's own swimming
+ * path), caustics, and the shadows of the pads and the fish on the bed.
+ * They are drawn after the water at its own depth and show through it
+ * as much as the surface lets them. Petals fall and float, rings spread
+ * where they land, the koi rise to sip, and the visitor can feed them
+ * (see koiSim and feedAt). Credits for the pond's models, textures and
+ * sound are in the readme.
+ *
  * The water and the polished stone floor both lie on y = 0, so the
  * gallery's own reflection pass (the room drawn upside down beneath the
  * floor) gives the pool its mirror.
@@ -635,20 +644,24 @@ function fallState(pt, t) {
 // leaves rings. The same maths runs here (for the rings) and in the
 // shader (for the fish), so the two always agree.
 const KOI = [
-	{ at: [W / 2 - 0.8, 7.4], dir: 0.9, len: 0.52, kind: 0, f: [0.31, 0.17, 0.07], sip: 21, first: 9 },
-	{ at: [W / 2 + 0.9, 11.6], dir: 3.6, len: 0.46, kind: 1, f: [0.23, 0.13, 0.05], sip: 29, first: 17 },
-	{ at: [W / 2 - 0.3, 12.8], dir: 5.2, len: 0.41, kind: 2, f: [0.37, 0.11, 0.09], sip: 25, first: 4 },
-	{ at: [W / 2 + 1.1, 6.7], dir: 2.2, len: 0.48, kind: 1, f: [0.27, 0.19, 0.06], sip: 33, first: 23 },
-	{ at: [W / 2 - 1.2, 10.4], dir: 4.4, len: 0.38, kind: 0, f: [0.35, 0.15, 0.08], sip: 27, first: 13 },
-	{ at: [W / 2 + 0.4, 9.0], dir: 1.4, len: 0.55, kind: 2, f: [0.21, 0.12, 0.05], sip: 31, first: 28 },
-	{ at: [W / 2 - 0.9, 13.3], dir: 5.9, len: 0.36, kind: 1, f: [0.39, 0.21, 0.1], sip: 23, first: 6 },
-	{ at: [W / 2 + 1.3, 12.9], dir: 3.0, len: 0.44, kind: 0, f: [0.29, 0.14, 0.07], sip: 35, first: 31 }
+	{ at: [W / 2 - 0.8, 7.4], dir: 0.9, len: 0.58, kind: 0, f: [0.31, 0.17, 0.07], sip: 21, first: 9 },
+	{ at: [W / 2 + 0.9, 11.6], dir: 3.6, len: 0.52, kind: 1, f: [0.23, 0.13, 0.05], sip: 29, first: 17 },
+	{ at: [W / 2 - 0.3, 12.8], dir: 5.2, len: 0.46, kind: 2, f: [0.37, 0.11, 0.09], sip: 25, first: 4 },
+	{ at: [W / 2 + 1.1, 6.7], dir: 2.2, len: 0.54, kind: 1, f: [0.27, 0.19, 0.06], sip: 33, first: 23 },
+	{ at: [W / 2 - 1.2, 10.4], dir: 4.4, len: 0.43, kind: 0, f: [0.35, 0.15, 0.08], sip: 27, first: 13 },
+	{ at: [W / 2 + 0.4, 9.0], dir: 1.4, len: 0.62, kind: 2, f: [0.21, 0.12, 0.05], sip: 31, first: 28 },
+	{ at: [W / 2 - 0.9, 13.3], dir: 5.9, len: 0.40, kind: 1, f: [0.39, 0.21, 0.1], sip: 23, first: 6 },
+	{ at: [W / 2 + 1.3, 12.9], dir: 3.0, len: 0.49, kind: 0, f: [0.29, 0.14, 0.07], sip: 35, first: 31 }
 ];
 // where they may swim: inside the pool, short of the statue's plinth
 const KOI_BOX = [POOL.x0 + 0.38, POOL.z0 + 0.38, POOL.x1 - 0.38, VENUS.z - 0.95];
 // where a crumb may be cast (it drifts in from the edges to here)
 const FEED_BOX = [POOL.x0 + 0.22, POOL.z0 + 0.22, POOL.x1 - 0.22, VENUS.z - 0.75];
 const CRUMB_N = 12;
+// the bed of the pool, below the surface (where it looks to be, seen through the water)
+const BED_Y = -0.36;
+// the lily pads (studio x, z, radius), for their shadows on the bed
+const POND_PADS = [];
 // each koi steers itself: a slow, wandering turn, an easy change of
 // pace, turning away from the walls and from each other, now and then
 // a rise to sip at the surface; and when crumbs land, a rush to them.
@@ -777,61 +790,6 @@ function koiSim() {
 		while (events.length && t - events[0][2] > 10) events.shift();
 	};
 	return { fish, events, crumbs, feed, drop, step, get t() { return simT; } };
-}
-
-// one koi's mesh in its own frame: along (0 nose .. 1.12 tail tip),
-// across, up, all in body lengths. part: 0 body, 1 tail, 2 dorsal,
-// 3 pectoral fins, 4 pelvic fins
-function buildKoi() {
-	const g = { loc: [], nrm: [], part: [], body: [], fins: [] };
-	const v = (a, b, c, n, part) => { g.loc.push(a, b, c); g.nrm.push(n[0], n[1], n[2]); g.part.push(part); return g.loc.length / 3 - 1; };
-	// the body's half width and half height along its length
-	const BL = 0.86;
-	const prof = (u) => { const x = Math.min(Math.max(u / BL, 0), 1); return Math.pow(x, 0.42) * Math.pow(1 - x * 0.93, 0.85); };
-	let pmax = 0; for (let i = 0; i <= 100; i++) pmax = Math.max(pmax, prof(i / 100 * BL));
-	const hw = (u) => 0.118 * prof(u) / pmax + 0.005, hh = (u) => 0.102 * prof(u) / pmax + 0.005;
-	const R = 26, S = 18;
-	const ring = [];
-	for (let i = 0; i <= R; i++) {
-		const u = BL * Math.pow(i / R, 1.15);
-		const row = [];
-		for (let j = 0; j < S; j++) {
-			const a = j / S * Math.PI * 2;
-			const ca = Math.cos(a), sa = Math.sin(a);
-			const w = hw(u), h = hh(u) * (sa < 0 ? 0.88 : 1);
-			// the slope of the outline gives the normal a forward lean at the nose
-			const dw = (hw(u + 0.01) - hw(Math.max(u - 0.01, 0))) / 0.02;
-			const n = [-dw * 0.8, ca / w, sa / h];
-			const l = Math.hypot(n[0], n[1], n[2]);
-			row.push(v(u, ca * w, sa * h, [n[0] / l, n[1] / l, n[2] / l], 0));
-		}
-		ring.push(row);
-	}
-	// a cap on the nose
-	const nose = v(-0.006, 0, 0, [-1, 0, 0], 0);
-	for (let j = 0; j < S; j++) g.body.push(nose, ring[0][(j + 1) % S], ring[0][j]);
-	for (let i = 0; i < R; i++) for (let j = 0; j < S; j++) {
-		const a = ring[i][j], b = ring[i][(j + 1) % S], c = ring[i + 1][(j + 1) % S], d = ring[i + 1][j];
-		g.body.push(a, b, c, a, c, d);
-	}
-	// a flat fin from a grid of (s, t) in 0..1
-	const fin = (part, n, m, at) => {
-		const base = g.loc.length / 3;
-		for (let i = 0; i <= n; i++) for (let j = 0; j <= m; j++) { const r = at(i / n, j / m); v(r[0], r[1], r[2], r[3], part); }
-		for (let i = 0; i < n; i++) for (let j = 0; j < m; j++) {
-			const a = base + i * (m + 1) + j, b = a + 1, c = a + m + 2, d = a + m + 1;
-			g.fins.push(a, b, c, a, c, d);
-		}
-	};
-	// the tail: a broad, forked fan
-	fin(1, 8, 10, (s, t) => { const b = t * 2 - 1; return [0.80 + s * (0.25 + 0.09 * b * b), 0, b * (0.02 + s * 0.13), [0, 1, 0]]; });
-	// the dorsal fin along the back
-	fin(2, 10, 3, (s, t) => { const u = 0.30 + s * 0.40; const top = hh(u); return [u + t * 0.05, 0, top - 0.004 + t * 0.055 * Math.sin(Math.PI * Math.pow(s, 0.7)) * (1.15 - s * 0.6), [0, 1, 0]]; });
-	// the pectoral fins, out and back from behind the gills
-	for (const sd of [-1, 1]) fin(3, 4, 4, (s, t) => { const u = 0.20 + t * 0.07 + s * 0.08; return [u, sd * (hw(0.22) * 0.8 + s * 0.12), -hh(0.22) * 0.55 - s * 0.035, [0, 0, 1]]; });
-	// small pelvic fins underneath
-	for (const sd of [-1, 1]) fin(4, 3, 3, (s, t) => { const u = 0.50 + t * 0.05 + s * 0.06; return [u, sd * (hw(0.5) * 0.45 + s * 0.05), -hh(0.5) * 0.85 - s * 0.03, [0, 0, 1]]; });
-	return g;
 }
 
 // ------------------------------------------------------------------
@@ -1067,27 +1025,25 @@ function buildPond(g) {
 		}
 	}
 	for (const [x, z, r, rot, shade] of pads) {
+		POND_PADS.push([x, z, r]);
 		g.float = [x, z, shade * 7.3 + r * 13.0];
-		const n = 30, notch = 0.34 + shade * 0.1;
-		const c = g.v([x, 0.012, z], [0, 1, 0], K.PAD, [0.5, shade]);
-		let prev = null;
-		for (let i = 0; i <= n; i++) {
-			const a = rot + notch / 2 + (2 * PI - notch) * i / n;
-			const rr = r * (1 + 0.03 * Math.sin(a * 7 + shade * 10));
-			const cur = g.v([x + Math.cos(a) * rr, 0.012 + 0.008 * Math.sin(a * 3 + shade * 9), z + Math.sin(a) * rr], [0, 1, 0], K.PAD, [1.0, shade]);
-			if (prev !== null) g.idx.push(c, prev, cur);
-			prev = cur;
+		// a gently domed disc carrying the photographed pad; the picture's own
+		// edge cuts the outline and the notch (which points along rot)
+		const NA = 28, NR = 4, R = r * 1.08;
+		const ring = [];
+		for (let i = 0; i <= NR; i++) {
+			const row = [];
+			for (let j = 0; j < NA; j++) {
+				const a = j / NA * 2 * PI, rho = i / NR;
+				const b = a - rot;
+				const yy = 0.012 + 0.004 * (1 - rho * rho) + 0.006 * Math.pow(rho, 6) * (0.5 + 0.5 * Math.sin(a * 3 + shade * 9));
+				row.push(g.v([x + Math.cos(a) * R * rho, yy, z + Math.sin(a) * R * rho], [0, 1, 0], K.PAD, [0.5 + 0.5 * rho * Math.sin(b), 0.5 + 0.5 * rho * Math.cos(b)]));
+			}
+			ring.push(row);
 		}
-		// the rim curls up a touch
-		prev = null;
-		for (let i = 0; i <= n; i++) {
-			const a = rot + notch / 2 + (2 * PI - notch) * i / n;
-			const rr = r * (1 + 0.03 * Math.sin(a * 7 + shade * 10));
-			const p0 = [x + Math.cos(a) * rr, 0.012, z + Math.sin(a) * rr];
-			const p1 = [x + Math.cos(a) * (rr + 0.012), 0.03, z + Math.sin(a) * (rr + 0.012)];
-			const i0 = g.v(p0, [Math.cos(a), 0.4, Math.sin(a)], K.PAD, [1.2, shade]), i1 = g.v(p1, [Math.cos(a), 0.4, Math.sin(a)], K.PAD, [1.2, shade]);
-			if (prev) g.idx.push(prev[0], i0, i1, prev[0], i1, prev[1]);
-			prev = [i0, i1];
+		for (let i = 0; i < NR; i++) for (let j = 0; j < NA; j++) {
+			const a = ring[i][j], b = ring[i][(j + 1) % NA], c = ring[i + 1][(j + 1) % NA], d = ring[i + 1][j];
+			g.idx.push(a, b, c, a, c, d);
 		}
 	}
 	g.float = null;
@@ -1106,7 +1062,7 @@ function buildPond(g) {
 				const verts = [];
 				for (let i = 0; i <= NS; i++) {
 					const t = i / NS;
-					const wdt = Math.sin(PI * Math.pow(t, 0.8)) * 0.42 * len * sz;
+					const wdt = (0.18 + 0.82 * Math.sin(PI * Math.min(1, Math.pow(t, 0.8) * 0.75 + 0.1))) * 0.36 * len * sz;
 					const row = [];
 					for (let j = 0; j <= NW; j++) {
 						const u = (j / NW) * 2 - 1;
@@ -1115,7 +1071,7 @@ function buildPond(g) {
 						const rr = lr * Math.cos(tilt), yy = lr * Math.sin(tilt) + ly;
 						const px = x + Math.cos(yaw) * rr - Math.sin(yaw) * lx;
 						const pz = z + Math.sin(yaw) * rr + Math.cos(yaw) * lx;
-						row.push(g.v([px, 0.03 + yy, pz], [-Math.cos(yaw) * Math.sin(tilt) * 0.6, 0.8, -Math.sin(yaw) * Math.sin(tilt) * 0.6], K.PETAL, [t, (u + 1) / 2]));
+						row.push(g.v([px, 0.03 + yy, pz], [-Math.cos(yaw) * Math.sin(tilt) * 0.6, 0.8, -Math.sin(yaw) * Math.sin(tilt) * 0.6], K.PETAL, [(ri === 2 ? 0.5 : 0.0) + 0.5 * (0.5 + 0.5 * u * 0.92), 0.98 - t * 0.96]));
 					}
 					verts.push(row);
 				}
@@ -1368,7 +1324,8 @@ function decodeStatue(buf) {
 	return { nV, nI, mn, sz, pos, idx, nrm };
 }
 
-function loadTexture(regl, url) {
+function loadTexture(regl, url, opts) {
+	const wrap = (opts && opts.wrap) || 'clamp';
 	const tex = regl.texture({ data: [[[0, 0, 0, 0]]], min: 'linear', mag: 'linear' });
 	const state = { tex, ready: false };
 	fetch(url)
@@ -1376,7 +1333,7 @@ function loadTexture(regl, url) {
 		.then((b) => createImageBitmap(b, { premultiplyAlpha: 'none' }).catch(() => new Promise((ok, fail) => {
 			const img = new Image(); img.onload = () => ok(img); img.onerror = fail; img.src = URL.createObjectURL(b);
 		})))
-		.then((img) => { tex({ data: img, flipY: false, min: 'mipmap', mipmap: 'nice', mag: 'linear' }); state.ready = true; })
+		.then((img) => { tex({ data: img, flipY: false, min: 'mipmap', mipmap: 'nice', mag: 'linear', wrap }); state.ready = true; })
 		.catch((e) => console.error(e));
 	return state;
 }
@@ -1450,6 +1407,7 @@ const VERT = `
 const FRAG = `
 	precision highp float;
 	uniform float night, time, yScale, mirrorOn;
+	uniform sampler2D padTex, petalTex;
 	${WAVES}
 	varying vec3 v_pos, v_nrm, v_eye;
 	varying float v_kind;
@@ -1578,15 +1536,14 @@ const FRAG = `
 			base = vec3(0.012, 0.018, 0.014);
 			gloss = 1.0;
 		} else if (is(${K.PAD}.0)) {
-			float sh = v_uv.y;
-			vec2 q = (p.xz) * 9.0;
-			float veins = smoothstep(0.85, 1.0, abs(sin(atan(q.y, q.x) * 9.0)));
-			base = mix(vec3(0.10, 0.20, 0.05), vec3(0.28, 0.36, 0.10), sh) * (0.85 + 0.25 * vnoise3(vec3(p.xz * 18.0, sh)));
-			base = mix(base, vec3(0.45, 0.22, 0.10), smoothstep(1.1, 1.2, v_uv.x) * 0.7);
-			base *= 1.0 - veins * 0.12;
+			vec4 tx = texture2D(padTex, v_uv);
+			if (tx.a < 0.5) discard;
+			base = tx.rgb * tx.rgb * (0.8 + 0.35 * vnoise3(vec3(p.xz * 1.3, 2.0)));
 			gloss = 0.55;
 		} else if (is(${K.PETAL}.0)) {
-			base = mix(vec3(0.98, 0.90, 0.92), vec3(0.86, 0.36, 0.62), smoothstep(0.2, 1.0, v_uv.x));
+			vec4 tx = texture2D(petalTex, v_uv);
+			if (tx.a < 0.45) discard;
+			base = tx.rgb * tx.rgb;
 			sss = 0.6;
 			gloss = 0.25;
 		} else if (is(${K.STAMEN}.0)) {
@@ -1735,6 +1692,7 @@ module.exports = function (regl) {
 	const t0 = performance.now();
 	const clock = { t: 0, ripples: [] };
 	for (let i = 0; i < RIPPLE_N; i++) clock.ripples.push([0, 0, 0, 0]);
+	let heardKoi = 0;
 	const tick = () => {
 		clock.t = (performance.now() - t0) / 1000;
 		if (typeof window !== 'undefined' && window.__studioFreeze != null) clock.t = window.__studioFreeze;
@@ -1742,6 +1700,8 @@ module.exports = function (regl) {
 		for (const pt of FALL) {
 			const st = fallState(pt, clock.t);
 			const age = st.ph - st.Tf;
+			// a soft drop as it touches the water
+			if (st.inPool && age >= 0 && age < 0.5 && !(pt.heard > clock.t - 1)) { pt.heard = clock.t; pondSound.play(st.lx + O[0], st.lz + O[2], 0.4); }
 			if (st.inPool && age >= 0 && age < 9) live.push([st.lx + O[0], st.lz + O[2], age, 1]);
 		}
 		// the koi: swim on, and the rings from any that rose to sip
@@ -1749,6 +1709,7 @@ module.exports = function (regl) {
 		if (dt < 0 || dt > 120) { dt = Math.min(Math.max(dt, 0), 120); }
 		while (dt > 1e-6) { const h = Math.min(dt, 0.05); koi.sim.step(h); dt -= h; }
 		for (const e of koi.sim.events) { const age = clock.t - e[2]; if (age >= 0 && age < 9) live.push([e[0] + O[0], e[1] + O[2], age, e[3]]); }
+		for (const e of koi.sim.events) if (e[2] > heardKoi) { heardKoi = e[2]; pondSound.play(e[0] + O[0], e[1] + O[2], e[3] * 0.8); }
 		live.sort((a, b) => a[2] - b[2]);
 		for (let i = 0; i < RIPPLE_N; i++) clock.ripples[i] = live[i] || [0, 0, 0, 0];
 	};
@@ -1756,6 +1717,9 @@ module.exports = function (regl) {
 	if (typeof location !== 'undefined' && /tourdebug/.test(location.search)) window.__studioClock = clock;
 	for (let i = 0; i < RIPPLE_N; i++) POOL_UNIFORMS['ripples[' + i + ']'] = () => clock.ripples[i];
 
+	const padTex = loadTexture(regl, 'res/pond/lilypad.webp');
+	const petalTex = loadTexture(regl, 'res/pond/petals.webp');
+	const ROOM_UNIFORMS = Object.assign({ padTex: () => padTex.tex, petalTex: () => petalTex.tex }, POOL_UNIFORMS);
 	const makeDraw = (g, count) => regl({
 		vert: VERT,
 		frag: FRAG,
@@ -1768,7 +1732,7 @@ module.exports = function (regl) {
 		},
 		elements: new Uint32Array(g.idx),
 		count: count || g.idx.length,
-		uniforms: POOL_UNIFORMS,
+		uniforms: ROOM_UNIFORMS,
 		cull: { enable: false },
 		blend: BLEND
 	});
@@ -2009,114 +1973,64 @@ module.exports = function (regl) {
 		cull: { enable: false }
 	});
 
-	// the koi, under the surface. They are drawn after the water, at the
-	// water's own depth, so the pads and the curb still hide them; each
-	// works out for itself how much of it shows through the water.
-	const koiGeo = buildKoi();
-	const kv = koiGeo.loc.length / 3;
-	{
-		// make the body's faces point outwards (the fish's frame is mirrored)
-		const L = koiGeo.loc, B = koiGeo.body;
-		for (let i = 0; i < B.length; i += 3) {
-			const P = [0, 1, 2].map((k) => [L[B[i + k] * 3], L[B[i + k] * 3 + 1], L[B[i + k] * 3 + 2]]);
-			const e1 = P[1].map((x, k) => x - P[0][k]), e2 = P[2].map((x, k) => x - P[0][k]);
-			const n = [e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]];
-			const cm = [0, 1, 2].map((k) => (P[0][k] + P[1][k] + P[2][k]) / 3);
-			const out = [cm[0] < 0.01 ? -1 : 0, cm[1], cm[2]];
-			if (n[0] * out[0] + n[1] * out[1] + n[2] * out[2] > 0) { const t = B[i + 1]; B[i + 1] = B[i + 2]; B[i + 2] = t; }
-		}
-	}
-	const koi = { loc: [], nrm: [], km: [], body: [], fins: [], sim: koiSim() };
-	KOI.forEach((k, n) => {
-		for (let i = 0; i < kv; i++) {
-			koi.loc.push(koiGeo.loc[i * 3], koiGeo.loc[i * 3 + 1], koiGeo.loc[i * 3 + 2]);
-			koi.nrm.push(koiGeo.nrm[i * 3], koiGeo.nrm[i * 3 + 1], koiGeo.nrm[i * 3 + 2]);
-			koi.km.push(k.len, k.kind, koiGeo.part[i], n);
-		}
-		for (const i of koiGeo.fins) koi.fins.push(i + n * kv);
-		for (const i of koiGeo.body) koi.body.push(i + n * kv);
-	});
-	const koiAttr = {};
-	for (const key of ['loc', 'nrm', 'km']) koiAttr[key] = regl.buffer(new Float32Array(koi[key]));
-	const koiEls = { fins: regl.elements({ data: new Uint32Array(koi.fins), type: 'uint32' }), body: regl.elements({ data: new Uint32Array(koi.body), type: 'uint32' }) };
+	// ---- under the water: the pond's bed and walls, and the koi --------
+	// Both are drawn after the water, at the water's own depth, so the
+	// pads and the curb still hide them; each works out for itself how much
+	// of it shows through the surface (little at grazing angles, where the
+	// water mirrors the room). The sun reaches them through the moving
+	// surface, gathered into wandering threads of light, and the lily pads
+	// and the koi throw soft shadows on the bed.
+	const koi = { sim: koiSim(), ready: false };
+	ACTIVE = koi.sim;
+	if (typeof location !== 'undefined' && /tourdebug/.test(location.search)) window.__koi = koi.sim;
 	const koiUniforms = Object.assign({}, POOL_UNIFORMS);
 	KOI.forEach((k, n) => {
 		koiUniforms['koiA[' + n + ']'] = () => { const F = koi.sim.fish[n]; return [F.x + O[0], F.y, F.z + O[2], F.th]; };
 		koiUniforms['koiB[' + n + ']'] = () => { const F = koi.sim.fish[n]; return [F.kappa, F.ph, F.v, F.pitch]; };
 	});
-	if (typeof location !== 'undefined' && /tourdebug/.test(location.search)) window.__koi = koi.sim;
-	const drawKoiPart = regl({
-		vert: `
-		precision highp float;
-		uniform mat4 proj, view;
-		uniform vec4 koiA[${KOI.length}], koiB[${KOI.length}];
-		attribute vec3 loc, nrm;
-		attribute vec4 km;
-		varying vec3 v_pos, v_nrm, v_eye, v_loc;
-		varying float v_kind, v_part, v_depth, v_seed;
-		${WAVES}
-		void main() {
-			float len = km.x, part = km.z;
-			int fi = int(km.w + 0.5);
-			vec4 A = koiA[0], B = koiB[0];
-			for (int i = 1; i < ${KOI.length}; i++) if (i == fi) { A = koiA[i]; B = koiB[i]; }
-			float th = A.w, kap = B.x, ph = B.y, v = B.z, pitch = B.w;
-			vec3 f = vec3(cos(th), 0.0, sin(th));
-			vec3 nl = vec3(-sin(th), 0.0, cos(th));
-			// the spine bends along the arc of the turn, behind the nose
-			float u = loc.x;
-			float s = max(u, 0.0) * len;
-			float ka = abs(kap) < 1e-3 ? 1e-3 : kap;
-			vec3 P = A.xyz - f * (sin(ka * s) / ka) + nl * ((1.0 - cos(ka * s)) / ka);
-			P.y = A.y - pitch * s;
-			vec3 F = normalize(f * cos(ka * s) - nl * sin(ka * s) + vec3(0.0, pitch, 0.0));
-			vec3 Sd = normalize(vec3(-F.z, 0.0, F.x));
-			vec3 Up = cross(Sd, F);
-			// the swimming wave: small at the head, wide at the tail, bigger
-			// when it swims faster or turns
-			float pace = clamp(v / 0.18, 0.2, 1.8);
-			float amp = (0.012 + 0.11 * u * u) * (0.35 + 0.5 * min(pace, 1.3) + 0.25 * min(abs(kap), 1.0));
-			float sway = amp * sin(ph - 6.0 * u);
-			float dsway = amp * cos(ph - 6.0 * u) * -6.0;
-			vec3 L = loc;
-			if (part > 2.5 && part < 3.5) {
-				// the pectoral fins paddle slowly, and fold back when it hurries
-				float root = clamp((abs(L.y) - 0.06) / 0.12, 0.0, 1.0);
-				L.z += root * 0.05 * sin(ph * 0.45 + sign(L.y) * 0.9);
-				L.y *= 1.0 - 0.35 * root * smoothstep(0.7, 1.5, pace);
-				L.x += root * 0.05 * smoothstep(0.7, 1.5, pace);
+	// the shadows of the pads on the bed, painted once into a small picture
+	// of the pool (the pads drift only a hand's width)
+	const padShadow = (() => {
+		const cw = 96, chh = Math.round(96 * (POOL.z1 - POOL.z0) / (POOL.x1 - POOL.x0));
+		const data = new Uint8Array(cw * chh * 4);
+		const off = [-SUN[0] / SUN[1] * -BED_Y, -SUN[2] / SUN[1] * -BED_Y];
+		const sx = cw / (POOL.x1 - POOL.x0), sz = chh / (POOL.z1 - POOL.z0);
+		for (let j = 0; j < chh; j++) for (let i = 0; i < cw; i++) {
+			const x = POOL.x0 + (i + 0.5) / sx, z = POOL.z0 + (j + 0.5) / sz;
+			let s = 0;
+			for (const p of POND_PADS) {
+				const d = Math.hypot(x - (p[0] + off[0]), z - (p[1] + off[1]));
+				s = Math.max(s, 1 - Math.min(1, Math.max(0, (d - p[2] * 0.82) / (p[2] * 0.35))));
 			}
-			if (part > 3.5) L.z += 0.012 * sin(ph * 0.6);
-			vec3 q = P + Sd * (L.y + sway) * len + Up * L.z * len - F * (L.x - u) * len;
-			vec3 n = normalize(F * (nrm.x - nrm.y * dsway) + Sd * nrm.y + Up * nrm.z);
-			// seen through the moving surface, it wavers a little
-			float h0 = poolHeight(q.xz);
-			vec2 grad = vec2(poolHeight(q.xz + vec2(0.02, 0.0)) - h0, poolHeight(q.xz + vec2(0.0, 0.02)) - h0) / 0.02;
-			q.xz -= grad * (-q.y) * 1.3;
-			q.y = min(q.y, -0.006);
-			v_pos = q; v_nrm = n; v_loc = vec3(u, L.y, L.z); v_kind = km.y; v_seed = km.w; v_part = part; v_depth = max(-q.y, 0.0);
+			data[(j * cw + i) * 4] = Math.round(s * 255);
+			data[(j * cw + i) * 4 + 3] = 255;
+		}
+		return regl.texture({ width: cw, height: chh, data, min: 'linear', mag: 'linear' });
+	})();
+	const UNDER_V = `
+		uniform vec4 koiA[${KOI.length}], koiB[${KOI.length}];
+		// where we see a point under the water: at the surface's own depth
+		vec4 underPos(vec3 q, mat4 proj, mat4 view, float order) {
 			vec3 tr = view[3].xyz;
 			vec3 eye = -vec3(dot(view[0].xyz, tr), dot(view[1].xyz, tr), dot(view[2].xyz, tr));
-			v_eye = eye;
 			vec4 cq = proj * view * vec4(q, 1.0);
-			// put it at the depth of the water where we see it through
 			vec3 sp = eye + (q - eye) * (eye.y / max(eye.y - q.y, 1e-4));
 			vec4 cs = proj * view * vec4(sp, 1.0);
-			gl_Position = cq;
-			gl_Position.z = (cs.z / cs.w - 3e-5) * cq.w;
-		}`,
-		frag: `
-		precision highp float;
-		uniform float night, time;
-		varying vec3 v_pos, v_nrm, v_eye, v_loc;
-		varying float v_kind, v_part, v_depth, v_seed;
-		${WAVES}
-		${LIGHT}
-		float kh(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-		float kn(vec2 p) {
-			vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
-			return mix(mix(kh(i), kh(i + vec2(1.0, 0.0)), f.x), mix(kh(i + vec2(0.0, 1.0)), kh(i + vec2(1.0, 1.0)), f.x), f.y);
+			float zs = cs.z / cs.w;
+			// a whisker in front of the water, keeping near-before-far among
+			// themselves
+			float z = zs - 3e-5 + clamp((cq.z / cq.w - zs) * 1e-3, 0.0, 2e-5) * order;
+			return vec4(cq.xy, z * cq.w, cq.w);
 		}
+		vec3 eyeOf(mat4 view) {
+			vec3 tr = view[3].xyz;
+			return -vec3(dot(view[0].xyz, tr), dot(view[1].xyz, tr), dot(view[2].xyz, tr));
+		}
+	`;
+	const UNDER_F = `
+		uniform vec4 koiA[${KOI.length}], koiB[${KOI.length}];
+		uniform sampler2D padShadow;
+		const vec3 W_SUN = vec3(${f(SUN[0])}, ${f(SUN[1])}, ${f(SUN[2])});
 		// light focused by the moving surface onto what's beneath it
 		float caustic(vec2 p, float t) {
 			vec2 q = p * 7.0;
@@ -2127,80 +2041,297 @@ module.exports = function (regl) {
 			}
 			return pow(max(1.0 - c / 3.6, 0.0), 2.5) * 4.0;
 		}
+		// how much a pad shades a point at height y below it
+		float padShade(vec3 pw) {
+			vec2 lp = pw.xz - vec2(${f(O[0])}, ${f(O[2])});
+			// (the picture is for the bed; nearer the surface the shadow sits nearer the pad)
+			vec2 back = W_SUN.xz / W_SUN.y * (pw.y - ${f(BED_Y)});
+			vec2 uv = (lp - back - vec2(${f(POOL.x0)}, ${f(POOL.z0)})) / vec2(${f(POOL.x1 - POOL.x0)}, ${f(POOL.z1 - POOL.z0)});
+			return texture2D(padShadow, uv).r;
+		}
+		// the sun's share of the light under the water at pw
+		vec3 underSun(vec3 pw, vec3 N, float sv, out vec3 sunPart) {
+			vec3 sunC = mix(vec3(1.0, 0.88, 0.70) * 3.9, vec3(0.50, 0.64, 1.0) * 1.35, night);
+			sunPart = sunC * sv * max(dot(N, W_SUN), 0.0);
+			float ca = caustic(pw.xz - W_SUN.xz / W_SUN.y * pw.y, stime);
+			return sunPart * (1.0 - 0.85 * padShade(pw)) * (0.35 + 1.25 * ca);
+		}
+		// what the water does to light that comes back up through it
+		float showThrough(vec3 V) {
+			float cosV = clamp(V.y, 0.0, 1.0);
+			float Fr = 0.02 + 0.98 * pow(1.0 - cosV, 5.0);
+			return 1.0 - mix(0.05, 0.93, Fr);
+		}
+	`;
+
+	// --- the bed and the walls under the water
+	const bed = (() => {
+		const pos = [], nrm = [], kd = [], idx = [];
+		const v = (x, y, z, n, k) => { pos.push(x + O[0], y, z + O[2]); nrm.push(...n); kd.push(k); return pos.length / 3 - 1; };
+		const grid = (a, du, dv, nu, nv, n, k) => {
+			const b = pos.length / 3;
+			for (let i = 0; i <= nu; i++) for (let j = 0; j <= nv; j++) v(a[0] + du[0] * i / nu + dv[0] * j / nv, a[1] + du[1] * i / nu + dv[1] * j / nv, a[2] + du[2] * i / nu + dv[2] * j / nv, n, k);
+			for (let i = 0; i < nu; i++) for (let j = 0; j < nv; j++) { const p = b + i * (nv + 1) + j; idx.push(p, p + 1, p + nv + 2, p, p + nv + 2, p + nv + 1); }
+		};
+		const { x0, x1, z0, z1 } = POOL, y = BED_Y;
+		grid([x0, y, z0], [x1 - x0, 0, 0], [0, 0, z1 - z0], 8, 22, [0, 1, 0], 0);
+		grid([x0, 0, z0], [0, 0, z1 - z0], [0, y, 0], 22, 2, [1, 0, 0], 1);
+		grid([x1, 0, z0], [0, 0, z1 - z0], [0, y, 0], 22, 2, [-1, 0, 0], 1);
+		grid([x0, 0, z0], [x1 - x0, 0, 0], [0, y, 0], 8, 2, [0, 0, 1], 1);
+		grid([x0, 0, z1], [x1 - x0, 0, 0], [0, y, 0], 8, 2, [0, 0, -1], 1);
+		const px0 = VENUS.x - 0.42, px1 = VENUS.x + 0.42, pz0 = VENUS.z - 0.42, pz1 = VENUS.z + 0.42;
+		grid([px0, 0, pz0], [0, 0, pz1 - pz0], [0, y, 0], 2, 2, [-1, 0, 0], 1);
+		grid([px1, 0, pz0], [0, 0, pz1 - pz0], [0, y, 0], 2, 2, [1, 0, 0], 1);
+		grid([px0, 0, pz0], [px1 - px0, 0, 0], [0, y, 0], 2, 2, [0, 0, -1], 1);
+		grid([px0, 0, pz1], [px1 - px0, 0, 0], [0, y, 0], 2, 2, [0, 0, 1], 1);
+		return { pos, nrm, kd, idx };
+	})();
+	const gravelTex = loadTexture(regl, 'res/pond/gravel.jpg', { wrap: 'repeat' });
+	const bedUniforms = Object.assign({ padShadow, gravel: () => gravelTex.tex }, koiUniforms);
+	const drawBed = regl({
+		vert: `
+		precision highp float;
+		uniform mat4 proj, view;
+		attribute vec3 position, normal;
+		attribute float kd;
+		varying vec3 v_pos, v_nrm, v_eye;
+		varying float v_kd;
+		${WAVES}
+		${UNDER_V}
+		void main() {
+			vec3 q = position;
+			float h0 = poolHeight(q.xz);
+			vec2 grad = vec2(poolHeight(q.xz + vec2(0.03, 0.0)) - h0, poolHeight(q.xz + vec2(0.0, 0.03)) - h0) / 0.03;
+			q.xz -= grad * (-q.y) * 1.2;
+			v_pos = q; v_nrm = normal; v_kd = kd; v_eye = eyeOf(view);
+			gl_Position = underPos(q, proj, view, 0.0);
+		}`,
+		frag: `
+		precision highp float;
+		uniform float night, time;
+		uniform sampler2D gravel;
+		varying vec3 v_pos, v_nrm, v_eye;
+		varying float v_kd;
+		${WAVES}
+		${LIGHT}
+		${UNDER_F}
+		float klen(int i) {
+			${KOI.map((k, i) => `if (i == ${i}) return ${f(k.len)};`).join(' ')}
+			return 0.45;
+		}
 		void main() {
 			vec3 V = normalize(v_eye - v_pos);
 			vec3 N = normalize(v_nrm);
-			bool fin = v_part > 0.5;
-			if (fin && dot(N, V) < 0.0) N = -N;
-			float u = v_loc.x, lat = v_loc.y, up = v_loc.z;
-			// the pattern, fixed to the fish
-			vec3 orange = vec3(0.95, 0.36, 0.035), gold = vec3(0.98, 0.58, 0.10), white = vec3(0.86, 0.85, 0.80);
-			float blot = kn(vec2(u * 7.0, lat * 9.0 + up * 6.0) + v_kind * 13.0 + v_seed * 7.31) * 0.65 + kn(vec2(u * 15.0, (lat + up) * 18.0)) * 0.35;
 			vec3 base;
-			float gloss = 0.5;
-			if (v_kind < 0.5) {
-				// yamabuki: metallic orange gold all over
-				base = mix(orange, gold, 0.45 + 0.4 * blot);
-				gloss = 0.85;
-			} else if (v_kind < 1.5) {
-				// kohaku: white, with deep orange-red patches over the back
-				float red = smoothstep(0.50, 0.56, blot + 0.18 * smoothstep(-0.02, 0.05, up)) * smoothstep(0.03, 0.12, u) * (1.0 - smoothstep(0.78, 0.86, u));
-				base = mix(white, vec3(0.90, 0.20, 0.03), red);
+			if (v_kd < 0.5) {
+				base = texture2D(gravel, v_pos.xz * 1.9).rgb;
+				base = base * base * vec3(1.25, 1.18, 1.0);
 			} else {
-				// orange with a net of darker-edged scales
-				base = mix(orange, vec3(0.99, 0.48, 0.07), blot * 0.5);
-				vec2 sg = vec2(u * 34.0 + up * 17.0, u * 34.0 - up * 17.0 + lat * 20.0);
-				float edge = smoothstep(0.32, 0.5, max(abs(fract(sg.x) - 0.5), abs(fract(sg.y) - 0.5)));
-				base *= 1.0 - 0.28 * edge * smoothstep(-0.02, 0.04, up) * step(0.1, u);
+				// the marble going down into the water, greening towards the bed
+				vec2 wp = abs(N.x) > 0.5 ? v_pos.zy : v_pos.xy;
+				base = vec3(0.70, 0.68, 0.62) * (0.92 + 0.12 * fract(sin(dot(floor(wp * 40.0), vec2(12.9, 78.2))) * 43758.5));
+				base = mix(base, vec3(0.10, 0.13, 0.07), smoothstep(-0.05, ${f(BED_Y)}, v_pos.y) * 0.75);
 			}
-			// pale belly, and the scales catching the light along the flank
-			base = mix(base, white * 0.95, smoothstep(0.0, -0.06, up) * 0.55 * (v_part < 0.5 ? 1.0 : 0.0));
-			float scale = kh(floor(vec2(u * 42.0, (lat + up) * 50.0)));
-			// the fins: paler, see-through, with fine rays
-			float a = 1.0;
-			if (fin) {
-				float ray = v_part < 1.5 ? atan(up, u - 0.78) : (v_part < 2.5 ? u * 1.0 : length(vec2(lat, up)));
-				float rays = 0.75 + 0.25 * sin(ray * (v_part < 2.5 ? 70.0 : 120.0));
-				base = mix(base, gold * vec3(1.0, 0.9, 0.85), 0.5) * rays;
-				if (v_kind > 0.5 && v_kind < 1.5) base = mix(base, white, 0.6);
-				a = 0.62;
-				// the forked edge of the tail
-				if (v_part < 1.5 && u > 0.80 + (0.25 + 0.09 * pow(up / 0.15, 2.0)) * 0.97 - 0.06 * (1.0 - min(abs(up) / 0.1, 1.0))) discard;
-			}
-			// the eyes
-			float ed = length(vec2((u - 0.085) * 1.0, up - 0.022));
-			if (!fin && ed < 0.016 && abs(lat) > 0.025) { base = mix(vec3(0.02), vec3(0.75, 0.6, 0.3), smoothstep(0.016, 0.011, ed) * smoothstep(0.004, 0.008, ed) * 0.5); gloss = 0.95; }
-
 			vec3 spec; float sv;
-			vec3 light = studioLight(vec3(v_pos.x, 0.02, v_pos.z), N, V, gloss, spec, sv);
-			// light comes down through the water: dimmer with depth, and
-			// gathered into wandering bright threads
-			float att = exp(-v_depth * 0.8);
-			vec3 sunC = mix(vec3(1.0, 0.88, 0.70) * 3.9, vec3(0.50, 0.64, 1.0) * 1.35, night);
-			float ca = caustic(v_pos.xz, stime) * sv * max(N.y, 0.0);
-			light = light * att + sunC * ca * 0.22 * att;
-			vec3 col = base * light;
-			float metal = v_kind < 0.5 ? 1.0 : 0.4;
-			col += spec * (0.2 + 0.8 * metal) * (0.6 + 0.8 * scale) * att * (fin ? 0.3 : 1.0) * base * 1.6;
-			// the water's green-brown takes the colour away with depth
-			vec3 tr = exp(-v_depth * vec3(1.9, 1.15, 1.3));
-			col = col * tr + vec3(0.010, 0.016, 0.012) * (1.0 - tr) * mix(1.0, 0.1, night);
+			vec3 light = studioLight(vec3(v_pos.x - W_SUN.x / W_SUN.y * v_pos.y, 0.02, v_pos.z - W_SUN.z / W_SUN.y * v_pos.y), N, V, 0.1, spec, sv);
+			vec3 sunPart;
+			vec3 lit = underSun(v_pos, N, sv, sunPart);
+			// the koi's shadows, softer the higher they swim above the bed
+			float sh = 0.0;
+			for (int i = 0; i < ${KOI.length}; i++) {
+				vec4 A = koiA[i];
+				float len = klen(i);
+				vec2 F = vec2(cos(A.w), sin(A.w));
+				vec2 c = A.xz - F * len * 0.42 - W_SUN.xz / W_SUN.y * (A.y - v_pos.y);
+				vec2 d = v_pos.xz - c;
+				float h = A.y - v_pos.y;
+				float ell = pow(dot(d, F) / (len * 0.46), 2.0) + pow(dot(d, vec2(-F.y, F.x)) / (len * 0.12 + h * 0.08), 2.0);
+				sh = max(sh, smoothstep(1.0, 0.25, ell) * (0.75 - h * 0.6));
+			}
+			lit *= 1.0 - sh;
+			vec3 col = base * ((light - sunPart) * 0.9 + lit);
+			// down through the water and back up again
+			float path = -v_pos.y * (1.0 + 1.0 / max(V.y, 0.25));
+			vec3 tr = exp(-path * vec3(0.75, 0.38, 0.48));
+			col = col * tr + vec3(0.012, 0.020, 0.015) * (1.0 - tr) * mix(1.0, 0.12, night);
 			col = studioAir(col, v_pos, v_eye);
-			// how much shows through: less at grazing angles, where the
-			// surface mirrors the room, and less the deeper it swims
-			float cosV = clamp(V.y, 0.0, 1.0);
-			float Fr = 0.02 + 0.98 * pow(1.0 - cosV, 5.0);
-			a *= (1.0 - mix(0.04, 0.92, Fr)) * exp(-v_depth * 0.5);
-			gl_FragColor = vec4(sqrt(max(col, 0.0)), a);
+			gl_FragColor = vec4(sqrt(max(col, 0.0)), showThrough(V) * 0.93);
 		}`,
-		attributes: koiAttr,
-		elements: regl.prop('els'),
-		uniforms: koiUniforms,
-		cull: { enable: regl.prop('cull'), face: 'front' },
+		attributes: { position: bed.pos, normal: bed.nrm, kd: bed.kd },
+		elements: new Uint16Array(bed.idx),
+		uniforms: bedUniforms,
+		cull: { enable: false },
 		depth: { enable: true, mask: false, func: 'less' },
 		blend: BLEND
 	});
-	const drawKoi = () => { drawKoiPart({ els: koiEls.fins, cull: false }); drawKoiPart({ els: koiEls.body, cull: true }); };
+
+	// --- the koi: the model (res/koi.bin), straightened along its spine,
+	// bent each frame along its turn with a swimming wave down its body
+	const koiTex = loadTexture(regl, 'res/koi.webp');
+	let drawKoiPart = null, koiEls = null;
+	fetch('res/koi.bin')
+		.then((r) => { if (!r.ok) throw new Error('Could not load res/koi.bin'); return r.arrayBuffer(); })
+		.then((buf) => {
+			const dv = new DataView(buf);
+			const nV = dv.getUint32(4, true), nI = dv.getUint32(8, true), S = dv.getFloat32(12, true);
+			let o = 16;
+			const lu = new Uint16Array(buf, o, nV); o += nV * 2;
+			const ll = new Int16Array(buf, o, nV * 2); o += nV * 4;
+			const tu = new Uint16Array(buf, o, nV * 2); o += nV * 4;
+			const ix = new Uint16Array(buf, o, nI); o += nI * 2;
+			const n8 = new Int8Array(buf, o, nV * 3); o += nV * 3;
+			const fp = new Uint8Array(buf, o, nV * 2);
+			const n = KOI.length;
+			const loc = new Float32Array(nV * 3 * n), nrm = new Float32Array(nV * 3 * n), uv = new Float32Array(nV * 2 * n), fin = new Float32Array(nV * 2 * n), km = new Float32Array(nV * 4 * n);
+			KOI.forEach((k, f0) => {
+				for (let i = 0; i < nV; i++) {
+					const j = f0 * nV + i;
+					loc[j * 3] = lu[i] / 65535 * 1.2; loc[j * 3 + 1] = ll[i * 2] / 32767 * S; loc[j * 3 + 2] = ll[i * 2 + 1] / 32767 * S;
+					nrm[j * 3] = n8[i * 3] / 127; nrm[j * 3 + 1] = n8[i * 3 + 1] / 127; nrm[j * 3 + 2] = n8[i * 3 + 2] / 127;
+					uv[j * 2] = tu[i * 2] / 65535; uv[j * 2 + 1] = tu[i * 2 + 1] / 65535;
+					fin[j * 2] = fp[i * 2] / 255; fin[j * 2 + 1] = fp[i * 2 + 1] / 255;
+					km[j * 4] = k.len; km[j * 4 + 1] = k.kind; km[j * 4 + 2] = f0; km[j * 4 + 3] = 0;
+				}
+			});
+			// the body and the fins drawn apart: the body solid, the fins after it, see-through
+			const body = [], fins = [];
+			for (let f0 = 0; f0 < n; f0++) for (let t = 0; t < nI; t += 3) {
+				const a = ix[t], b = ix[t + 1], c = ix[t + 2];
+				const isFin = Math.max(fp[a * 2], fp[b * 2], fp[c * 2]) > 140;
+				(isFin ? fins : body).push(a + f0 * nV, b + f0 * nV, c + f0 * nV);
+			}
+			koiEls = { body: regl.elements({ data: new Uint32Array(body), type: 'uint32' }), fins: regl.elements({ data: new Uint32Array(fins), type: 'uint32' }) };
+			drawKoiPart = regl({
+				vert: `
+				precision highp float;
+				uniform mat4 proj, view;
+				attribute vec3 loc, nrm;
+				attribute vec2 uv, fin;
+				attribute vec4 km;
+				varying vec3 v_pos, v_nrm, v_eye;
+				varying vec2 v_uv;
+				varying float v_kind, v_fin, v_depth, v_seed, v_u;
+				${WAVES}
+				${UNDER_V}
+				void main() {
+					float len = km.x;
+					int fi = int(km.z + 0.5);
+					vec4 A = koiA[0], B = koiB[0];
+					for (int i = 1; i < ${KOI.length}; i++) if (i == fi) { A = koiA[i]; B = koiB[i]; }
+					float th = A.w, kap = B.x, ph = B.y, v = B.z, pitch = B.w;
+					vec3 f = vec3(cos(th), 0.0, sin(th));
+					vec3 nl = vec3(-sin(th), 0.0, cos(th));
+					// the spine bends along the arc of the turn, behind the nose
+					float u = loc.x;
+					float s = max(u, 0.0) * len;
+					float ka = abs(kap) < 1e-3 ? 1e-3 : kap;
+					vec3 P = A.xyz - f * (sin(ka * s) / ka) + nl * ((1.0 - cos(ka * s)) / ka);
+					P.y = A.y - pitch * s;
+					vec3 F = normalize(f * cos(ka * s) - nl * sin(ka * s) + vec3(0.0, pitch, 0.0));
+					vec3 Sd = normalize(vec3(-F.z, 0.0, F.x));
+					vec3 Up = cross(Sd, F);
+					// the swimming wave: small at the head, wide at the tail, bigger
+					// when it swims faster or turns
+					float pace = clamp(v / 0.18, 0.2, 1.8);
+					float amp = (0.010 + 0.10 * u * u) * (0.35 + 0.5 * min(pace, 1.3) + 0.25 * min(abs(kap), 1.0));
+					float sway = amp * sin(ph - 6.0 * u);
+					float dsway = amp * cos(ph - 6.0 * u) * -6.0;
+					vec3 L = loc;
+					// the fins trail and ripple a little behind the body
+					sway += fin.x * 0.012 * sin(ph * 1.3 - 9.0 * u) * (0.6 + 0.4 * u);
+					// the pectoral fins paddle slowly, and fold back when it hurries
+					float pect = fin.y;
+					float fast = smoothstep(0.7, 1.5, pace);
+					L.z += pect * 0.05 * sin(ph * 0.45 + sign(L.y) * 0.9) * (1.0 - fast * 0.7);
+					L.y *= 1.0 - 0.35 * pect * fast;
+					L.x += pect * 0.05 * fast;
+					vec3 q = P + Sd * (L.y + sway) * len + Up * L.z * len - F * (L.x - u) * len;
+					vec3 n = normalize(F * (nrm.x - nrm.y * dsway) + Sd * nrm.y + Up * nrm.z);
+					// seen through the moving surface, it wavers a little
+					float h0 = poolHeight(q.xz);
+					vec2 grad = vec2(poolHeight(q.xz + vec2(0.02, 0.0)) - h0, poolHeight(q.xz + vec2(0.0, 0.02)) - h0) / 0.02;
+					q.xz -= grad * (-q.y) * 1.3;
+					q.y = min(q.y, -0.006);
+					v_pos = q; v_nrm = n; v_uv = uv; v_kind = km.y; v_seed = km.z; v_fin = fin.x; v_depth = max(-q.y, 0.0); v_u = u;
+					v_eye = eyeOf(view);
+					gl_Position = underPos(q, proj, view, 1.0);
+				}`,
+				frag: `
+				precision highp float;
+				uniform float night, time;
+				uniform sampler2D koiTex;
+				varying vec3 v_pos, v_nrm, v_eye;
+				varying vec2 v_uv;
+				varying float v_kind, v_fin, v_depth, v_seed, v_u;
+				${WAVES}
+				${LIGHT}
+				${UNDER_F}
+				void main() {
+					vec3 V = normalize(v_eye - v_pos);
+					vec3 N = normalize(v_nrm);
+					if (dot(N, V) < 0.0) N = -N;
+					vec3 t = texture2D(koiTex, v_uv).rgb;
+					vec3 lin = t * t;
+					// the model is a kohaku; the others are recoloured from it,
+					// keeping its scales and the fine rays of its fins
+					float lum = dot(lin, vec3(0.3, 0.59, 0.11));
+					float red = clamp((t.r - t.g) * 2.2, 0.0, 1.0);
+					float jit = fract(sin(v_seed * 91.7) * 4375.85);
+					vec3 base = lin;
+					float gloss = 0.55, metal = 0.35;
+					if (v_kind < 0.5) {
+						// yamabuki: metallic gold all over
+						base = mix(vec3(1.0, 0.60, 0.10), vec3(1.0, 0.70, 0.22), jit) * (0.45 + 0.75 * lum) * mix(1.0, 0.9, red);
+						gloss = 0.85; metal = 1.0;
+					} else if (v_kind > 1.5) {
+						// orange all over, the old patches a deeper red
+						base = mix(vec3(0.98, 0.40, 0.05) * (0.45 + 0.7 * lum), vec3(0.82, 0.12, 0.03) * (0.5 + 0.6 * lum), red);
+						gloss = 0.7; metal = 0.6;
+					} else {
+						base = mix(lin, lin * vec3(1.0, 0.92 + 0.1 * jit, 0.9), 0.5);
+					}
+					// the dark eyes stay dark
+					base = mix(base, lin, smoothstep(0.08, 0.02, lum));
+					float a = mix(1.0, 0.68, v_fin);
+					vec3 spec; float sv;
+					vec3 light = studioLight(vec3(v_pos.x - W_SUN.x / W_SUN.y * v_pos.y, 0.02, v_pos.z - W_SUN.z / W_SUN.y * v_pos.y), N, V, gloss, spec, sv);
+					vec3 sunPart;
+					vec3 lit = underSun(v_pos, N, sv, sunPart);
+					float att = exp(-v_depth * 0.8);
+					// sunlight through the thin fins
+					float through = v_fin * max(dot(-N, W_SUN), 0.0) * sv;
+					vec3 col = base * (((light - sunPart) + lit) * att + through * 0.8 * att * mix(vec3(1.0, 0.85, 0.6), vec3(0.4, 0.5, 0.8), night));
+					// rounded: lit from above through the water, the belly in shade,
+					// a sheen of the bright surface along the flanks
+					col *= mix(0.42, 1.2, smoothstep(-0.7, 0.85, N.y));
+					float rim = pow(1.0 - max(dot(N, V), 0.0), 3.0) * smoothstep(-0.2, 0.6, N.y);
+					col += mix(base, vec3(1.0), 0.4) * rim * 0.35 * mix(1.0, 0.15, night) * att;
+					col += spec * (0.15 + 0.85 * metal) * att * (1.0 - 0.85 * padShade(v_pos)) * (1.0 - v_fin * 0.7) * mix(vec3(1.0), base * 2.0, metal);
+					// the water takes the colour away with depth
+					vec3 tr = exp(-v_depth * vec3(1.9, 1.15, 1.3));
+					col = col * tr + vec3(0.010, 0.016, 0.012) * (1.0 - tr) * mix(1.0, 0.1, night);
+					col = studioAir(col, v_pos, v_eye);
+					a *= showThrough(V) * exp(-v_depth * 0.5);
+					gl_FragColor = vec4(sqrt(max(col, 0.0)), a);
+				}`,
+				attributes: { loc, nrm, uv, fin, km },
+				elements: regl.prop('els'),
+				uniforms: Object.assign({ koiTex: () => koiTex.tex, padShadow }, koiUniforms),
+				cull: { enable: false },
+				colorMask: regl.prop('color'),
+				depth: { enable: true, mask: regl.prop('write'), func: regl.prop('func') },
+				blend: BLEND
+			});
+			koi.ready = true;
+		})
+		.catch((e) => console.error(e));
+	const drawKoi = () => {
+		if (!drawKoiPart) return;
+		// the bodies' nearest skin first (depth only), then their colour, then the fins
+		drawKoiPart({ els: koiEls.body, color: [false, false, false, false], write: true, func: 'less' });
+		drawKoiPart({ els: koiEls.body, color: [true, true, true, true], write: false, func: 'lequal' });
+		drawKoiPart({ els: koiEls.fins, color: [true, true, true, true], write: false, func: 'less' });
+	};
 
 	// the crumbs, floating where they were cast, riding the swell
 	const crumbGeo = (() => {
@@ -2270,7 +2401,6 @@ module.exports = function (regl) {
 		uniforms: crumbUniforms,
 		cull: { enable: false }
 	});
-	ACTIVE = koi.sim;
 
 	// the glass: a faint sheen, a little dust, the sky's reflection
 	const gl = buildGlass();
@@ -2383,7 +2513,7 @@ module.exports = function (regl) {
 		if (!(opts && opts.reflected)) tick();
 		drawSky();
 		drawRoom();
-		if (!(opts && opts.reflected)) { drawKoi(); drawCrumbs(); }
+		if (!(opts && opts.reflected)) { drawBed(); drawKoi(); drawCrumbs(); }
 		if (drawVenus) drawVenus();
 		drawLeaves();
 		drawFalling();
@@ -2391,6 +2521,51 @@ module.exports = function (regl) {
 	}
 	return draw;
 };
+
+// the sound of the pond: a drop from the recording (res/audio) each time
+// something touches the water, quieter and duller the further away it is.
+// It starts with the visitor's first touch (browsers ask for that) and
+// keeps quiet when the gallery's sound is turned off.
+const pondSound = (() => {
+	const SPRITES = [[0.30, 1.45], [2.00, 1.45], [3.58, 1.45], [5.10, 1.4], [6.53, 0.48]];
+	let ctx = null, buf = null, eye = [0, 1.6, 0], live = 0;
+	const wanted = () => { try { return localStorage.getItem('gallery-sound') !== 'off'; } catch (e) { return true; } };
+	const unlock = () => {
+		if (ctx) { if (ctx.state === 'suspended') ctx.resume().catch(() => {}); return; }
+		const AC = window.AudioContext || window.webkitAudioContext;
+		if (!AC) return;
+		try { ctx = new AC(); } catch (e) { return; }
+		fetch('res/audio/water-drops.mp3')
+			.then((r) => r.arrayBuffer())
+			.then((b) => new Promise((ok, no) => ctx.decodeAudioData(b, ok, no)))
+			.then((b) => { buf = b; })
+			.catch(() => {});
+	};
+	if (typeof window !== 'undefined') ['pointerdown', 'touchend', 'keydown'].forEach((n) => window.addEventListener(n, unlock, { capture: true, passive: true }));
+	return {
+		listen(e) { eye = e; },
+		// a touch on the water at world x, z
+		play(x, z, strength) {
+			if (!ctx || !buf || ctx.state !== 'running' || !wanted() || document.hidden || live > 6) return;
+			const d = Math.hypot(x - eye[0], z - eye[2], eye[1] * 0.7);
+			const g = strength * 0.6 / (1 + d * 0.5);
+			if (g < 0.015) return;
+			const [st, du] = SPRITES[Math.floor(Math.random() * SPRITES.length)];
+			const src = ctx.createBufferSource();
+			src.buffer = buf;
+			src.playbackRate.value = 0.85 + Math.random() * 0.35;
+			const lp = ctx.createBiquadFilter();
+			lp.type = 'lowpass';
+			lp.frequency.value = 1800 + 9000 / (1 + d * 0.6);
+			const gain = ctx.createGain();
+			gain.gain.value = g;
+			src.connect(lp); lp.connect(gain); gain.connect(ctx.destination);
+			live++;
+			src.onended = () => { live--; };
+			src.start(ctx.currentTime + Math.random() * 0.03, st, du);
+		}
+	};
+})();
 
 // feeding the koi (from the page): which koi pond is live, where a ray
 // from the eye meets the water, and a handful of crumbs cast there
@@ -2435,6 +2610,7 @@ module.exports.previewCam = previewCam;
 module.exports.poolHit = poolHit;
 module.exports.feedAt = feedAt;
 module.exports.feeding = feeding;
+module.exports.listen = (eye) => pondSound.listen(eye);
 module.exports.sunGLSL = sunGLSL;
 module.exports.O = O;
 module.exports.SIZE = { W, L, H, RIDGE };

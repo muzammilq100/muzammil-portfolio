@@ -1495,6 +1495,7 @@ regl.frame(
 		setCamera(time);
 		cull.update(camView, camProj, camEye);
 		sound.listen(camEye);
+		if (cull.zone === 'studio' || STUDIO_PREVIEW) require('./studio').listen(camEye);
 		// he is at the piano whenever the stair hall is what the camera
 		// sees (and under his tree whenever the court is)
 		atPiano = !walkerNow && cull.room('stair') && (!cull.room('court') || camEye[0] < 0.5 || camEye[2] > 30);
