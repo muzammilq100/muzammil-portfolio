@@ -29,8 +29,8 @@
  * over them, bent by the waves. The surface is alive (pondSim): petals
  * fall and float, rings spread where they land and bounce off the walls,
  * koi near the surface leave wakes, the koi rise to sip, and the visitor can feed them
- * (see koiSim and feedAt). Credits for the pond's models, textures and
- * sound are in the readme.
+ * (see koiSim and feedAt). Credits for the pond's models and textures are
+ * in the readme.
  *
  * The water and the polished stone floor both lie on y = 0, so the
  * gallery's own reflection pass (the room drawn upside down beneath the
@@ -646,48 +646,58 @@ function fallState(pt, t) {
 // leaves rings. The same maths runs here (for the rings) and in the
 // shader (for the fish), so the two always agree.
 const KOI = [
-	{ at: [W / 2 - 0.8, 7.4], dir: 0.9, len: 0.58, kind: 0, f: [0.31, 0.17, 0.07], sip: 21, first: 9 },
-	{ at: [W / 2 + 0.9, 11.6], dir: 3.6, len: 0.52, kind: 1, f: [0.23, 0.13, 0.05], sip: 29, first: 17 },
-	{ at: [W / 2 - 0.3, 12.8], dir: 5.2, len: 0.46, kind: 2, f: [0.37, 0.11, 0.09], sip: 25, first: 4 },
-	{ at: [W / 2 + 1.1, 6.7], dir: 2.2, len: 0.54, kind: 1, f: [0.27, 0.19, 0.06], sip: 33, first: 23 },
-	{ at: [W / 2 - 1.2, 10.4], dir: 4.4, len: 0.43, kind: 0, f: [0.35, 0.15, 0.08], sip: 27, first: 13 },
-	{ at: [W / 2 + 0.4, 9.0], dir: 1.4, len: 0.62, kind: 2, f: [0.21, 0.12, 0.05], sip: 31, first: 28 },
-	{ at: [W / 2 - 0.9, 13.3], dir: 5.9, len: 0.40, kind: 1, f: [0.39, 0.21, 0.1], sip: 23, first: 6 },
-	{ at: [W / 2 + 1.3, 12.9], dir: 3.0, len: 0.49, kind: 0, f: [0.29, 0.14, 0.07], sip: 35, first: 31 }
+	{ at: [W / 2 - 0.8, 7.6], dir: 0.9, len: 0.92, kind: 0, sip: 21, first: 9 },
+	{ at: [W / 2 + 0.9, 11.6], dir: 3.6, len: 0.74, kind: 1, sip: 29, first: 17 },
+	{ at: [W / 2 - 0.3, 12.8], dir: 5.2, len: 0.86, kind: 2, sip: 25, first: 4 },
+	{ at: [W / 2 + 1.0, 7.0], dir: 2.2, len: 0.70, kind: 1, sip: 33, first: 23 },
+	{ at: [W / 2 - 1.1, 10.4], dir: 4.4, len: 0.82, kind: 0, sip: 27, first: 13 },
+	{ at: [W / 2 + 0.4, 9.0], dir: 1.4, len: 0.94, kind: 2, sip: 31, first: 28 },
+	{ at: [W / 2 - 0.9, 13.0], dir: 5.9, len: 0.66, kind: 1, sip: 23, first: 6 },
+	{ at: [W / 2 + 1.1, 12.6], dir: 3.0, len: 0.80, kind: 0, sip: 35, first: 31 }
 ];
 // where they may swim: inside the pool, short of the statue's plinth
-const KOI_BOX = [POOL.x0 + 0.38, POOL.z0 + 0.38, POOL.x1 - 0.38, VENUS.z - 0.95];
+const KOI_BOX = [POOL.x0 + 0.5, POOL.z0 + 0.5, POOL.x1 - 0.5, VENUS.z - 1.05];
 // where a crumb may be cast (it drifts in from the edges to here)
-const FEED_BOX = [POOL.x0 + 0.22, POOL.z0 + 0.22, POOL.x1 - 0.22, VENUS.z - 0.75];
+const FEED_BOX = [POOL.x0 + 0.25, POOL.z0 + 0.25, POOL.x1 - 0.25, VENUS.z - 0.8];
 const CRUMB_N = 12;
 // the bed of the pool, below the surface (where it looks to be, seen through the water)
 const BED_Y = -0.36;
 // the lily pads (studio x, z, radius), for their shadows on the bed
 const POND_PADS = [];
-// each koi steers itself: a slow, wandering turn, an easy change of
-// pace, turning away from the walls and from each other, now and then
-// a rise to sip at the surface; and when crumbs land, a rush to them.
+// How a koi swims. Not a steady wiggle: a few strokes of the tail, then a
+// long glide with the tail still, the body straight, the pectoral fins
+// out; then strokes again. It decides on a new heading now and then and
+// turns to it, mostly while it strokes, bending its whole body into the
+// turn (never more than a gentle C). It noses away from the walls well
+// before it reaches them and gives the others room. Now and then it
+// rises to sip at the surface; when crumbs land it hurries over with
+// quick strokes and noses about among them, gulping.
 function koiSim() {
-	const fish = KOI.map((k, i) => ({ k, i, x: k.at[0], z: k.at[1], th: k.dir, w: 0, v: 0.12, y: -0.15, ph: i * 2.1, pitch: 0, nextSip: k.first, sipT: -1, kappa: 0, bite: 0, notice: 0 }));
+	const rnd = (n) => { const r = Math.sin(n * 12.9898 + 78.233) * 43758.5453; return r - Math.floor(r); };
+	const fish = KOI.map((k, i) => ({
+		k, i, x: k.at[0], z: k.at[1], th: k.dir, w: 0, v: 0.08, y: -0.17, ph: i * 2.1, pitch: 0, kappa: 0,
+		thrust: 0, amp: 0.2, stroking: i % 2 === 0, modeT: rnd(i * 3.1) * 3, aim: k.dir, nextAim: rnd(i * 7.7) * 5,
+		yAim: -0.17, nextY: rnd(i * 5.9) * 8, gx: k.at[0], gz: k.at[1], nextSip: k.first, sipT: -1, bite: 0, notice: 0
+	}));
 	const events = [];
 	const crumbs = [];
 	for (let i = 0; i < CRUMB_N; i++) crumbs.push({ x: 0, z: 0, alive: 0, born: 0, seed: i * 0.37 });
 	const feed = { on: false, x: 0, z: 0, t0: 0 };
-	let simT = 0;
+	let simT = 0, seq = 0;
 	const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
-	const rnd = (n) => { const r = Math.sin(n * 12.9898 + 78.233) * 43758.5453; return r - Math.floor(r); };
+	const R = () => rnd(++seq * 1.618 + simT * 0.37);
 	// a handful of crumbs lands at x, z (studio coordinates)
 	const drop = (x, z) => {
 		x = Math.max(FEED_BOX[0], Math.min(FEED_BOX[2], x));
 		z = Math.max(FEED_BOX[1], Math.min(FEED_BOX[3], z));
 		Object.assign(feed, { on: true, x, z, t0: simT });
 		crumbs.forEach((c, i) => {
-			const a = rnd(simT + i) * Math.PI * 2, r = 0.03 + 0.11 * Math.sqrt(rnd(simT * 1.7 + i * 3.1));
+			const a = rnd(simT + i) * Math.PI * 2, r = 0.04 + 0.16 * Math.sqrt(rnd(simT * 1.7 + i * 3.1));
 			Object.assign(c, { x: x + Math.cos(a) * r, z: z + Math.sin(a) * r, alive: 1, born: simT + rnd(i * 5.3 + simT) * 0.35 });
 		});
 		events.push([x, z, simT, 1.0]);
 		// the farther a koi is, the later it notices
-		for (const F of fish) F.notice = simT + 0.25 + Math.hypot(F.x - x, F.z - z) * 0.35 + rnd(F.i * 9.1 + simT) * 0.6;
+		for (const F of fish) F.notice = simT + 0.3 + Math.hypot(F.x - x, F.z - z) * 0.35 + rnd(F.i * 9.1 + simT) * 0.7;
 	};
 	const step = (dt) => {
 		simT += dt;
@@ -695,99 +705,135 @@ function koiSim() {
 		// crumbs drift apart a little on the water
 		let left = 0;
 		for (const c of crumbs) {
-			if (!c.alive) continue;
-			if (t < c.born) continue;
+			if (!c.alive || t < c.born) continue;
 			left++;
 			c.x += Math.sin(t * 0.7 + c.seed * 11) * 0.004 * dt;
 			c.z += Math.cos(t * 0.6 + c.seed * 7) * 0.004 * dt;
 		}
-		if (feed.on && (left === 0 && t > feed.t0 + 1) || feed.on && t > feed.t0 + 40) {
+		if (feed.on && ((left === 0 && t > feed.t0 + 1) || t > feed.t0 + 40)) {
 			feed.on = false;
 			for (const c of crumbs) c.alive = 0;
 		}
 		for (const F of fish) {
 			const { k } = F;
+			const L = k.len;
 			const hungry = feed.on && t > F.notice;
-			// the wander: a slow, uneven turning
-			let w = 0.38 * Math.sin(t * k.f[0] + k.dir * 3) + 0.22 * Math.sin(t * k.f[1] * 2.3 + 1.7 * k.kind) + 0.12 * Math.sin(t * 1.1 + k.dir);
-			let vt = 0.11 + 0.08 * Math.sin(t * k.f[2] + k.dir) + 0.05 * Math.max(0, Math.sin(t * 0.19 + k.kind * 4) - 0.6) * 4;
-			let yt = -(0.10 + 0.09 * (0.5 + 0.5 * Math.sin(t * 0.043 + k.dir * 2)));
-			let maxTurn = 1.3, crowd = 1;
+			// --- where it means to go: a place somewhere in the pond, a new one
+			// when it gets there (or tires of it)
+			if (t > F.nextAim || Math.hypot(F.gx - F.x, F.gz - F.z) < 0.7) {
+				F.gx = KOI_BOX[0] + R() * (KOI_BOX[2] - KOI_BOX[0]);
+				F.gz = KOI_BOX[1] + R() * (KOI_BOX[3] - KOI_BOX[1]);
+				F.nextAim = t + 12 + R() * 14;
+			}
+			// heading there, with a lazy meander
+			F.aim = Math.atan2(F.gz - F.z, F.gx - F.x) + 0.35 * Math.sin(t * 0.21 + F.i * 1.7);
+			let aim = F.aim, maxTurn = 0.7;
+			let target = null;
 			if (hungry) {
-				// make for the nearest crumb, fast, rising as it nears
-				let best = null, bd = 1e9;
+				let bd = 1e9;
 				for (const c of crumbs) {
 					if (!c.alive || t < c.born) continue;
-					const d = Math.hypot(c.x - F.x, c.z - F.z) + 0.08 * Math.sin(F.i * 3.3 + c.seed * 9);
-					if (d < bd) { bd = d; best = c; }
+					const d = Math.hypot(c.x - F.x, c.z - F.z) + 0.1 * Math.sin(F.i * 3.3 + c.seed * 9);
+					if (d < bd) { bd = d; target = c; }
 				}
-				const tx = best ? best.x : feed.x, tz = best ? best.z : feed.z;
-				const dist = Math.hypot(tx - F.x, tz - F.z);
-				const want = Math.atan2(tz - F.z, tx - F.x);
-				const off = wrap(want - F.th);
-				w = Math.max(-2.4, Math.min(2.4, off * 2.6)) + 0.25 * Math.sin(t * 2.3 + F.i);
-				maxTurn = 2.6;
-				// fast while far, easing in close, slower when facing away
-				vt = (0.13 + 0.38 * Math.min(1, dist / 1.2)) * (0.55 + 0.45 * Math.max(0, Math.cos(off)));
-				yt = yt + (-0.035 - yt) * (1 - Math.min(1, Math.max(0, (dist - 0.15) / 0.8)));
-				crowd = 0.25;
-				// a gulp when the mouth reaches it at the surface
-				if (best && t > F.bite && F.y > -0.08) {
-					const mx = F.x + Math.cos(F.th) * 0.01, mz = F.z + Math.sin(F.th) * 0.01;
-					if (Math.hypot(best.x - mx, best.z - mz) < 0.075) {
-						best.alive = 0;
-						F.bite = t + 1.4;
-						events.push([best.x, best.z, t, 0.75]);
-					}
-				}
+				const tx = target ? target.x : feed.x, tz = target ? target.z : feed.z;
+				aim = Math.atan2(tz - F.z, tx - F.x);
+				F.aim = aim;
+				maxTurn = 1.8;
 			}
-			// look ahead: turn for open water when a wall is coming
-			const look = 0.55 + F.v * (hungry ? 1.2 : 2.5);
-			const ax = F.x + Math.cos(F.th) * look, az = F.z + Math.sin(F.th) * look;
-			const [x0, z0, x1, z1] = hungry ? FEED_BOX : KOI_BOX;
-			const out = Math.max(x0 - ax, ax - x1, z0 - az, az - z1, 0);
-			if (out > 0) {
-				const cx = (x0 + x1) / 2 + Math.sin(t * 0.07 + k.kind) * 0.6, cz = (z0 + z1) / 2 + Math.sin(t * 0.05 + k.kind * 2) * 2.0;
-				const want = Math.atan2(cz - F.z, cx - F.x);
-				w += Math.sign(wrap(want - F.th)) * Math.min(out * 3.0, 1.3) * (hungry ? 0.5 : 1);
+			// the walls: look ahead and turn for open water well before them
+			const look = 0.6 + L * 0.8 + F.v * 2.0;
+			const box = hungry ? FEED_BOX : KOI_BOX;
+			let need = 0;
+			for (const da of [0, 0.5, -0.5]) {
+				const ax = F.x + Math.cos(F.th + da) * look, az = F.z + Math.sin(F.th + da) * look;
+				need = Math.max(need, Math.max(box[0] - ax, ax - box[2], box[1] - az, az - box[3], 0));
 			}
-			// and keep a little apart from the others (less so at the food)
+			if (need > 0) {
+				const cx = (box[0] + box[2]) / 2, cz = (box[1] + box[3]) / 2 + Math.sin(F.i * 2.3) * 1.5;
+				const away = Math.atan2(cz - F.z, cx - F.x);
+				const wgt = Math.min(1, need * 2.2);
+				aim = F.th + wrap(away - F.th) * wgt + wrap(aim - F.th) * (1 - wgt);
+				if (!hungry) F.aim = aim;
+				maxTurn = Math.max(maxTurn, 0.6 + wgt * 0.8);
+			}
+			// and give the others room (less at the food)
+			let crowd = 0;
 			for (const G of fish) {
 				if (G === F) continue;
 				const dx = G.x - F.x, dz = G.z - F.z, d = Math.hypot(dx, dz);
-				const r = hungry ? 0.32 : 0.6;
-				if (d < r) {
-					const side = Math.sign(wrap(Math.atan2(dz, dx) - F.th)) || 1;
-					w -= side * (r - d) * 2.0 * crowd * 4 * Math.max(0, Math.cos(Math.atan2(dz, dx) - F.th) + 0.3) / (hungry ? 1 : 4);
+				const r = (hungry ? 0.4 : 1.0) * (L + G.k.len) / 2 + 0.2;
+				if (d < r && Math.abs(G.y - F.y) < 0.14) {
+					const bearing = wrap(Math.atan2(dz, dx) - F.th);
+					// ahead: turn aside; very close: turn away whichever side
+					if (Math.abs(bearing) < 1.6 || d < r * 0.5) crowd -= Math.sign(bearing || 1) * (r - d) / r * (Math.abs(bearing) < 1.6 ? 1.0 : 0.6);
 				}
 			}
-			w = Math.max(-maxTurn, Math.min(maxTurn, w));
-			F.w += (w - F.w) * Math.min(dt * (hungry ? 4 : 1.6), 1);
-			F.th += F.w * dt;
-			// now and then a rise to sip (not while feeding)
-			if (!hungry && F.sipT < 0 && t > F.nextSip) { F.sipT = 0; F.nextSip = t + k.sip * (0.7 + 0.6 * rnd(t + k.kind)); }
+			const off = wrap(aim - F.th) + crowd * (hungry ? 0.4 : 2.0);
+			// --- strokes and glides
+			F.modeT -= dt;
+			if (hungry) { F.stroking = true; F.modeT = Math.max(F.modeT, 0.4); }
+			else if (F.modeT <= 0) {
+				F.stroking = !F.stroking;
+				F.modeT = F.stroking ? 1.2 + R() * 1.6 : 1.6 + R() * 3.2;
+			}
+			// a turn wants a stroke; so does losing way
+			if (!F.stroking && (Math.abs(off) > 0.9 || F.v < 0.035)) { F.stroking = true; F.modeT = 1.0 + R() * 0.8; }
+			// the sip: a slow rise, a gulp at the surface, back down
+			if (!hungry && F.sipT < 0 && t > F.nextSip) { F.sipT = 0; F.nextSip = t + k.sip * (0.7 + 0.6 * R()); }
+			let lift = 0;
 			if (F.sipT >= 0) {
 				const st = F.sipT;
 				F.sipT += dt;
-				const lift = Math.min(1, st / 1.4) * (1 - Math.max(0, Math.min(1, (st - 2.4) / 1.4)));
-				yt = yt + (-0.04 - yt) * lift;
-				vt *= 1 - 0.65 * lift;
-				if (st < 1.5 && F.sipT >= 1.5) events.push([F.x + Math.cos(F.th) * 0.02, F.z + Math.sin(F.th) * 0.02, t, 0.9]);
-				if (st < 2.2 && F.sipT >= 2.2) events.push([F.x, F.z, t, 0.55]);
-				if (F.sipT > 3.8 || hungry) F.sipT = -1;
+				lift = Math.min(1, st / 1.6) * (1 - Math.max(0, Math.min(1, (st - 2.6) / 1.6)));
+				if (st < 1.7 && F.sipT >= 1.7) events.push([F.x + Math.cos(F.th) * 0.03, F.z + Math.sin(F.th) * 0.03, t, 0.9]);
+				if (st < 2.4 && F.sipT >= 2.4) events.push([F.x, F.z, t, 0.55]);
+				if (F.sipT > 4.2 || hungry) F.sipT = -1;
 			}
-			F.v += (Math.max(vt, 0.03) - F.v) * Math.min(dt * (hungry ? 2.2 : 0.9), 1);
+			const wantThrust = (F.stroking ? (hungry ? 2.4 : 1.0) : 0) * (1 - 0.6 * lift);
+			F.thrust += (wantThrust - F.thrust) * Math.min(dt * 3, 1);
+			// water drags it to a stop; strokes push it on (bigger koi a little faster)
+			const drag = hungry ? 0.9 : 0.55;
+			F.v += (F.thrust * 0.085 * (0.7 + 0.4 * L) - drag * F.v) * dt;
+			F.v = Math.max(F.v, 0.008);
+			// --- turning: firm while stroking, a drift while gliding
+			const turnable = 0.35 + 0.65 * Math.min(1, F.thrust);
+			let wWant = Math.max(-maxTurn, Math.min(maxTurn, off * 1.3)) * turnable;
+			F.w += (wWant - F.w) * Math.min(dt * 2.2, 1);
+			F.th += F.w * dt;
+			// --- depth: drifting between levels, up to the surface to sip or feed
+			if (t > F.nextY) { F.yAim = -(0.13 + R() * 0.1); F.nextY = t + 6 + R() * 10; }
+			let yt = F.yAim;
+			if (lift > 0) yt += (-0.045 - yt) * lift;
+			if (hungry) {
+				const tx = target ? target.x : feed.x, tz = target ? target.z : feed.z;
+				const near = 1 - Math.min(1, Math.max(0, (Math.hypot(tx - F.x, tz - F.z) - 0.15) / 0.9));
+				yt += (-0.04 - yt) * near;
+				// a gulp when the mouth reaches a crumb at the surface
+				if (target && t > F.bite && F.y > -0.08) {
+					const mx = F.x + Math.cos(F.th) * 0.02, mz = F.z + Math.sin(F.th) * 0.02;
+					if (Math.hypot(target.x - mx, target.z - mz) < 0.09) {
+						target.alive = 0;
+						F.bite = t + 1.3;
+						events.push([target.x, target.z, t, 0.75]);
+					}
+				}
+			}
+			// --- move
 			F.x += Math.cos(F.th) * F.v * dt;
 			F.z += Math.sin(F.th) * F.v * dt;
-			F.x = Math.max(POOL.x0 + 0.12, Math.min(POOL.x1 - 0.12, F.x));
-			F.z = Math.max(POOL.z0 + 0.12, Math.min(VENUS.z - 0.62, F.z));
-			const dy = (yt - F.y) * Math.min(dt * (hungry ? 2.5 : 1.2), 1);
+			F.x = Math.max(POOL.x0 + 0.15, Math.min(POOL.x1 - 0.15, F.x));
+			F.z = Math.max(POOL.z0 + 0.15, Math.min(VENUS.z - 0.62, F.z));
+			const dy = (yt - F.y) * Math.min(dt * (hungry ? 2.0 : 0.8), 1);
 			F.y += dy;
-			F.pitch += (Math.max(-0.5, Math.min(0.5, dy / dt / Math.max(F.v, 0.05))) - F.pitch) * Math.min(dt * 3, 1);
-			// the body bends round the turn
-			F.kappa = Math.max(-3.4, Math.min(3.4, F.w / Math.max(F.v, 0.09)));
-			// the tail beats faster the faster it swims, and harder in a turn
-			F.ph += dt * (3.2 + 32 * F.v + 2.5 * Math.abs(F.w));
+			F.pitch += (Math.max(-0.4, Math.min(0.4, dy / dt / Math.max(F.v, 0.06))) - F.pitch) * Math.min(dt * 2.5, 1);
+			// the body bends into the turn: a gentle C at most
+			const kWant = Math.max(-1.0 / L, Math.min(1.0 / L, F.w / Math.max(F.v, 0.1)));
+			F.kappa += (kWant - F.kappa) * Math.min(dt * 4, 1);
+			// the tail: beating while it strokes, settling still as it glides
+			const ampWant = 0.12 + 0.88 * Math.min(1.4, F.thrust) + 0.4 * Math.min(1, Math.abs(F.w));
+			F.amp += (ampWant - F.amp) * Math.min(dt * 2.0, 1);
+			F.ph += dt * (2.0 + 5.5 * Math.min(1.6, F.thrust)) * (0.75 + 0.35 / Math.sqrt(L));
 		}
 		while (events.length && t - events[0][2] > 10) events.shift();
 	};
@@ -1809,7 +1855,10 @@ module.exports = function (regl) {
 		return {
 			tex: () => buf[cur].color[0],
 			// a drop on the water: a petal, a sip, a gulp, a handful of crumbs
-			drop(x, z, strength, size) { touches.push([x, z, simT, strength, 0, size || 0.035]); },
+			drop(x, z, strength, size) {
+				touches.push([x, z, simT, strength, 0, size || 0.035]);
+				if (typeof window !== 'undefined' && window.__dropLog) window.__dropLog.push([x, z, simT, strength]);
+			},
 			// advance to time t, a sixtieth of a second at a time
 			advance(t, pushes) {
 				let dt = t - simT - acc;
@@ -1852,8 +1901,7 @@ module.exports = function (regl) {
 			// a soft drop as it touches the water
 			if (st.inPool && age >= 0 && age < 0.5 && !(pt.heard > clock.t - 1)) {
 				pt.heard = clock.t;
-				pondSound.play(st.lx + O[0], st.lz + O[2], 0.4);
-				pondSim.drop(st.lx + O[0], st.lz + O[2], 0.55, 0.03);
+				pondSim.drop(st.lx + O[0], st.lz + O[2], 1.1, 0.04);
 			}
 		}
 		// the koi: swim on; the rings where they sip and gulp
@@ -1862,7 +1910,6 @@ module.exports = function (regl) {
 		while (dt > 1e-6) { const h = Math.min(dt, 0.05); koi.sim.step(h); dt -= h; }
 		for (const e of koi.sim.events) if (e[2] > heardKoi) {
 			heardKoi = e[2];
-			pondSound.play(e[0] + O[0], e[1] + O[2], e[3] * 0.8);
 			pondSim.drop(e[0] + O[0], e[1] + O[2], e[3] * 1.3, e[3] >= 1 ? 0.07 : 0.04);
 		}
 		// a koi near the surface pushes the water ahead of it: a wake
@@ -2162,7 +2209,7 @@ module.exports = function (regl) {
 	const koiUniforms = Object.assign({}, POOL_UNIFORMS);
 	KOI.forEach((k, n) => {
 		koiUniforms['koiA[' + n + ']'] = () => { const F = koi.sim.fish[n]; return [F.x + O[0], F.y, F.z + O[2], F.th]; };
-		koiUniforms['koiB[' + n + ']'] = () => { const F = koi.sim.fish[n]; return [F.kappa, F.ph, F.v, F.pitch]; };
+		koiUniforms['koiB[' + n + ']'] = () => { const F = koi.sim.fish[n]; return [F.kappa, F.ph, F.amp, F.pitch]; };
 	});
 	// the shadows of the pads on the bed, painted once into a small picture
 	// of the pool (the pads drift only a hand's width)
@@ -2261,6 +2308,10 @@ module.exports = function (regl) {
 			}
 			float glint = pow(max(dot(Rw, STUDIO_SUN), 0.0), 900.0) * studioSun(S + vec3(0.0, 0.02, 0.0));
 			vec3 glintC = mix(vec3(1.0, 0.92, 0.78) * 9.0, vec3(0.75, 0.85, 1.0) * 3.0, night);
+			// a passing ring bends the light from below into bright and dark bands
+			float ring = clamp(dot(grad, normalize(V.xz + vec2(1e-4))) * 12.0, -1.0, 1.0);
+			float stir = clamp(length(grad) * 8.0, 0.0, 1.0);
+			under *= 1.0 + 0.55 * ring * stir;
 			return under * (1.0 - R) + rc * R + glintC * glint;
 		}
 		// what the water does to light that comes back up through it
@@ -2426,7 +2477,7 @@ module.exports = function (regl) {
 					int fi = int(km.z + 0.5);
 					vec4 A = koiA[0], B = koiB[0];
 					for (int i = 1; i < ${KOI.length}; i++) if (i == fi) { A = koiA[i]; B = koiB[i]; }
-					float th = A.w, kap = B.x, ph = B.y, v = B.z, pitch = B.w;
+					float th = A.w, kap = B.x, ph = B.y, beat = B.z, pitch = B.w;
 					vec3 f = vec3(cos(th), 0.0, sin(th));
 					vec3 nl = vec3(-sin(th), 0.0, cos(th));
 					// the spine bends along the arc of the turn, behind the nose
@@ -2440,8 +2491,8 @@ module.exports = function (regl) {
 					vec3 Up = cross(Sd, F);
 					// the swimming wave: small at the head, wide at the tail, bigger
 					// when it swims faster or turns
-					float pace = clamp(v / 0.18, 0.2, 1.8);
-					float amp = (0.010 + 0.10 * u * u) * (0.35 + 0.5 * min(pace, 1.3) + 0.25 * min(abs(kap), 1.0));
+					// (beat: how hard the tail is working, 0.1 gliding .. 1.5 hurrying)
+					float amp = (0.004 + 0.085 * u * u) * beat;
 					float sway = amp * sin(ph - 6.0 * u);
 					float dsway = amp * cos(ph - 6.0 * u) * -6.0;
 					vec3 L = loc;
@@ -2449,8 +2500,9 @@ module.exports = function (regl) {
 					sway += fin.x * 0.012 * sin(ph * 1.3 - 9.0 * u) * (0.6 + 0.4 * u);
 					// the pectoral fins paddle slowly, and fold back when it hurries
 					float pect = fin.y;
-					float fast = smoothstep(0.7, 1.5, pace);
-					L.z += pect * 0.05 * sin(ph * 0.45 + sign(L.y) * 0.9) * (1.0 - fast * 0.7);
+					float fast = smoothstep(0.8, 1.5, beat);
+					// gliding, they spread and scull slowly; stroking, they fold back
+					L.z += pect * (0.03 + 0.03 * (1.0 - fast)) * sin(stime * (1.6 + 0.3 * km.z) + sign(L.y) * 0.9 + km.z);
 					L.y *= 1.0 - 0.35 * pect * fast;
 					L.x += pect * 0.05 * fast;
 					vec3 q = P + Sd * (L.y + sway) * len + Up * L.z * len - F * (L.x - u) * len;
@@ -2489,7 +2541,7 @@ module.exports = function (regl) {
 					float gloss = 0.55, metal = 0.35;
 					if (v_kind < 0.5) {
 						// yamabuki: metallic gold all over
-						base = mix(vec3(1.0, 0.60, 0.10), vec3(1.0, 0.70, 0.22), jit) * (0.45 + 0.75 * lum) * mix(1.0, 0.9, red);
+						base = mix(vec3(1.0, 0.46, 0.05), vec3(1.0, 0.56, 0.10), jit) * (0.40 + 0.72 * lum) * mix(1.0, 0.85, red);
 						gloss = 0.85; metal = 1.0;
 					} else if (v_kind > 1.5) {
 						// orange all over, the old patches a deeper red
@@ -2731,51 +2783,6 @@ module.exports = function (regl) {
 	return draw;
 };
 
-// the sound of the pond: a drop from the recording (res/audio) each time
-// something touches the water, quieter and duller the further away it is.
-// It starts with the visitor's first touch (browsers ask for that) and
-// keeps quiet when the gallery's sound is turned off.
-const pondSound = (() => {
-	const SPRITES = [[0.30, 1.45], [2.00, 1.45], [3.58, 1.45], [5.10, 1.4], [6.53, 0.48]];
-	let ctx = null, buf = null, eye = [0, 1.6, 0], live = 0;
-	const wanted = () => { try { return localStorage.getItem('gallery-sound') !== 'off'; } catch (e) { return true; } };
-	const unlock = () => {
-		if (ctx) { if (ctx.state === 'suspended') ctx.resume().catch(() => {}); return; }
-		const AC = window.AudioContext || window.webkitAudioContext;
-		if (!AC) return;
-		try { ctx = new AC(); } catch (e) { return; }
-		fetch('res/audio/water-drops.mp3')
-			.then((r) => r.arrayBuffer())
-			.then((b) => new Promise((ok, no) => ctx.decodeAudioData(b, ok, no)))
-			.then((b) => { buf = b; })
-			.catch(() => {});
-	};
-	if (typeof window !== 'undefined') ['pointerdown', 'touchend', 'keydown'].forEach((n) => window.addEventListener(n, unlock, { capture: true, passive: true }));
-	return {
-		listen(e) { eye = e; },
-		// a touch on the water at world x, z
-		play(x, z, strength) {
-			if (!ctx || !buf || ctx.state !== 'running' || !wanted() || document.hidden || live > 6) return;
-			const d = Math.hypot(x - eye[0], z - eye[2], eye[1] * 0.7);
-			const g = strength * 0.6 / (1 + d * 0.5);
-			if (g < 0.015) return;
-			const [st, du] = SPRITES[Math.floor(Math.random() * SPRITES.length)];
-			const src = ctx.createBufferSource();
-			src.buffer = buf;
-			src.playbackRate.value = 0.85 + Math.random() * 0.35;
-			const lp = ctx.createBiquadFilter();
-			lp.type = 'lowpass';
-			lp.frequency.value = 1800 + 9000 / (1 + d * 0.6);
-			const gain = ctx.createGain();
-			gain.gain.value = g;
-			src.connect(lp); lp.connect(gain); gain.connect(ctx.destination);
-			live++;
-			src.onended = () => { live--; };
-			src.start(ctx.currentTime + Math.random() * 0.03, st, du);
-		}
-	};
-})();
-
 // feeding the koi (from the page): which koi pond is live, where a ray
 // from the eye meets the water, and a handful of crumbs cast there
 let ACTIVE = null;
@@ -2819,7 +2826,6 @@ module.exports.previewCam = previewCam;
 module.exports.poolHit = poolHit;
 module.exports.feedAt = feedAt;
 module.exports.feeding = feeding;
-module.exports.listen = (eye) => pondSound.listen(eye);
 module.exports.sunGLSL = sunGLSL;
 module.exports.O = O;
 module.exports.SIZE = { W, L, H, RIDGE };

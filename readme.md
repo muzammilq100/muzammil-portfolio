@@ -45,7 +45,6 @@ The two statues are real 3D scans, slimmed down for the web and stored in `res/v
 - Koi model: "Koi Fish" by SDPM Esare (https://sketchfab.com/3d-models/koi-fish-3e1b80c3653f43349252aab3b4fb1d86), licensed under CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/). Straightened along its spine and repacked as `res/koi.bin` and `res/koi.webp`; recoloured in the shader for the yamabuki and orange koi.
 - Lily pad and petal textures: "Water lily" by ivanzubak on TurboSquid (free), in `res/pond/`.
 - Gravel: Gravel030 from ambientCG (CC0), in `res/pond/gravel.jpg`.
-- Water drops: `res/audio/water-drops.mp3`, from a recording supplied by Muzammil.
 
 ## The street outside
 
