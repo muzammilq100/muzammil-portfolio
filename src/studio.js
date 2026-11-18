@@ -67,11 +67,11 @@ const POOL = { x0: W / 2 - 1.9, x1: W / 2 + 1.9, z0: 5.6, z1: 16.6, curb: 0.5, t
 const VENUS = { x: W / 2, z: 14.9, plinth: 0.86, height: 2.05, yaw: PI + 0.35, file: 'res/nymph.bin' };
 
 // the sun: the direction towards it. Bright morning sun, fairly low, from
-// the east wall (x = 0) and a little from the far end, so it pours in
-// through those windows and the roof and falls across the floor towards
-// the entrance. At night the moon comes in the same way.
+// the east wall (x = 0) and a little from behind the entrance, so it
+// pours in through those windows and the roof and falls across the floor
+// towards the far end, onto the nymph and the red door. At night the moon comes in the same way.
 const SUN = (() => {
-	const v = [-0.68, 0.60, 0.40];
+	const v = [-0.68, 0.60, -0.36];
 	const l = Math.hypot(v[0], v[1], v[2]);
 	return v.map((x) => x / l);
 })();
@@ -140,6 +140,18 @@ function sunGLSL() {
 		return (1.0 - lead) * (1.0 - frost);
 	}
 
+	float studioVineClump(float u, float seed) {
+		return step(-0.25, 0.5 * sin(u * 1.9 + seed) + 0.5 * sin(u * 0.77 + seed * 1.3));
+	}
+	// how much of the sun the flowering vine takes at a point under a beam
+	// (d: distance across the beam, u, v: along and across for the dapple)
+	float studioVineShade(float d, float u, float v, float seed) {
+		float band = smoothstep(0.5, 0.2, abs(d));
+		float dap = 0.5 + 0.5 * sin(u * 23.0 + v * 9.0 + seed) * sin(v * 29.0 - u * 7.0 + seed * 2.0);
+		dap = smoothstep(0.2, 0.65, dap);
+		return band * studioVineClump(u, seed) * dap * 0.85;
+	}
+
 	float studioSun(vec3 pw) {
 		vec3 p = pw - vec3(${f(O[0])}, ${f(O[1])}, ${f(O[2])});
 		vec3 S = STUDIO_SUN;
@@ -165,6 +177,8 @@ function sunGLSL() {
 			if (he.z < 0.0 || he.z > ${f(L)} || he.x < 0.0 || he.x > ${f(W)}) return 0.0;
 			float be = 0.01 + 0.008 * te;
 			${TRUSS_Z.map((z) => `vis *= smoothstep(0.08 - be, 0.08 + be, abs(he.z - ${f(z)}));`).join('\n\t\t\t')}
+			// the bougainvillea along the tie beams
+			${VINE.filter((v) => v[0] === 'truss').map(([k, c, sd]) => `vis *= 1.0 - studioVineShade(he.z - ${f(c)}, he.x, he.z, ${f(sd)});`).join('\n\t\t\t')}
 		}
 		// then the glass: the two slopes of the roof
 		float tl = (${f(KR)} * p.x - p.y + ${f(H)}) / (S.y - ${f(KR)} * S.x);
@@ -188,6 +202,9 @@ function sunGLSL() {
 		// the sun's disc would allow, for the drawing to read)
 		vec2 pq = vec2(ux - ${f(ROOF.purlin)} * floor(ux / ${f(ROOF.purlin)}) - ${f(ROOF.purlin / 2)}, h.z - ${f(ROOF.rafter)} * floor(h.z / ${f(ROOF.rafter)}) - ${f(ROOF.rafter / 2)});
 		float pat = studioRoofPattern(pq, 0.004 + 0.0035 * t);
+		// and along the rafters and the ridge
+		${VINE.filter((v) => v[0] === 'rafter').map(([k, c, sd]) => `pat *= 1.0 - studioVineShade(h.z - ${f(c)}, h.x, h.z, ${f(sd)});`).join('\n\t\t')}
+		pat *= 1.0 - studioVineShade(h.x - ${f(W / 2)}, h.z, h.x, 0.9);
 		return vis * (1.0 - bar) * pat * 0.78;
 	}`;
 }
@@ -211,7 +228,8 @@ function rng(seed) {
 const K = {
 	FLOOR: 0, PLASTER: 1, STONE: 2, STEEL: 3, WATER: 4, PAD: 5, PETAL: 6, STAMEN: 7,
 	MARBLE: 8, WOOD: 9, GESSO: 10, PAINT: 11, POT: 12, SHADE: 13, BULB: 14, NICHE: 15,
-	JAR: 16, SOIL: 17, BRUSH: 18, TRAVERTINE: 19, CLOTH: 20
+	JAR: 16, SOIL: 17, BRUSH: 18, TRAVERTINE: 19, CLOTH: 20,
+	WMARBLE: 21, REDDOOR: 22, REDPANEL: 23, DARKWOOD: 24, BRASS: 25, BRACT: 26, KEYHOLE: 27
 };
 
 function Geo() {
@@ -299,6 +317,261 @@ function Geo() {
 
 const winTop = (dz) => (Math.abs(dz) >= WIN.hw ? null : WIN.spring + Math.sqrt(WIN.hw * WIN.hw - dz * dz));
 
+
+// ------------------------------------------------------------------
+// THE BOUGAINVILLEA: where it grows along the roof's steel (shared with
+// the shader, so the flowers' dappled shadow falls where they are)
+// ------------------------------------------------------------------
+
+// beams it climbs: [kind, fixed coordinate, seed]
+//   'truss'  along x at z = c (the tie beams, at the eaves)
+//   'rafter' along x at z = c, following the roof's slope
+//   'ridge'  along z at x = W / 2
+const VINE = [
+	['truss', TRUSS_Z[0], 3.1], ['truss', TRUSS_Z[1], 5.4], ['truss', TRUSS_Z[2], 7.7],
+	['rafter', ROOF.rafter * 2, 1.7], ['rafter', ROOF.rafter * 5, 8.5], ['rafter', ROOF.rafter * 8, 13.6], ['rafter', ROOF.rafter * 10, 17.0],
+	['ridge', W / 2, 0.9]
+];
+// whether a stretch of beam is in flower (identical in the shader)
+const vineClump = (u, seed) => 0.5 * Math.sin(u * 1.9 + seed) + 0.5 * Math.sin(u * 0.77 + seed * 1.3) > -0.25;
+const roofY = (x) => (x < W / 2 ? H + KR * x : H + KR * (W - x));
+// a point along a vine beam, slightly under the steel
+function vinePoint(kind, c, u) {
+	if (kind === 'truss') return [u, H - 0.12, c];
+	if (kind === 'rafter') return [u, roofY(u) - 0.2, c];
+	return [c, RIDGE - 0.32, u];
+}
+const vineRange = (kind) => (kind === 'ridge' ? [0.4, L - 0.4] : [0.35, W - 0.35]);
+
+// ------------------------------------------------------------------
+// THE RED DOOR (after his reference): a tall pointed Gothic arch, deep
+// crimson paint, one tall fielded panel below, two pointed panels in
+// the arch split by a muntin, a long ornate brass plate with a round
+// knob, all in a dark wooden pointed frame on plinth blocks.
+// ------------------------------------------------------------------
+
+const DOOR = { w: 1.72, spring: 2.05, r: 2.05, frame: 0.21, zl: L - 0.05, zf: L - 0.13 };
+DOOR.c = DOOR.r - DOOR.w / 2;
+// the top of the arch at x (from the door's centre), for an arch of
+// half width hw drawn on the same two centres
+const archTop = (x, grow) => {
+	const r = DOOR.r + (grow || 0);
+	const a = Math.abs(x) + DOOR.c;
+	return a >= r ? DOOR.spring : DOOR.spring + Math.sqrt(r * r - a * a);
+};
+DOOR.top = archTop(0);
+
+function buildDoor(g) {
+	const cx = W / 2, { w, frame, zl, zf } = DOOR;
+	const hw = w / 2, ow = hw + frame;
+	const dx = 0.02;
+	// the frame's face: between the leaf's outline and the outer arch
+	for (let x = -ow; x < ow - 1e-6; x += dx) {
+		const xa = x, xb = Math.min(ow, x + dx), xm = (xa + xb) / 2;
+		const ta = archTop(xa, frame), tb = archTop(xb, frame);
+		let ba = 0, bb = 0;
+		if (Math.abs(xm) < hw) { ba = archTop(xa); bb = archTop(xb); }
+		if (Math.abs(xm) >= hw || true) {
+			const y0a = Math.abs(xm) < hw ? ba : 0, y0b = Math.abs(xm) < hw ? bb : 0;
+			g.quad([cx + xb, y0b, zf], [cx + xa, y0a, zf], [cx + xa, ta, zf], [cx + xb, tb, zf], [0, 0, -1], K.DARKWOOD, [[xb, y0b], [xa, y0a], [xa, ta], [xb, tb]]);
+		}
+		// the frame's outer edge, back to the wall
+		g.quad([cx + xa, ta, zf], [cx + xa, ta, L], [cx + xb, tb, L], [cx + xb, tb, zf], [0, 1, 0], K.DARKWOOD, [[xa, 0], [xa, 1], [xb, 1], [xb, 0]]);
+		// the reveal: the frame's inner face, from its front to the leaf
+		if (Math.abs(xm) < hw) {
+			g.quad([cx + xa, ba, zf], [cx + xb, bb, zf], [cx + xb, bb, zl], [cx + xa, ba, zl], [0, -1, 0], K.DARKWOOD, [[xa, 0], [xb, 0], [xb, 1], [xa, 1]]);
+		}
+	}
+	for (const sx of [-1, 1]) {
+		// the frame's jambs: outer sides and inner reveals
+		g.quad([cx + sx * ow, 0, zf], [cx + sx * ow, 0, L], [cx + sx * ow, DOOR.spring, L], [cx + sx * ow, DOOR.spring, zf], [sx, 0, 0], K.DARKWOOD, [[0, 0], [1, 0], [1, 1], [0, 1]]);
+		g.quad([cx + sx * hw, 0, zf], [cx + sx * hw, DOOR.spring, zf], [cx + sx * hw, DOOR.spring, zl], [cx + sx * hw, 0, zl], [-sx, 0, 0], K.DARKWOOD, [[0, 0], [1, 0], [1, 1], [0, 1]]);
+		// plinth blocks at the foot
+		g.box(cx + sx * (hw + frame / 2) - frame / 2 - 0.04, 0, zf - 0.04, cx + sx * (hw + frame / 2) + frame / 2 + 0.04, 0.42, L, K.DARKWOOD);
+	}
+	// a small moulding round the frame's inner edge
+	const M = 40;
+	for (let i = 0; i < M; i++) {
+		const xa = -hw + (2 * hw) * i / M, xb = -hw + (2 * hw) * (i + 1) / M;
+		g.beam([cx + xa, archTop(xa) + 0.03, zf - 0.015], [cx + xb, archTop(xb) + 0.03, zf - 0.015], 0.018, K.DARKWOOD);
+	}
+	for (const sx of [-1, 1]) g.beam([cx + sx * (hw + 0.03), 0.42, zf - 0.015], [cx + sx * (hw + 0.03), DOOR.spring + 0.02, zf - 0.015], 0.018, K.DARKWOOD);
+
+	// the leaf: a flat crimson slab filling the pointed arch
+	for (let x = -hw; x < hw - 1e-6; x += dx) {
+		const xa = x, xb = Math.min(hw, x + dx);
+		const ta = archTop(xa), tb = archTop(xb);
+		g.quad([cx + xb, 0, zl], [cx + xa, 0, zl], [cx + xa, ta, zl], [cx + xb, tb, zl], [0, 0, -1], K.REDDOOR, [[xb, 0], [xa, 0], [xa, ta], [xb, tb]]);
+	}
+	// the tall fielded panel below: a moulded border and a raised field
+	const px = hw - 0.2, py0 = 0.3, py1 = 2.12, z = zl - 0.006;
+	const mould = 0.05;
+	const rail = (x0, y0, x1, y1) => g.box(cx + x0, y0, z - 0.018, cx + x1, y1, z, K.REDDOOR);
+	rail(-px, py0, px, py0 + mould); rail(-px, py1 - mould, px, py1);
+	rail(-px, py0, -px + mould, py1); rail(px - mould, py0, px, py1);
+	g.box(cx - px + 0.14, py0 + 0.14, z - 0.022, cx + px - 0.14, py1 - 0.14, z, K.REDDOOR);
+	// a lock rail across, and the two pointed panels in the arch,
+	// recessed and darker, split by a muntin
+	const ay0 = 2.36;
+	rail(-hw + 0.08, py1 + 0.06, hw - 0.08, py1 + 0.12);
+	for (const sx of [-1, 1]) {
+		const x0 = 0.07, x1 = hw - 0.17;
+		for (let x = x0; x < x1 - 1e-6; x += dx) {
+			const xa = x, xb = Math.min(x1, x + dx);
+			const ta = archTop(xa, -0.18), tb = archTop(xb, -0.18);
+			if (ta <= ay0 + 0.02 && tb <= ay0 + 0.02) continue;
+			const X = (u) => cx + sx * u;
+			const pts = [[X(xa), ay0, z + 0.004], [X(xb), ay0, z + 0.004], [X(xb), Math.max(ay0, tb), z + 0.004], [X(xa), Math.max(ay0, ta), z + 0.004]];
+			if (sx > 0) g.quad(pts[1], pts[0], pts[3], pts[2], [0, 0, -1], K.REDPANEL, [[xb, 0], [xa, 0], [xa, 1], [xb, 1]]);
+			else g.quad(...pts, [0, 0, -1], K.REDPANEL, [[xa, 0], [xb, 0], [xb, 1], [xa, 1]]);
+		}
+	}
+	g.beam([cx, ay0 - 0.02, z - 0.008], [cx, archTop(0, -0.12), z - 0.008], 0.03, K.REDDOOR);
+	g.beam([cx - hw + 0.1, ay0 - 0.01, z - 0.006], [cx + hw - 0.1, ay0 - 0.01, z - 0.006], 0.014, K.REDDOOR);
+
+	// the brass: a long ornate back plate, a round knob, a keyhole
+	// (on the right as you face the door)
+	const hx = cx - hw + 0.15, hy = 1.06, hz = z - 0.03;
+	g.box(hx - 0.034, hy - 0.2, hz - 0.008, hx + 0.034, hy + 0.17, hz + 0.012, K.BRASS);
+	for (const [y, r] of [[hy + 0.2, 0.026], [hy + 0.235, 0.016], [hy - 0.23, 0.026], [hy - 0.265, 0.016]]) {
+		g.lathe(hx, hz - 0.002, [[0, y - r], [r, y - r * 0.4], [r, y + r * 0.4], [0, y + r]], K.BRASS, 12);
+	}
+	// scrolls down the plate's edges
+	for (let i = 0; i < 6; i++) {
+		const y = hy - 0.17 + i * 0.065;
+		for (const sx of [-1, 1]) g.beam([hx + sx * 0.034, y, hz - 0.01], [hx + sx * 0.041, y + 0.03, hz - 0.01], 0.006, K.BRASS);
+	}
+	// the knob on its neck, standing out from the plate
+	const kz = hz - 0.008;
+	const knob = (zc, r, n) => {
+		for (let j = 0; j < n; j++) {
+			const a0 = PI * j / n, a1 = PI * (j + 1) / n;
+			for (let i = 0; i < 16; i++) {
+				const b0 = 2 * PI * i / 16, b1 = 2 * PI * (i + 1) / 16;
+				const P = (a, b) => [hx + r * Math.sin(a) * Math.cos(b), hy + 0.03 + r * Math.sin(a) * Math.sin(b), zc - r * Math.cos(a)];
+				const Nn = (a, b) => [Math.sin(a) * Math.cos(b), Math.sin(a) * Math.sin(b), -Math.cos(a)];
+				const i0 = g.v(P(a0, b0), Nn(a0, b0), K.BRASS), i1 = g.v(P(a0, b1), Nn(a0, b1), K.BRASS), i2 = g.v(P(a1, b1), Nn(a1, b1), K.BRASS), i3 = g.v(P(a1, b0), Nn(a1, b0), K.BRASS);
+				g.idx.push(i0, i1, i2, i0, i2, i3);
+			}
+		}
+	};
+	g.beam([hx, hy + 0.03, kz], [hx, hy + 0.03, kz - 0.05], 0.011, K.BRASS);
+	knob(kz - 0.075, 0.034, 10);
+	g.box(hx - 0.008, hy - 0.1, hz - 0.0125, hx + 0.008, hy - 0.06, hz - 0.0085, K.KEYHOLE);
+}
+
+// the vine's own stems along the beams (twisting, dark), in the room's geometry
+function buildVineStems(g) {
+	const rnd = rng(77);
+	for (const [kind, c, seed] of VINE) {
+		const [u0, u1] = vineRange(kind);
+		for (let strand = 0; strand < 2; strand++) {
+			let prev = null;
+			for (let u = u0; u <= u1; u += 0.18) {
+				const p = vinePoint(kind, c, u);
+				const tw = Math.sin(u * 3.1 + strand * 2 + seed) * 0.07, tw2 = Math.cos(u * 2.3 + strand + seed) * 0.05;
+				const q = kind === 'ridge' ? [p[0] + tw, p[1] + tw2 + 0.12, p[2]] : [p[0], p[1] + tw2 + 0.12, p[2] + tw];
+				if (prev && (vineClump(u, seed) || rnd() < 0.5)) g.beam(prev, q, 0.012 + 0.008 * rnd(), K.WOOD);
+				prev = q;
+			}
+		}
+	}
+}
+
+// fallen bracts: on the floor beneath the flowering beams and round the
+// pool, and a few floating on the water
+function buildPetals(g) {
+	const rnd = rng(4242);
+	const onFloor = (x, z) => !(x > POOL.x0 - POOL.curb - 0.1 && x < POOL.x1 + POOL.curb + 0.1 && z > POOL.z0 - POOL.curb - 0.1 && z < POOL.z1 + POOL.curb + 0.1) && x > 0.2 && x < W - 0.2 && z > 0.3 && z < L - 0.4;
+	const petal = (x, y, z, white) => {
+		const s = 0.022 + rnd() * 0.022, a = rnd() * 2 * PI;
+		const c = Math.cos(a), sn = Math.sin(a);
+		const P = (u, v) => [x + (u * c - v * sn) * s, y + 0.004 * u * v, z + (u * sn + v * c) * s];
+		const o = white ? 2 : 0;
+		g.quad(P(-1, -1), P(-1, 1), P(1, 1), P(1, -1), [0, 1, 0], K.BRACT, [[o, 0], [o, 1], [o + 1, 1], [o + 1, 0]]);
+	};
+	// under the flowering stretches of the beams, drifting a little
+	for (const [kind, c, seed] of VINE) {
+		const [u0, u1] = vineRange(kind);
+		for (let u = u0; u <= u1; u += 0.05) {
+			if (!vineClump(u, seed) || rnd() > 0.55) continue;
+			const p = vinePoint(kind, c, u);
+			const x = p[0] + (rnd() - 0.5) * 1.8, z = p[2] + (rnd() - 0.5) * 1.8;
+			if (onFloor(x, z)) petal(x, 0.004, z, rnd() < 0.18);
+		}
+	}
+	// gathered against the pool's curb and drifted into corners
+	for (let i = 0; i < 260; i++) {
+		const side = Math.floor(rnd() * 4);
+		let x, z;
+		if (side < 2) { x = side ? POOL.x1 + POOL.curb + 0.12 + rnd() * rnd() * 0.9 : POOL.x0 - POOL.curb - 0.12 - rnd() * rnd() * 0.9; z = POOL.z0 + rnd() * (POOL.z1 - POOL.z0); }
+		else { z = side === 2 ? POOL.z0 - POOL.curb - 0.12 - rnd() * rnd() * 0.9 : POOL.z1 + POOL.curb + 0.12 + rnd() * rnd() * 0.9; x = POOL.x0 + rnd() * (POOL.x1 - POOL.x0); }
+		if (onFloor(x, z)) petal(x, 0.004, z, rnd() < 0.18);
+	}
+	// floating on the pool
+	for (let i = 0; i < 70; i++) {
+		const x = POOL.x0 + 0.08 + rnd() * (POOL.x1 - POOL.x0 - 0.16), z = POOL.z0 + 0.08 + rnd() * (POOL.z1 - POOL.z0 - 0.16);
+		if (Math.hypot(x - VENUS.x, z - VENUS.z) < 0.6) continue;
+		petal(x, 0.016, z, rnd() < 0.2);
+	}
+}
+
+// the flowers and leaves of the bougainvillea (into the leaf geometry):
+// blossom cards in clumps along the beams, sprays hanging down, and
+// small leaves among them
+function bougainvillea(g, leaf, rnd) {
+	const card = (c, size, yaw, pitch, white) => {
+		const base = g.pos.length / 3;
+		const cy = Math.cos(yaw), sy = Math.sin(yaw), cp = Math.cos(pitch), sp = Math.sin(pitch);
+		const ax = [cy, 0, -sy];
+		const ay = [sy * sp, cp, cy * sp];
+		const nrm = [ax[1] * ay[2] - ax[2] * ay[1], ax[2] * ay[0] - ax[0] * ay[2], ax[0] * ay[1] - ax[1] * ay[0]];
+		const sh = white ? 0.95 : rnd() * 0.8;
+		for (const [u, v] of [[0, 0], [1, 0], [1, 1], [0, 1]]) {
+			const du = (u - 0.5) * size, dv = (v - 0.5) * size;
+			g.pos.push(c[0] + ax[0] * du + ay[0] * dv + O[0], c[1] + ax[1] * du + ay[1] * dv + O[1], c[2] + ax[2] * du + ay[2] * dv + O[2]);
+			g.nrm.push(...nrm);
+			g.uv.push(u, v);
+			g.shade.push(sh);
+			g.flower.push(1);
+		}
+		g.idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
+	};
+	for (const [kind, c, seed] of VINE) {
+		const [u0, u1] = vineRange(kind);
+		for (let u = u0; u <= u1; u += 0.1) {
+			if (!vineClump(u, seed)) continue;
+			const p = vinePoint(kind, c, u);
+			const off = () => (rnd() - 0.5) * 0.7;
+			// a clump of blossom round the beam
+			const n = 4 + Math.floor(rnd() * 4);
+			for (let k = 0; k < n; k++) {
+				const q = kind === 'ridge' ? [p[0] + off(), p[1] - rnd() * 0.25, p[2] + off() * 0.4] : [p[0] + off() * 0.4, p[1] - rnd() * 0.25, p[2] + off()];
+				card(q, 0.42 + rnd() * 0.4, rnd() * 2 * PI, (rnd() - 0.5) * 2.4, rnd() < 0.16);
+			}
+			for (let k = 0; k < 5; k++) {
+				const a = rnd() * 2 * PI;
+				leaf([p[0] + off() * 0.6, p[1] - rnd() * 0.2, p[2] + off() * 0.6], [Math.cos(a), -0.3 - rnd() * 0.5, Math.sin(a)], [-Math.sin(a), 0, Math.cos(a)], 0.08 + rnd() * 0.06, 0.1);
+			}
+			// now and then a long spray hanging down
+			if (rnd() < 0.22) {
+				const len = 0.5 + rnd() * 2.0;
+				let q = [p[0], p[1], p[2]];
+				const drift = [(rnd() - 0.5) * 0.08, (rnd() - 0.5) * 0.08];
+				for (let d = 0; d < len; d += 0.13) {
+					q = [q[0] + drift[0], q[1] - 0.13, q[2] + drift[1]];
+					const sz = (0.3 + rnd() * 0.22) * (1 - 0.4 * d / len);
+					card([q[0] + (rnd() - 0.5) * 0.08, q[1], q[2] + (rnd() - 0.5) * 0.08], sz, rnd() * 2 * PI, (rnd() - 0.5) * 0.8, rnd() < 0.15);
+					if (rnd() < 0.6) {
+						const a = rnd() * 2 * PI;
+						leaf([q[0], q[1], q[2]], [Math.cos(a), -0.6, Math.sin(a)], [-Math.sin(a), 0, Math.cos(a)], 0.05 + rnd() * 0.04, 0.1);
+					}
+				}
+			}
+		}
+	}
+}
+
 // ------------------------------------------------------------------
 // GEOMETRY: the room
 // ------------------------------------------------------------------
@@ -328,7 +601,7 @@ function buildRoom() {
 		for (let z = 0; z < L - 1e-6; z += dz) {
 			const za = z, zb = Math.min(L, z + dz), zm = (za + zb) / 2;
 			let hole = null;
-			for (const c of WIN.c) {
+			if (!side) for (const c of WIN.c) {
 				const t = winTop(zm - c);
 				if (t !== null) hole = [WIN.sill, Math.min(winTop(za - c) || WIN.spring, winTop(zb - c) || WIN.spring)];
 			}
@@ -340,7 +613,8 @@ function buildRoom() {
 			}
 		}
 		// the reveals: the jambs, the arch's soffit, and a stone sill
-		for (const c of WIN.c) {
+		// (only on the window wall: the other is shared with the gallery)
+		if (!side) for (const c of WIN.c) {
 			for (const s of [-1, 1]) {
 				const z = c + s * WIN.hw;
 				const nn = [0, 0, -s];
@@ -410,48 +684,23 @@ function buildRoom() {
 		}
 	}
 
-	// --- the aedicule on the far wall, behind the statue
-	{
-		const zw = L, cx = W / 2;
-		const hw = 1.25, top = 4.6;
-		// the recess
-		g.quad([cx - hw, 0.9, zw - 0.02], [cx + hw, 0.9, zw - 0.02], [cx + hw, top, zw - 0.02], [cx - hw, top, zw - 0.02], [0, 0, -1], K.NICHE, [[0, 0.9], [1, 0.9], [1, top], [0, top]]);
-		for (const s of [-1, 1]) {
-			const x = cx + s * (hw + 0.24);
-			g.box(x - 0.24, 0.0, zw - 0.42, x + 0.24, top, zw, K.TRAVERTINE, { z1: true, bottom: true });
-			g.box(x - 0.3, 0.0, zw - 0.5, x + 0.3, 0.9, zw, K.TRAVERTINE, { z1: true, bottom: true });
-			g.box(x - 0.31, top, zw - 0.5, x + 0.31, top + 0.22, zw, K.TRAVERTINE, { z1: true });
-		}
-		g.box(cx - hw - 0.55, top + 0.22, zw - 0.56, cx + hw + 0.55, top + 0.72, zw, K.TRAVERTINE, { z1: true });
-		g.box(cx - hw - 0.65, top + 0.72, zw - 0.66, cx + hw + 0.65, top + 0.84, zw, K.TRAVERTINE, { z1: true });
-		// the pediment
-		const pb = top + 0.84, pt = pb + 1.05, pw = hw + 0.7, zf = zw - 0.6;
-		g.quad([cx - pw, pb, zf], [cx + pw, pb, zf], [cx, pt, zf], [cx, pt, zf], [0, 0, -1], K.TRAVERTINE, [[0, pb], [1, pb], [0.5, pt], [0.5, pt]]);
-		const sl = Math.hypot(pw, pt - pb);
-		for (const s of [-1, 1]) {
-			const nx = s * (pt - pb) / sl, ny = pw / sl;
-			const a = [cx + s * pw, pb, zf], b = [cx, pt, zf], c2 = [cx, pt, zw], d = [cx + s * pw, pb, zw];
-			if (s < 0) g.quad(a, d, c2, b, [nx, ny, 0], K.TRAVERTINE, [[0, 0], [1, 0], [1, 1], [0, 1]]);
-			else g.quad(a, b, c2, d, [nx, ny, 0], K.TRAVERTINE, [[0, 0], [1, 0], [1, 1], [0, 1]]);
-		}
-		// the sill of the niche
-		g.box(cx - hw, 0.0, zw - 0.36, cx + hw, 0.9, zw, K.TRAVERTINE, { z1: true, bottom: true });
-	}
+	// --- the red door in the far wall, behind the statue
+	buildDoor(g);
 
-	// --- the pool: a travertine curb round dark water
+	// --- the pool: a curb of white polished marble round dark water
 	{
 		const { x0, x1, z0, z1, curb, top } = POOL;
 		const lip = 0.06, cap = 0.08;
 		// the curb's body
-		g.box(x0 - curb, 0, z0 - curb, x0, top - cap, z1 + curb, K.TRAVERTINE, { bottom: true });
-		g.box(x1, 0, z0 - curb, x1 + curb, top - cap, z1 + curb, K.TRAVERTINE, { bottom: true });
-		g.box(x0, 0, z0 - curb, x1, top - cap, z0, K.TRAVERTINE, { bottom: true });
-		g.box(x0, 0, z1, x1, top - cap, z1 + curb, K.TRAVERTINE, { bottom: true });
+		g.box(x0 - curb, 0, z0 - curb, x0, top - cap, z1 + curb, K.WMARBLE, { bottom: true });
+		g.box(x1, 0, z0 - curb, x1 + curb, top - cap, z1 + curb, K.WMARBLE, { bottom: true });
+		g.box(x0, 0, z0 - curb, x1, top - cap, z0, K.WMARBLE, { bottom: true });
+		g.box(x0, 0, z1, x1, top - cap, z1 + curb, K.WMARBLE, { bottom: true });
 		// the coping, overhanging a little on both sides
-		g.box(x0 - curb - lip, top - cap, z0 - curb - lip, x0 + lip * 0.5, top, z1 + curb + lip, K.TRAVERTINE);
-		g.box(x1 - lip * 0.5, top - cap, z0 - curb - lip, x1 + curb + lip, top, z1 + curb + lip, K.TRAVERTINE);
-		g.box(x0 + lip * 0.5, top - cap, z0 - curb - lip, x1 - lip * 0.5, top, z0 + lip * 0.5, K.TRAVERTINE);
-		g.box(x0 + lip * 0.5, top - cap, z1 - lip * 0.5, x1 - lip * 0.5, top, z1 + curb + lip, K.TRAVERTINE);
+		g.box(x0 - curb - lip, top - cap, z0 - curb - lip, x0 + lip * 0.5, top, z1 + curb + lip, K.WMARBLE);
+		g.box(x1 - lip * 0.5, top - cap, z0 - curb - lip, x1 + curb + lip, top, z1 + curb + lip, K.WMARBLE);
+		g.box(x0 + lip * 0.5, top - cap, z0 - curb - lip, x1 - lip * 0.5, top, z0 + lip * 0.5, K.WMARBLE);
+		g.box(x0 + lip * 0.5, top - cap, z1 - lip * 0.5, x1 - lip * 0.5, top, z1 + curb + lip, K.WMARBLE);
 		// the water, on the floor's plane (so it mirrors the room)
 		const S = 0.5;
 		for (let x = x0; x < x1 - 1e-6; x += S) {
@@ -462,9 +711,9 @@ function buildRoom() {
 		}
 		// the plinth in the water for the statue
 		const { x, z, plinth } = VENUS;
-		g.box(x - 0.42, 0, z - 0.42, x + 0.42, plinth - 0.12, z + 0.42, K.TRAVERTINE, { bottom: true });
-		g.box(x - 0.5, plinth - 0.12, z - 0.5, x + 0.5, plinth, z + 0.5, K.TRAVERTINE);
-		g.box(x - 0.48, 0, z - 0.48, x + 0.48, 0.12, z + 0.48, K.TRAVERTINE, { bottom: true });
+		g.box(x - 0.42, 0, z - 0.42, x + 0.42, plinth - 0.12, z + 0.42, K.WMARBLE, { bottom: true });
+		g.box(x - 0.5, plinth - 0.12, z - 0.5, x + 0.5, plinth, z + 0.5, K.WMARBLE);
+		g.box(x - 0.48, 0, z - 0.48, x + 0.48, 0.12, z + 0.48, K.WMARBLE, { bottom: true });
 	}
 
 	return g;
@@ -476,7 +725,8 @@ function buildRoom() {
 
 function buildSteel(g) {
 	// the window glazing, in the middle of the wall's thickness
-	for (const side of [0, 1]) {
+	// (the wall at x = W is shared with the gallery and has none)
+	for (const side of [0]) {
 		const x = side ? W + T * 0.5 : -T * 0.5;
 		const d = 0.05, w = MULL.w * 0.5;
 		for (const c of WIN.c) {
@@ -616,56 +866,8 @@ function buildPond(g) {
 	}
 }
 
-function buildStudio(g, plantSpots) {
+function buildStudio(g) {
 	const rnd = rng(907);
-	// --- three easels down the right-hand side, their canvases tilted
-	// back like boards, turned towards the pool and the light
-	const EASELS = [
-		{ x: 12.4, z: 6.2, yaw: 0.62, lean: 0.20 },
-		{ x: 13.1, z: 9.7, yaw: 0.95, lean: 0.24 },
-		{ x: 12.6, z: 13.3, yaw: 1.22, lean: 0.18 }
-	];
-	EASELS.forEach((e, i) => {
-		const c = Math.cos(e.yaw), s = Math.sin(e.yaw);
-		const ct = Math.cos(e.lean), st = Math.sin(e.lean);
-		// local frame: the canvas faces -z (towards the viewer), leans back (+z)
-		const P = (x, y, z) => [e.x + c * x + s * (z + y * st), y * ct, e.z - s * x + c * (z + y * st)];
-		const Pn = (n) => [c * n[0] + s * n[2], n[1], -s * n[0] + c * n[2]];
-		const lean = (a, b) => g.beam(P(...a), P(...b), 0.022, K.WOOD);
-		// two front legs splayed, a back leg, a mast, a ledge, a clamp
-		lean([-0.36, 0, 0], [-0.06, 2.15, 0]);
-		lean([0.36, 0, 0], [0.06, 2.15, 0]);
-		g.beam(P(0, 0.05, 0.02), P(0, 2.3, 0.02), 0.026, K.WOOD);
-		g.beam([e.x + s * 0.95, 0, e.z + c * 0.95], P(0, 1.85, 0.04), 0.02, K.WOOD);
-		// the ledge
-		const L0 = P(-0.42, 0.78, -0.06), L1 = P(0.42, 0.78, -0.06);
-		g.beam(L0, L1, 0.035, K.WOOD);
-		// the canvas: a stretched linen board 0.61 x 0.91 (2 x 3 ft), 3 cm deep
-		const cw = 0.305, ch = 0.91, y0 = 0.82, zf = -0.11, zb = -0.08;
-		const q = (a, b, cc, d, n, k, uv) => g.quad(P(...a), P(...b), P(...cc), P(...d), Pn(n), k, uv);
-		q([-cw, y0, zf], [cw, y0, zf], [cw, y0 + ch, zf], [-cw, y0 + ch, zf], [0, st, -ct], K.PAINT, [[0 + i, 0], [1 + i, 0], [1 + i, 1], [0 + i, 1]]);
-		q([cw, y0, zb], [-cw, y0, zb], [-cw, y0 + ch, zb], [cw, y0 + ch, zb], [0, -st, ct], K.WOOD, [[0, 0], [1, 0], [1, 1], [0, 1]]);
-		for (const sx of [-1, 1]) q([sx * cw, y0, sx > 0 ? zf : zb], [sx * cw, y0, sx > 0 ? zb : zf], [sx * cw, y0 + ch, sx > 0 ? zb : zf], [sx * cw, y0 + ch, sx > 0 ? zf : zb], [sx, 0, 0], K.GESSO, [[0, 0], [1, 0], [1, 1], [0, 1]]);
-		q([-cw, y0 + ch, zf], [cw, y0 + ch, zf], [cw, y0 + ch, zb], [-cw, y0 + ch, zb], [0, ct, st], K.GESSO, [[0, 0], [1, 0], [1, 1], [0, 1]]);
-		q([cw, y0, zf], [-cw, y0, zf], [-cw, y0, zb], [cw, y0, zb], [0, -ct, -st], K.GESSO, [[0, 0], [1, 0], [1, 1], [0, 1]]);
-		// the clamp over the top
-		g.beam(P(-0.07, y0 + ch + 0.04, -0.1), P(0.07, y0 + ch + 0.04, -0.1), 0.03, K.WOOD);
-	});
-
-	// --- a paint-spattered drop cloth under the easels
-	{
-		const N = 14;
-		const x0 = 11.4, x1 = 14.6, z0 = 4.6, z1 = 15.0;
-		for (let i = 0; i < N; i++) {
-			for (let j = 0; j < 3 * N; j++) {
-				const xa = x0 + (x1 - x0) * i / N, xb = x0 + (x1 - x0) * (i + 1) / N;
-				const za = z0 + (z1 - z0) * j / (3 * N), zb = z0 + (z1 - z0) * (j + 1) / (3 * N);
-				const y = (x, z) => 0.004 + 0.012 * Math.max(0, Math.sin(x * 4.1 + z * 1.3) * Math.sin(z * 2.7 - x));
-				g.quad([xa, y(xa, za), za], [xa, y(xa, zb), zb], [xb, y(xb, zb), zb], [xb, y(xb, za), za], [0, 1, 0], K.CLOTH, [[xa, za], [xa, zb], [xb, zb], [xb, za]]);
-			}
-		}
-	}
-
 	// --- the work table under the left windows, with jars and brushes
 	{
 		const tx = 1.25, tz = 11.1, hl = 1.35, hw = 0.48, top = 0.86;
@@ -694,20 +896,6 @@ function buildStudio(g, plantSpots) {
 		g.quad([x + 0.18, 0, z - w / 2], [x + 0.18, 0, z + w / 2], [x + 0.18 - h * Math.sin(lean), h * Math.cos(lean), z + w / 2], [x + 0.18 - h * Math.sin(lean), h * Math.cos(lean), z - w / 2], [Math.cos(lean), Math.sin(lean), 0], i % 2 ? K.WOOD : K.GESSO, [[0, 0], [1, 0], [1, 1], [0, 1]]);
 		void top;
 	}
-	// --- a wooden stool by the easels
-	{
-		const x = 11.2, z = 8.2;
-		g.lathe(x, z, [[0, 0.62], [0.2, 0.62], [0.2, 0.66], [0, 0.66]], K.WOOD, 20);
-		for (let k = 0; k < 3; k++) {
-			const a = 2 * PI * k / 3 + 0.4;
-			g.beam([x + Math.cos(a) * 0.24, 0, z + Math.sin(a) * 0.24], [x + Math.cos(a) * 0.12, 0.62, z + Math.sin(a) * 0.12], 0.018, K.WOOD);
-		}
-	}
-	// --- glazed black pots for the plants, at the corners of the pool
-	for (const [x, z, s] of plantSpots) {
-		g.lathe(x, z, [[0, 0], [0.26 * s, 0], [0.33 * s, 0.32 * s], [0.36 * s, 0.55 * s], [0.38 * s, 0.6 * s], [0.34 * s, 0.6 * s], [0.0, 0.57 * s]], K.POT, 36);
-		g.lathe(x, z, [[0.0, 0.57 * s], [0.33 * s, 0.575 * s], [0.0, 0.58 * s]], K.SOIL, 20);
-	}
 	// --- pendant lamps hanging from the trusses (lit at night)
 	for (const p of LAMPS) {
 		g.beam([p[0], H, p[2]], [p[0], p[1] + 0.05, p[2]], 0.008, K.STEEL);
@@ -728,7 +916,7 @@ const LEAF_UV = [[0.0, 0.0, 0.16, 0.5], [0.16, 0.0, 0.34, 0.4], [0.35, 0.0, 0.5,
 	[0.0, 0.6, 0.19, 1.0], [0.2, 0.57, 0.36, 1.0], [0.41, 0.6, 0.58, 1.0]];
 
 function buildLeaves() {
-	const g = { pos: [], nrm: [], uv: [], shade: [], idx: [] };
+	const g = { pos: [], nrm: [], uv: [], shade: [], flower: [], idx: [] };
 	const rnd = rng(1213);
 	// a leaf card bent along its length, from base b, pointing along dir
 	const leaf = (b, dir, side, len, curl) => {
@@ -749,6 +937,7 @@ function buildLeaves() {
 				g.nrm.push(n[0] / nl, Math.abs(n[1] / nl) + 0.2, n[2] / nl);
 				g.uv.push(u < 0 ? box[0] : box[2], box[3] - (box[3] - box[1]) * t);
 				g.shade.push(sh);
+				g.flower.push(0);
 			}
 		}
 		for (let i = 0; i < NS; i++) {
@@ -756,34 +945,8 @@ function buildLeaves() {
 			g.idx.push(a, a + 1, a + 3, a, a + 3, a + 2);
 		}
 	};
-	// the potted plants: a fountain of big leaves on long stems
-	for (const [x, z, s] of PLANTS) {
-		const n = 30 + Math.floor(rnd() * 10);
-		for (let k = 0; k < n; k++) {
-			const yaw = rnd() * 2 * PI;
-			const up = 0.45 + rnd() * 0.9;
-			const len = (0.55 + rnd() * 0.4) * s;
-			const stem = (0.2 + rnd() * 0.9) * s;
-			const b = [x + Math.cos(yaw) * stem * Math.cos(up) * 0.5, 0.58 * s + stem * Math.sin(up) * 0.9, z + Math.sin(yaw) * stem * Math.cos(up) * 0.5];
-			const dir = [Math.cos(yaw) * Math.cos(up * 0.6), Math.sin(up * 0.6), Math.sin(yaw) * Math.cos(up * 0.6)];
-			leaf(b, dir, [-Math.sin(yaw), 0, Math.cos(yaw)], len, 0.25 + rnd() * 0.25);
-		}
-	}
-	// ivy hanging over the aedicule and down its sides
-	const cx = W / 2;
-	for (let k = 0; k < 34; k++) {
-		let x = cx - 2.0 + rnd() * 4.0, y = 4.6 + 0.9 + rnd() * 0.9, z = L - 0.65 - rnd() * 0.05;
-		const len = 1.0 + rnd() * 3.2;
-		const steps = Math.floor(len / 0.11);
-		for (let i = 0; i < steps; i++) {
-			y -= 0.11; x += (rnd() - 0.5) * 0.05;
-			if (y < 0.9) break;
-			for (let m = 0; m < 2; m++) {
-				const a = rnd() * 2 * PI;
-				leaf([x, y, z - 0.02 - rnd() * 0.12], [Math.cos(a) * 0.5, -0.6 + rnd() * 0.3, -0.5], [Math.sin(a), 0, 0], 0.15 + rnd() * 0.1, 0.1);
-			}
-		}
-	}
+	// the bougainvillea's leaves, along the roof's beams
+	bougainvillea(g, leaf, rnd);
 	// and a little trailing over the corners of the pool's coping
 	for (const [x, z, sx] of [[POOL.x0 - 0.3, POOL.z0 - 0.3, -1], [POOL.x1 + 0.3, POOL.z1 + 0.3, 1], [POOL.x0 - 0.3, POOL.z1 + 0.2, -1]]) {
 		for (let i = 0; i < 26; i++) {
@@ -802,7 +965,7 @@ function buildLeaves() {
 
 function buildGlass() {
 	const g = Geo();
-	for (const side of [0, 1]) {
+	for (const side of [0]) {
 		const x = side ? W + T * 0.5 + 0.01 : -T * 0.5 - 0.01;
 		const n = side ? [-1, 0, 0] : [1, 0, 0];
 		for (const c of WIN.c) {
@@ -877,7 +1040,7 @@ const LIGHT = `
 		vec3 p = pw - vec3(${f(O[0])}, ${f(O[1])}, ${f(O[2])});
 		float vis = studioSun(pw + N * 0.03);
 		sunVis = vis;
-		vec3 sunC = mix(vec3(1.0, 0.88, 0.70) * 5.4, vec3(0.50, 0.64, 1.0) * 1.35, night);
+		vec3 sunC = mix(vec3(1.0, 0.88, 0.70) * 3.9, vec3(0.50, 0.64, 1.0) * 1.35, night);
 		float lam = max(dot(N, STUDIO_SUN), 0.0);
 		vec3 col = sunC * vis * lam;
 		vec3 Hh = normalize(STUDIO_SUN + V);
@@ -993,8 +1156,15 @@ const FRAG = `
 		bool floorish = is(${K.FLOOR}.0) || is(${K.WATER}.0);
 		if (yScale < 0.0 && floorish) discard;
 
+		// fallen bracts: little papery hearts, pink or white
+		if (is(${K.BRACT}.0)) {
+			vec2 u = vec2(fract(v_uv.x), v_uv.y) * 2.0 - 1.0;
+			float heart = length(vec2(u.x * 1.1, u.y + 0.15 * abs(u.x) * 2.0 - 0.1)) ;
+			if (heart > 0.85 + 0.1 * sin(atan(u.y, u.x) * 3.0)) discard;
+		}
 		vec3 base = vec3(0.5);
 		float gloss = 0.1;
+		float checker = 0.0;
 		float rough = 1.0;
 		float aoK = 1.0;
 		float sss = 0.0;
@@ -1037,27 +1207,59 @@ const FRAG = `
 			base = vec3(0.035, 0.036, 0.038) * (0.8 + 0.4 * vnoise3(p * 3.0));
 			gloss = 0.45;
 		} else if (is(${K.FLOOR}.0)) {
-			// big honed limestone flags, set in a running bond
-			vec2 q = p.xz;
-			float row = floor(q.y / 1.2);
-			q.x += mod(row, 2.0) * 0.45;
-			vec2 cell = floor(q / vec2(0.9, 1.2));
-			vec2 fr = fract(q / vec2(0.9, 1.2)) * vec2(0.9, 1.2);
-			float grout = 1.0 - smoothstep(0.0, 0.012, min(min(fr.x, 0.9 - fr.x), min(fr.y, 1.2 - fr.y)));
-			float tone = hash13(vec3(cell, 3.0));
-			float n = fbm3(vec3(p.x * 1.3, 0.0, p.z * 1.3) + vec3(cell * 3.1, 0.0));
-			base = mix(vec3(0.58, 0.51, 0.42), vec3(0.74, 0.67, 0.57), tone * 0.6 + n * 0.4);
-			base *= 1.0 - grout * 0.35;
-			// worn paths and paint drips near the easels
-			float wear = fbm3(vec3(p.x * 0.6, 1.0, p.z * 0.6));
-			gloss = mix(0.35, 0.6, wear) * (1.0 - grout);
-			float drip = smoothstep(0.82, 0.86, vnoise3(vec3(p.xz * 6.0, 2.0))) * smoothstep(9.8, 11.5, p.x);
-			base = mix(base, vec3(0.55, 0.25, 0.12), drip * 0.5);
+			// the gallery's own floor: polished chequered marble, black and
+			// dark cream, laid on the diagonal, with fine veins and hair-line
+			// grout, the polish duller where people walk
+			vec2 tq = mat2(0.70711, 0.70711, -0.70711, 0.70711) * (p.xz - vec2(${f(W / 2)}, 0.0));
+			float tileSize = 0.62;
+			vec2 tile = floor(tq / tileSize);
+			checker = mod(tile.x + tile.y, 2.0);
+			float rnd = hash13(vec3(tile, 5.0));
+			vec3 lightTile = vec3(0.44, 0.37, 0.24) * (0.9 + 0.16 * rnd);
+			vec3 darkTile = vec3(0.0008, 0.0007, 0.0006) + vec3(0.0002) * rnd;
+			float vein = abs(sin(tq.x * 5.5 + tq.y * 2.0 + sin(tq.y * 1.6) + rnd * 6.0));
+			vein = 1.0 - smoothstep(0.0, 0.09, vein);
+			base = mix(lightTile, darkTile, checker);
+			base = mix(base, base * 0.65, vein * 0.35 * (1.0 - checker));
+			base = mix(base, base * 2.2 + 0.0006, vein * 0.18 * checker);
+			vec2 tf = fract(tq / tileSize);
+			float edge = min(min(tf.x, 1.0 - tf.x), min(tf.y, 1.0 - tf.y)) * tileSize;
+			float grout = 1.0 - smoothstep(0.0, 0.006, edge);
+			base *= 1.0 - 0.45 * grout;
+			gloss = (0.86 + 0.28 * hash13(vec3(tile, 17.0))) * (1.0 - 0.5 * grout);
 			aoK = mix(0.62, 1.0, smoothstep(0.0, 0.9, min(min(p.x, ${f(W)} - p.x), min(p.z, ${f(L)} - p.z))));
 			// the curb throws a soft shadow round the pool
 			vec2 dq = max(vec2(${f(POOL.x0 - POOL.curb)} - p.x, p.x - ${f(POOL.x1 + POOL.curb)}), vec2(${f(POOL.z0 - POOL.curb)} - p.z, p.z - ${f(POOL.z1 + POOL.curb)}));
 			float dpool = max(max(dq.x, dq.y), 0.0);
 			aoK *= mix(0.7, 1.0, smoothstep(0.0, 0.4, dpool));
+		} else if (is(${K.WMARBLE}.0)) {
+			// white statuary marble, polished: a soft grey cloud and fine veins
+			float cl = fbm3(p * 1.4 + 2.0);
+			float v1 = abs(sin(p.x * 3.1 + p.z * 1.7 + p.y * 5.0 + cl * 7.0));
+			float vein = (1.0 - smoothstep(0.0, 0.05, v1)) * 0.7 + (1.0 - smoothstep(0.0, 0.02, abs(sin(p.z * 6.3 - p.x * 2.2 + cl * 11.0)))) * 0.3;
+			base = mix(vec3(0.68, 0.68, 0.66), vec3(0.76, 0.76, 0.74), cl);
+			base = mix(base, vec3(0.50, 0.51, 0.52), vein * 0.45);
+			base *= mix(0.8, 1.0, smoothstep(0.0, 0.1, p.y));
+			gloss = 0.88;
+		} else if (is(${K.REDDOOR}.0) || is(${K.REDPANEL}.0)) {
+			// deep crimson paint over wood: a soft sheen, the grain just showing
+			float grain = vnoise3(vec3(p.x * 40.0, p.y * 2.0, p.z * 40.0));
+			base = vec3(0.30, 0.022, 0.026) * (0.88 + 0.2 * grain);
+			if (is(${K.REDPANEL}.0)) base *= 0.55;
+			gloss = 0.62;
+		} else if (is(${K.DARKWOOD}.0)) {
+			float grain = vnoise3(vec3(p.x * 3.0, p.y * 45.0, p.z * 3.0));
+			base = mix(vec3(0.030, 0.019, 0.014), vec3(0.062, 0.040, 0.028), grain);
+			gloss = 0.35;
+		} else if (is(${K.BRASS}.0)) {
+			base = vec3(0.60, 0.44, 0.17) * (0.85 + 0.25 * vnoise3(p * 90.0));
+			gloss = 0.78;
+		} else if (is(${K.KEYHOLE}.0)) {
+			base = vec3(0.004);
+		} else if (is(${K.BRACT}.0)) {
+			float white = step(1.5, v_uv.x);
+			base = mix(vec3(0.62, 0.03, 0.22), vec3(0.86, 0.80, 0.80), white) * (0.8 + 0.3 * hash13(floor(p * 30.0)));
+			sss = 0.5;
 		} else if (is(${K.WATER}.0)) {
 			base = vec3(0.012, 0.018, 0.014);
 			gloss = 1.0;
@@ -1150,15 +1352,25 @@ const FRAG = `
 		if (is(${K.POT}.0) || is(${K.STEEL}.0) || is(${K.SHADE}.0) || is(${K.JAR}.0)) {
 			col += env * (0.04 + 0.6 * fres) * gloss * 1.2;
 		}
+		if (is(${K.BRASS}.0)) {
+			col = base * light * 0.35 + spec * base * 2.5 + env * base * 1.6;
+		}
+		if (is(${K.REDDOOR}.0) || is(${K.REDPANEL}.0) || is(${K.WMARBLE}.0)) {
+			col += env * (0.03 + 0.5 * fres) * gloss;
+		}
 
 		col = studioAir(col, pw, v_eye);
 
 		float alpha = 1.0;
 		if (is(${K.FLOOR}.0)) {
+			// as polished as the gallery's: a clear reflection even looking
+			// down, a mirror at grazing angles, more on the black tiles
 			float cosV = clamp(V.y, 0.0, 1.0);
-			float refl = (0.06 + 0.45 * pow(1.0 - cosV, 4.0)) * gloss * 1.4;
+			float refl = 0.16 + 0.58 * pow(1.0 - cosV, 3.0);
+			refl *= mix(0.72, 1.0, checker);
+			refl *= gloss;
 			alpha = 1.0 - refl * mirrorOn;
-			alpha = mix(alpha, 1.0, clamp(sunVis * 0.5, 0.0, 0.5));
+			alpha = mix(alpha, 1.0, clamp(sunVis * 0.4, 0.0, 0.45));
 		}
 		if (is(${K.WATER}.0)) {
 			// still, dark water: almost a mirror, the sky's light on it, a
@@ -1181,7 +1393,9 @@ module.exports = function (regl) {
 	const room = buildRoom();
 	buildSteel(room);
 	buildPond(room);
-	buildStudio(room, PLANTS);
+	buildStudio(room);
+	buildVineStems(room);
+	buildPetals(room);
 
 	const BLEND = { enable: true, func: { srcRGB: 'src alpha', dstRGB: 'one minus src alpha', srcAlpha: 'one', dstAlpha: 'zero' } };
 
@@ -1233,12 +1447,12 @@ module.exports = function (regl) {
 		uniform float yScale;
 		attribute vec3 position, normal;
 		attribute vec2 uv;
-		attribute float shade;
+		attribute float shade, flower;
 		varying vec3 v_pos, v_nrm, v_eye;
 		varying vec2 v_uv;
-		varying float v_shade;
+		varying float v_shade, v_flower;
 		void main() {
-			v_pos = position; v_nrm = normal; v_uv = uv; v_shade = shade;
+			v_pos = position; v_nrm = normal; v_uv = uv; v_shade = shade; v_flower = flower;
 			vec3 t = view[3].xyz;
 			v_eye = -vec3(dot(view[0].xyz, t), dot(view[1].xyz, t), dot(view[2].xyz, t));
 			v_eye.y *= yScale;
@@ -1251,14 +1465,62 @@ module.exports = function (regl) {
 		uniform sampler2D tex;
 		varying vec3 v_pos, v_nrm, v_eye;
 		varying vec2 v_uv;
-		varying float v_shade;
+		varying float v_shade, v_flower;
 		${LIGHT}
+		vec2 hash22(vec2 p) {
+			vec3 a = fract(vec3(p.xyx) * vec3(0.1031, 0.1030, 0.0973));
+			a += dot(a, a.yzx + 33.33);
+			return fract((a.xx + a.yz) * a.zy);
+		}
+		// a clump of bougainvillea: papery bracts in threes, magenta or white
+		vec4 blossom(vec2 uv, float seed) {
+			vec2 c = uv - 0.5;
+			float edge = length(c) * 2.0;
+			if (edge > 0.95) return vec4(0.0);
+			vec2 q = uv * 4.0 + seed * 13.0;
+			vec2 cell = floor(q), fq = fract(q);
+			float best = 0.0; float tone = 0.0; vec2 bl = vec2(0.0);
+			for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) {
+				vec2 o = vec2(float(i), float(j));
+				vec2 h = hash22(cell + o);
+				if (h.x > 0.96) continue;
+				vec2 ctr = o + 0.2 + 0.6 * hash22(cell + o + 7.0);
+				vec2 d = fq - ctr;
+				float rot = h.y * 6.283;
+				// three bracts round the centre
+				for (int k = 0; k < 3; k++) {
+					float a = rot + float(k) * 2.094;
+					vec2 bc = vec2(cos(a), sin(a)) * 0.2;
+					vec2 dd = d - bc;
+					float m = smoothstep(0.26, 0.2, length(dd * vec2(1.0, 1.25)));
+					if (m > best) { best = m; tone = h.y; bl = dd; }
+				}
+			}
+			best *= smoothstep(0.95, 0.6, edge + 0.25 * (hash22(cell).x - 0.5));
+			return vec4(bl, tone, best);
+		}
 		void main() {
-			vec4 t = texture2D(tex, v_uv);
-			if (t.a < 0.5) discard;
 			vec3 V = normalize(v_eye - v_pos);
 			vec3 N = normalize(v_nrm);
 			if (dot(N, V) < 0.0) N = -N;
+			if (v_flower > 0.5) {
+				vec4 b = blossom(v_uv, v_shade);
+				if (b.w < 0.5) discard;
+				bool white = v_shade > 0.9 || b.z > 0.93;
+				vec3 pink = mix(vec3(0.62, 0.02, 0.24), vec3(0.78, 0.08, 0.36), b.z);
+				vec3 base = white ? vec3(0.84, 0.80, 0.80) : pink;
+				// the bract's veins and its paler heart
+				base *= 0.8 + 0.3 * smoothstep(0.25, 0.0, length(b.xy));
+				vec3 spec; float sv;
+				vec3 light = studioLight(v_pos, N, V, 0.3, spec, sv);
+				float through = max(dot(-N, STUDIO_SUN), 0.0) * sv;
+				vec3 col = base * light + base * vec3(1.0, 0.75, 0.8) * through * 2.6 * (1.0 - night) + spec * 0.15;
+				col = studioAir(col, v_pos, v_eye);
+				gl_FragColor = vec4(sqrt(max(col, 0.0)), 1.0);
+				return;
+			}
+			vec4 t = texture2D(tex, v_uv);
+			if (t.a < 0.5) discard;
 			vec3 base = t.rgb * t.rgb * vec3(0.8, 0.95, 0.75) * v_shade;
 			vec3 spec; float sv;
 			vec3 light = studioLight(v_pos, N, V, 0.4, spec, sv);
@@ -1268,7 +1530,7 @@ module.exports = function (regl) {
 			col = studioAir(col, v_pos, v_eye);
 			gl_FragColor = vec4(sqrt(max(col, 0.0)), 1.0);
 		}`,
-		attributes: { position: lv.pos, normal: lv.nrm, uv: lv.uv, shade: lv.shade },
+		attributes: { position: lv.pos, normal: lv.nrm, uv: lv.uv, shade: lv.shade, flower: lv.flower },
 		elements: new Uint32Array(lv.idx),
 		uniforms: { tex: leafTex.tex },
 		cull: { enable: false }
@@ -1384,7 +1646,7 @@ module.exports = function (regl) {
 		drawSky();
 		drawRoom();
 		if (drawVenus) drawVenus();
-		if (leafTex.ready) drawLeaves();
+		drawLeaves();
 		if (!(opts && opts.reflected)) drawGlass();
 	}
 	return draw;
