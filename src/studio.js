@@ -25,8 +25,10 @@
  * (a real model, res/koi.bin, bent live along each fish's own swimming
  * path), caustics, and the shadows of the pads and the fish on the bed.
  * They are drawn after the water at its own depth and show through it
- * as much as the surface lets them. Petals fall and float, rings spread
- * where they land, the koi rise to sip, and the visitor can feed them
+ * as much as the surface lets them, with the room's reflection laid
+ * over them, bent by the waves. The surface is alive (pondSim): petals
+ * fall and float, rings spread where they land and bounce off the walls,
+ * koi near the surface leave wakes, the koi rise to sip, and the visitor can feed them
  * (see koiSim and feedAt). Credits for the pond's models, textures and
  * sound are in the readme.
  *
@@ -1338,27 +1340,42 @@ function loadTexture(regl, url, opts) {
 	return state;
 }
 
-// the pool's motion, shared by the water and what floats on it:
-// a slow swell, and rings spreading from where petals land
-// (ripples[i] = world x, z, age in seconds, strength)
-const RIPPLE_N = 8;
-const RIPPLE_SPEED = 0.30;
+// the pool's motion, shared by the water and what floats on it: a slow
+// swell, and the live surface (pondSim in the module): a height map of the
+// pool, a cell every 3 cm, in which every touch on the water spreads as
+// rings that cross, bounce off the walls and the plinth, and die away
+// under the pads. Heights are kept in 8-bit pictures, two bytes each (so
+// it works on every graphics chip), and read back here with our own
+// smoothing between cells.
+const SIM_NX = 128, SIM_NZ = 372;
+const SIM_DX = (POOL.x1 - POOL.x0) / SIM_NX, SIM_DZ = (POOL.z1 - POOL.z0) / SIM_NZ;
+const SIM_HMAX = 0.02;
+const SIM_CODEC = `
+	float simDec(vec2 c) { return (floor(c.x * 255.0 + 0.5) * 256.0 + floor(c.y * 255.0 + 0.5)) / 65535.0 * 2.0 - 1.0; }
+	vec2 simEnc(float h) {
+		float v = floor(clamp(h * 0.5 + 0.5, 0.0, 1.0) * 65535.0 + 0.5);
+		float hi = floor(v / 256.0);
+		return vec2(hi, v - hi * 256.0) / 255.0;
+	}
+`;
 const WAVES = `
 	uniform float stime;
-	uniform vec4 ripples[${RIPPLE_N}];
+	uniform highp sampler2D simTex;
+	${SIM_CODEC}
+	float simAt(vec2 i) {
+		i = clamp(i, vec2(0.0), vec2(${SIM_NX - 1}.0, ${SIM_NZ - 1}.0));
+		return simDec(texture2D(simTex, (i + 0.5) / vec2(${SIM_NX}.0, ${SIM_NZ}.0)).rg);
+	}
 	// the height of the water at world xz (metres, tiny)
 	float poolHeight(vec2 xz) {
-		float h = 0.0025 * sin(xz.x * 2.1 + stime * 0.55) * sin(xz.y * 1.7 - stime * 0.43)
-		        + 0.0015 * sin(xz.x * 3.7 - xz.y * 2.9 + stime * 0.8);
-		for (int i = 0; i < ${RIPPLE_N}; i++) {
-			vec4 r = ripples[i];
-			if (r.w <= 0.0) continue;
-			float d = length(xz - r.xy);
-			float x = d - r.z * ${f(RIPPLE_SPEED)};
-			// a packet of a few rings, fading as it spreads
-			float env = exp(-x * x * 30.0) * exp(-r.z * 0.38) * r.w / (1.0 + d * 3.0);
-			h += 0.009 * sin(x * 42.0) * env;
-		}
+		float h = 0.0018 * sin(xz.x * 2.1 + stime * 0.55) * sin(xz.y * 1.7 - stime * 0.43)
+		        + 0.0010 * sin(xz.x * 3.7 - xz.y * 2.9 + stime * 0.8);
+#ifndef NO_SIM
+		vec2 g = (xz - vec2(${f(POOL.x0 + O[0])}, ${f(POOL.z0 + O[2])})) / vec2(${f(SIM_DX)}, ${f(SIM_DZ)}) - 0.5;
+		vec2 i = floor(g), fr = g - i;
+		float sh = mix(mix(simAt(i), simAt(i + vec2(1.0, 0.0)), fr.x), mix(simAt(i + vec2(0.0, 1.0)), simAt(i + vec2(1.0, 1.0)), fr.x), fr.y);
+		h += sh * ${f(SIM_HMAX)};
+#endif
 		return h;
 	}
 `;
@@ -1407,7 +1424,10 @@ const VERT = `
 const FRAG = `
 	precision highp float;
 	uniform float night, time, yScale, mirrorOn;
-	uniform sampler2D padTex, petalTex;
+	uniform sampler2D padTex, petalTex, reflTex;
+	uniform vec2 reflSize;
+	uniform float reflOn;
+	uniform mat4 view;
 	${WAVES}
 	varying vec3 v_pos, v_nrm, v_eye;
 	varying float v_kind;
@@ -1647,11 +1667,11 @@ const FRAG = `
 			// still, dark water: almost a mirror, the sky's light on it, a
 			// very slow breath of ripples
 			// the moving surface: its slope from the swell and the rings
-			float e = 0.012;
+			float e = ${f(SIM_DX)};
 			float h0 = poolHeight(pw.xz);
-			vec2 grad = vec2(poolHeight(pw.xz + vec2(e, 0.0)) - h0, poolHeight(pw.xz + vec2(0.0, e)) - h0) / e;
+			vec2 grad = vec2(poolHeight(pw.xz + vec2(e, 0.0)) - poolHeight(pw.xz - vec2(e, 0.0)), poolHeight(pw.xz + vec2(0.0, e)) - poolHeight(pw.xz - vec2(0.0, e))) / (2.0 * e);
 			vec3 Nw = normalize(vec3(-grad.x, 1.0, -grad.y));
-			float stir = clamp(length(grad) * 9.0, 0.0, 1.0);
+			float stir = clamp(length(grad) * 6.0, 0.0, 1.0);
 			float cosV = clamp(dot(Nw, V), 0.0, 1.0);
 			float F = 0.02 + 0.98 * pow(1.0 - cosV, 5.0);
 			float refl = mix(0.30, 0.95, F);
@@ -1659,16 +1679,27 @@ const FRAG = `
 			vec3 Rw = reflect(-V, Nw);
 			float glint = pow(max(dot(Rw, STUDIO_SUN), 0.0), 900.0) * sunVis;
 			vec3 glintC = mix(vec3(1.0, 0.92, 0.78) * 9.0, vec3(0.75, 0.85, 1.0) * 3.0, night);
-			col = base * light * 0.35 + glintC * glint;
-			// where the rings pass, the mirror breaks into bands: crests tipped
-			// away from you catch the bright roof, troughs show the dark depth
+			col = base * light * 0.35;
+			// where the rings pass, crests tipped away from you catch the bright
+			// roof, troughs show the dark depth
 			float side = clamp(dot(grad, normalize(V.xz + vec2(1e-4))) * 9.0, -1.0, 1.0);
 			vec3 hi = studioSky(Rw) * mix(0.55, 0.30, night) + light * 0.04;
 			vec3 lo = vec3(0.008, 0.011, 0.010);
 			vec3 ringC = mix(lo, hi, 0.5 + 0.5 * side);
-			col = mix(col, ringC, stir * 0.6);
+			col = mix(col, ringC, stir * (reflOn > 0.5 ? 0.25 : 0.6));
 			col = studioAir(col, pw, v_eye);
 			alpha = 1.0 - refl * mirrorOn * (1.0 - stir * 0.6);
+			if (reflOn > 0.5 && mirrorOn > 0.5) {
+				// the room's reflection, bent by the slope of the water under it
+				vec3 dN = Nw - vec3(0.0, 1.0, 0.0);
+				vec3 rgt = vec3(view[0].x, view[1].x, view[2].x), upv = vec3(view[0].y, view[1].y, view[2].y);
+				float dist = length(v_eye - pw);
+				vec2 off = vec2(dot(dN, rgt), dot(dN, upv)) * 0.3 / (1.0 + dist * 0.2);
+				vec3 rc = texture2D(reflTex, clamp(gl_FragCoord.xy / reflSize + off, vec2(0.001), vec2(0.999))).rgb;
+				col = mix(col, rc * rc, refl * (1.0 - stir * 0.3));
+				alpha = 1.0;
+			}
+			col += glintC * glint;
 			alpha = max(alpha, glint);
 			if (mirrorOn < 0.5) { col = mix(col, studioSky(Rw) * 0.35, F); alpha = 1.0; }
 		}
@@ -1690,38 +1721,183 @@ module.exports = function (regl) {
 	// the studio's own clock, and the rings on the pool from the petals
 	// that have landed in it lately
 	const t0 = performance.now();
-	const clock = { t: 0, ripples: [] };
-	for (let i = 0; i < RIPPLE_N; i++) clock.ripples.push([0, 0, 0, 0]);
+	const clock = { t: 0 };
 	let heardKoi = 0;
+	// vertex shaders read the moving water too, where the graphics chip lets
+	// them (nearly all do); otherwise floating things ride the swell alone
+	const GL = regl._gl;
+	const VTF = !!(GL && GL.getParameter(GL.MAX_VERTEX_TEXTURE_IMAGE_UNITS) > 0);
+	const V = (src) => (VTF ? src : '#define NO_SIM\n' + src);
+
+	// ---- the live surface of the pool (see WAVES) ------------------------
+	const pondSim = (() => {
+		const NX = SIM_NX, NZ = SIM_NZ;
+		const zero = new Uint8Array(NX * NZ * 4);
+		for (let i = 0; i < NX * NZ; i++) { zero[i * 4] = 128; zero[i * 4 + 2] = 128; }
+		const mk = () => regl.framebuffer({ color: regl.texture({ width: NX, height: NZ, data: zero, min: 'nearest', mag: 'nearest', wrap: 'clamp' }), depth: false, stencil: false });
+		const buf = [mk(), mk()];
+		let cur = 0;
+		// where there is water (R), and how much the pads hush it (G)
+		const mask = new Uint8Array(NX * NZ * 4);
+		for (let j = 0; j < NZ; j++) for (let i = 0; i < NX; i++) {
+			const x = POOL.x0 + (i + 0.5) * SIM_DX, z = POOL.z0 + (j + 0.5) * SIM_DZ;
+			const plinth = Math.abs(x - VENUS.x) < 0.43 && Math.abs(z - VENUS.z) < 0.43;
+			let pad = 0;
+			for (const p of POND_PADS) pad = Math.max(pad, 1 - Math.min(1, Math.max(0, (Math.hypot(x - p[0], z - p[1]) - p[2] * 0.7) / (p[2] * 0.3))));
+			const k = (j * NX + i) * 4;
+			mask[k] = plinth ? 0 : 255; mask[k + 1] = Math.round(pad * 255); mask[k + 3] = 255;
+		}
+		const maskTex = regl.texture({ width: NX, height: NZ, data: mask, min: 'nearest', mag: 'nearest', wrap: 'clamp' });
+		const SRC_N = 16;
+		const srcs = [];
+		for (let i = 0; i < SRC_N; i++) srcs.push([0, 0, 0, 0.04]);
+		const uni = { prev: regl.prop('prev'), mask: maskTex };
+		for (let i = 0; i < SRC_N; i++) uni['src[' + i + ']'] = ((k) => () => srcs[k])(i);
+		const C = Math.pow(0.36 * (1 / 60) / SIM_DX, 2);
+		const step = regl({
+			vert: 'precision highp float; attribute vec2 position; varying vec2 uv; void main() { uv = position * 0.5 + 0.5; gl_Position = vec4(position, 0.0, 1.0); }',
+			frag: `
+			precision highp float;
+			uniform highp sampler2D prev, mask;
+			uniform vec4 src[${SRC_N}];
+			varying vec2 uv;
+			${SIM_CODEC}
+			void main() {
+				vec2 px = 1.0 / vec2(${NX}.0, ${NZ}.0);
+				vec4 c = texture2D(prev, uv);
+				vec4 m = texture2D(mask, uv);
+				float h = simDec(c.rg), hp = simDec(c.ba);
+				if (m.r < 0.5) { gl_FragColor = vec4(simEnc(0.0), simEnc(0.0)); return; }
+				// the neighbours (a wall or the plinth turns the wave back)
+				float hs[4];
+				vec2 d[4];
+				d[0] = vec2(px.x, 0.0); d[1] = vec2(-px.x, 0.0); d[2] = vec2(0.0, px.y); d[3] = vec2(0.0, -px.y);
+				float lap = -4.0 * h;
+				for (int k = 0; k < 4; k++) {
+					vec2 q = uv + d[k];
+					bool inside = q.x > 0.0 && q.x < 1.0 && q.y > 0.0 && q.y < 1.0 && texture2D(mask, q).r > 0.5;
+					lap += inside ? simDec(texture2D(prev, q).rg) : h;
+				}
+				// the pads hush the small waves under them
+				float damp = mix(0.996, 0.95, m.g);
+				float hn = h + (h - hp) * damp + ${f(C)} * lap;
+				hn *= 0.9993;
+				// whatever touched the water this moment
+				vec2 p = vec2(${f(POOL.x0 + O[0])}, ${f(POOL.z0 + O[2])}) + uv * vec2(${f(POOL.x1 - POOL.x0)}, ${f(POOL.z1 - POOL.z0)});
+				for (int i = 0; i < ${SRC_N}; i++) {
+					vec4 s = src[i];
+					if (s.z == 0.0) continue;
+					vec2 dd = p - s.xy;
+					hn += s.z * exp(-dot(dd, dd) / (s.w * s.w));
+				}
+				gl_FragColor = vec4(simEnc(clamp(hn, -1.0, 1.0)), simEnc(h));
+			}`,
+			attributes: { position: [-1, -1, 1, -1, -1, 1, 1, 1] },
+			primitive: 'triangle strip',
+			count: 4,
+			framebuffer: regl.prop('out'),
+			uniforms: uni,
+			depth: { enable: false, mask: false },
+			blend: { enable: false },
+			cull: { enable: false },
+			viewport: { x: 0, y: 0, width: NX, height: NZ }
+		});
+		// the things touching the water: [x, z (world), t0, strength, kind]
+		// kind 0: a drop (a short train of rings), 1: a push (a moving fish)
+		const touches = [];
+		let simT = 0, acc = 0;
+		return {
+			tex: () => buf[cur].color[0],
+			// a drop on the water: a petal, a sip, a gulp, a handful of crumbs
+			drop(x, z, strength, size) { touches.push([x, z, simT, strength, 0, size || 0.035]); },
+			// advance to time t, a sixtieth of a second at a time
+			advance(t, pushes) {
+				let dt = t - simT - acc;
+				if (dt < 0 || dt > 2) { simT = t; acc = 0; return; }
+				acc += dt;
+				let n = 0;
+				while (acc >= 1 / 60 && n < 8) {
+					acc -= 1 / 60; simT += 1 / 60; n++;
+					// the sources for this step
+					let k = 0;
+					for (let i = touches.length - 1; i >= 0; i--) {
+						const tc = touches[i];
+						const age = simT - tc[2];
+						if (age > 1.4) { touches.splice(i, 1); continue; }
+						if (k >= SRC_N) continue;
+						// a few quick rings: the water springs back and forth
+						const a = tc[3] * 0.05 * Math.sin(age * 2 * Math.PI * 2.4) * Math.exp(-age * 3.2);
+						const sv = srcs[k++]; sv[0] = tc[0]; sv[1] = tc[1]; sv[2] = a; sv[3] = tc[5];
+					}
+					for (const ps of pushes) {
+						if (k >= SRC_N) break;
+						const sv = srcs[k++]; sv[0] = ps[0]; sv[1] = ps[1]; sv[2] = ps[2]; sv[3] = ps[3];
+					}
+					for (; k < SRC_N; k++) srcs[k][2] = 0;
+					step({ prev: buf[cur].color[0], out: buf[1 - cur] });
+					cur = 1 - cur;
+				}
+				if (n === 8) { acc = 0; simT = t; }
+			},
+			read() { return regl.read({ framebuffer: buf[cur] }); }
+		};
+	})();
+
 	const tick = () => {
 		clock.t = (performance.now() - t0) / 1000;
 		if (typeof window !== 'undefined' && window.__studioFreeze != null) clock.t = window.__studioFreeze;
-		const live = [];
 		for (const pt of FALL) {
 			const st = fallState(pt, clock.t);
 			const age = st.ph - st.Tf;
 			// a soft drop as it touches the water
-			if (st.inPool && age >= 0 && age < 0.5 && !(pt.heard > clock.t - 1)) { pt.heard = clock.t; pondSound.play(st.lx + O[0], st.lz + O[2], 0.4); }
-			if (st.inPool && age >= 0 && age < 9) live.push([st.lx + O[0], st.lz + O[2], age, 1]);
+			if (st.inPool && age >= 0 && age < 0.5 && !(pt.heard > clock.t - 1)) {
+				pt.heard = clock.t;
+				pondSound.play(st.lx + O[0], st.lz + O[2], 0.4);
+				pondSim.drop(st.lx + O[0], st.lz + O[2], 0.55, 0.03);
+			}
 		}
-		// the koi: swim on, and the rings from any that rose to sip
+		// the koi: swim on; the rings where they sip and gulp
 		let dt = clock.t - koi.sim.t;
 		if (dt < 0 || dt > 120) { dt = Math.min(Math.max(dt, 0), 120); }
 		while (dt > 1e-6) { const h = Math.min(dt, 0.05); koi.sim.step(h); dt -= h; }
-		for (const e of koi.sim.events) { const age = clock.t - e[2]; if (age >= 0 && age < 9) live.push([e[0] + O[0], e[1] + O[2], age, e[3]]); }
-		for (const e of koi.sim.events) if (e[2] > heardKoi) { heardKoi = e[2]; pondSound.play(e[0] + O[0], e[1] + O[2], e[3] * 0.8); }
-		live.sort((a, b) => a[2] - b[2]);
-		for (let i = 0; i < RIPPLE_N; i++) clock.ripples[i] = live[i] || [0, 0, 0, 0];
+		for (const e of koi.sim.events) if (e[2] > heardKoi) {
+			heardKoi = e[2];
+			pondSound.play(e[0] + O[0], e[1] + O[2], e[3] * 0.8);
+			pondSim.drop(e[0] + O[0], e[1] + O[2], e[3] * 1.3, e[3] >= 1 ? 0.07 : 0.04);
+		}
+		// a koi near the surface pushes the water ahead of it: a wake
+		const pushes = [];
+		for (const F of koi.sim.fish) {
+			const shallow = Math.min(1, Math.max(0, (F.y + 0.15) / 0.09));
+			if (shallow <= 0) continue;
+			const a = 0.008 * shallow * Math.min(1.5, F.v / 0.15);
+			pushes.push([F.x + O[0] + Math.cos(F.th) * 0.02, F.z + O[2] + Math.sin(F.th) * 0.02, a, 0.045]);
+			pushes.push([F.x + O[0] - Math.cos(F.th) * 0.14, F.z + O[2] - Math.sin(F.th) * 0.14, -a, 0.055]);
+		}
+		pondSim.advance(clock.t, pushes);
 	};
-	const POOL_UNIFORMS = { stime: () => clock.t };
-	if (typeof location !== 'undefined' && /tourdebug/.test(location.search)) window.__studioClock = clock;
-	for (let i = 0; i < RIPPLE_N; i++) POOL_UNIFORMS['ripples[' + i + ']'] = () => clock.ripples[i];
+	const POOL_UNIFORMS = { stime: () => clock.t, simTex: () => pondSim.tex() };
+	if (typeof location !== 'undefined' && /tourdebug/.test(location.search)) { window.__studioClock = clock; window.__pondSim = pondSim; }
+
+	// the reflection under the floor, kept as a picture each frame so the
+	// water can bend it
+	let reflTex = regl.texture({ width: 4, height: 4, min: 'linear', mag: 'linear', wrap: 'clamp' });
+	const reflSize = [4, 4];
+	let reflOn = 0;
+	const scope = regl({});
+	const keepReflection = () => scope((ctx) => {
+		const w = ctx.viewportWidth, h = ctx.viewportHeight;
+		if (reflTex.width !== w || reflTex.height !== h) reflTex({ copy: true, width: w, height: h, min: 'linear', mag: 'linear', wrap: 'clamp' });
+		else reflTex.subimage({ copy: true, width: w, height: h });
+		reflSize[0] = w; reflSize[1] = h;
+		reflOn = 1;
+	});
 
 	const padTex = loadTexture(regl, 'res/pond/lilypad.webp');
 	const petalTex = loadTexture(regl, 'res/pond/petals.webp');
-	const ROOM_UNIFORMS = Object.assign({ padTex: () => padTex.tex, petalTex: () => petalTex.tex }, POOL_UNIFORMS);
+	const ROOM_UNIFORMS = Object.assign({ padTex: () => padTex.tex, petalTex: () => petalTex.tex, reflTex: () => reflTex, reflSize: () => reflSize, reflOn: () => reflOn }, POOL_UNIFORMS);
 	const makeDraw = (g, count) => regl({
-		vert: VERT,
+		vert: V(VERT),
 		frag: FRAG,
 		attributes: {
 			position: g.pos,
@@ -1764,7 +1940,7 @@ module.exports = function (regl) {
 	const leafTex = loadTexture(regl, 'res/tree/leaves.webp');
 	const lv = buildLeaves();
 	const drawLeaves = regl({
-		vert: `
+		vert: V(`
 		precision highp float;
 		uniform mat4 proj, view;
 		uniform float yScale;
@@ -1781,7 +1957,7 @@ module.exports = function (regl) {
 			v_eye.y *= yScale;
 			vec3 p = position; p.y *= yScale;
 			gl_Position = proj * view * vec4(p, 1.0);
-		}`,
+		}`),
 		frag: `
 		precision highp float;
 		uniform float night, time;
@@ -1875,7 +2051,7 @@ module.exports = function (regl) {
 		return g;
 	})();
 	const drawFalling = regl({
-		vert: `
+		vert: V(`
 		precision highp float;
 		uniform mat4 proj, view;
 		uniform float yScale;
@@ -1942,7 +2118,7 @@ module.exports = function (regl) {
 			v_eye.y *= yScale;
 			vec3 p = q; p.y *= yScale;
 			gl_Position = proj * view * vec4(p, 1.0);
-		}`,
+		}`),
 		frag: `
 		precision highp float;
 		uniform float night, time;
@@ -2056,6 +2232,37 @@ module.exports = function (regl) {
 			float ca = caustic(pw.xz - W_SUN.xz / W_SUN.y * pw.y, stime);
 			return sunPart * (1.0 - 0.85 * padShade(pw)) * (0.35 + 1.25 * ca);
 		}
+		// the water's surface over a point under it, as the eye sees it: the
+		// room's reflection (bent by the waves), the sun's glint, and the rest
+		// let through from below
+		uniform sampler2D reflTex;
+		uniform vec2 reflSize;
+		uniform float reflOn;
+		uniform mat4 view;
+		vec3 throughSurface(vec3 under, vec3 pw, vec3 eye) {
+			vec3 S = eye + (pw - eye) * (eye.y / max(eye.y - pw.y, 1e-4));
+			float e = ${f(SIM_DX)};
+			vec2 grad = vec2(poolHeight(S.xz + vec2(e, 0.0)) - poolHeight(S.xz - vec2(e, 0.0)), poolHeight(S.xz + vec2(0.0, e)) - poolHeight(S.xz - vec2(0.0, e))) / (2.0 * e);
+			vec3 Nw = normalize(vec3(-grad.x, 1.0, -grad.y));
+			vec3 V = normalize(eye - S);
+			float cosV = clamp(dot(Nw, V), 0.0, 1.0);
+			float R = mix(0.06, 1.0, pow(1.0 - cosV, 5.0));
+			vec3 Rw = reflect(-V, Nw);
+			vec3 rc;
+			if (reflOn > 0.5) {
+				vec3 dN = Nw - vec3(0.0, 1.0, 0.0);
+				vec3 rgt = vec3(view[0].x, view[1].x, view[2].x), upv = vec3(view[0].y, view[1].y, view[2].y);
+				float dist = length(eye - S);
+				vec2 off = vec2(dot(dN, rgt), dot(dN, upv)) * 0.3 / (1.0 + dist * 0.2);
+				rc = texture2D(reflTex, clamp(gl_FragCoord.xy / reflSize + off, vec2(0.001), vec2(0.999))).rgb;
+				rc *= rc;
+			} else {
+				rc = studioSky(Rw) * 0.35;
+			}
+			float glint = pow(max(dot(Rw, STUDIO_SUN), 0.0), 900.0) * studioSun(S + vec3(0.0, 0.02, 0.0));
+			vec3 glintC = mix(vec3(1.0, 0.92, 0.78) * 9.0, vec3(0.75, 0.85, 1.0) * 3.0, night);
+			return under * (1.0 - R) + rc * R + glintC * glint;
+		}
 		// what the water does to light that comes back up through it
 		float showThrough(vec3 V) {
 			float cosV = clamp(V.y, 0.0, 1.0);
@@ -2087,9 +2294,9 @@ module.exports = function (regl) {
 		return { pos, nrm, kd, idx };
 	})();
 	const gravelTex = loadTexture(regl, 'res/pond/gravel.jpg', { wrap: 'repeat' });
-	const bedUniforms = Object.assign({ padShadow, gravel: () => gravelTex.tex }, koiUniforms);
+	const bedUniforms = Object.assign({ padShadow, gravel: () => gravelTex.tex, reflTex: () => reflTex, reflSize: () => reflSize, reflOn: () => reflOn }, koiUniforms);
 	const drawBed = regl({
-		vert: `
+		vert: V(`
 		precision highp float;
 		uniform mat4 proj, view;
 		attribute vec3 position, normal;
@@ -2105,7 +2312,7 @@ module.exports = function (regl) {
 			q.xz -= grad * (-q.y) * 1.2;
 			v_pos = q; v_nrm = normal; v_kd = kd; v_eye = eyeOf(view);
 			gl_Position = underPos(q, proj, view, 0.0);
-		}`,
+		}`),
 		frag: `
 		precision highp float;
 		uniform float night, time;
@@ -2154,8 +2361,9 @@ module.exports = function (regl) {
 			float path = -v_pos.y * (1.0 + 1.0 / max(V.y, 0.25));
 			vec3 tr = exp(-path * vec3(0.75, 0.38, 0.48));
 			col = col * tr + vec3(0.012, 0.020, 0.015) * (1.0 - tr) * mix(1.0, 0.12, night);
+			col = throughSurface(col, v_pos, v_eye);
 			col = studioAir(col, v_pos, v_eye);
-			gl_FragColor = vec4(sqrt(max(col, 0.0)), showThrough(V) * 0.93);
+			gl_FragColor = vec4(sqrt(max(col, 0.0)), 1.0);
 		}`,
 		attributes: { position: bed.pos, normal: bed.nrm, kd: bed.kd },
 		elements: new Uint16Array(bed.idx),
@@ -2202,7 +2410,7 @@ module.exports = function (regl) {
 			}
 			koiEls = { body: regl.elements({ data: new Uint32Array(body), type: 'uint32' }), fins: regl.elements({ data: new Uint32Array(fins), type: 'uint32' }) };
 			drawKoiPart = regl({
-				vert: `
+				vert: V(`
 				precision highp float;
 				uniform mat4 proj, view;
 				attribute vec3 loc, nrm;
@@ -2255,7 +2463,7 @@ module.exports = function (regl) {
 					v_pos = q; v_nrm = n; v_uv = uv; v_kind = km.y; v_seed = km.z; v_fin = fin.x; v_depth = max(-q.y, 0.0); v_u = u;
 					v_eye = eyeOf(view);
 					gl_Position = underPos(q, proj, view, 1.0);
-				}`,
+				}`),
 				frag: `
 				precision highp float;
 				uniform float night, time;
@@ -2310,13 +2518,14 @@ module.exports = function (regl) {
 					// the water takes the colour away with depth
 					vec3 tr = exp(-v_depth * vec3(1.9, 1.15, 1.3));
 					col = col * tr + vec3(0.010, 0.016, 0.012) * (1.0 - tr) * mix(1.0, 0.1, night);
+					col = throughSurface(col, v_pos, v_eye);
 					col = studioAir(col, v_pos, v_eye);
-					a *= showThrough(V) * exp(-v_depth * 0.5);
+					a *= mix(1.0, exp(-v_depth * 0.5), 0.5);
 					gl_FragColor = vec4(sqrt(max(col, 0.0)), a);
 				}`,
 				attributes: { loc, nrm, uv, fin, km },
 				elements: regl.prop('els'),
-				uniforms: Object.assign({ koiTex: () => koiTex.tex, padShadow }, koiUniforms),
+				uniforms: Object.assign({ koiTex: () => koiTex.tex, padShadow, reflTex: () => reflTex, reflSize: () => reflSize, reflOn: () => reflOn }, koiUniforms),
 				cull: { enable: false },
 				colorMask: regl.prop('color'),
 				depth: { enable: true, mask: regl.prop('write'), func: regl.prop('func') },
@@ -2359,7 +2568,7 @@ module.exports = function (regl) {
 		return [c.x + O[0], c.z + O[2], k, c.seed];
 	};
 	const drawCrumbs = regl({
-		vert: `
+		vert: V(`
 		precision highp float;
 		uniform mat4 proj, view;
 		uniform vec4 crumbs[${CRUMB_N}];
@@ -2379,7 +2588,7 @@ module.exports = function (regl) {
 			v_eye = -vec3(dot(view[0].xyz, tr), dot(view[1].xyz, tr), dot(view[2].xyz, tr));
 			gl_Position = proj * view * vec4(q, 1.0);
 			if (c.z < 0.01) gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
-		}`,
+		}`),
 		frag: `
 		precision highp float;
 		uniform float night, time;
@@ -2405,7 +2614,7 @@ module.exports = function (regl) {
 	// the glass: a faint sheen, a little dust, the sky's reflection
 	const gl = buildGlass();
 	const drawGlass = regl({
-		vert: VERT,
+		vert: V(VERT),
 		frag: `
 		precision highp float;
 		uniform float night, time;
@@ -2468,7 +2677,7 @@ module.exports = function (regl) {
 		return g;
 	})();
 	const drawSky = regl({
-		vert: `
+		vert: V(`
 		precision highp float;
 		uniform mat4 proj, view;
 		uniform float yScale;
@@ -2481,7 +2690,7 @@ module.exports = function (regl) {
 			v_eye.y *= yScale;
 			vec3 p = position; p.y *= yScale;
 			gl_Position = proj * view * vec4(p, 1.0);
-		}`,
+		}`),
 		frag: `
 		precision highp float;
 		uniform float night, time;
@@ -2510,7 +2719,7 @@ module.exports = function (regl) {
 	});
 
 	function draw(opts) {
-		if (!(opts && opts.reflected)) tick();
+		if (!(opts && opts.reflected)) { keepReflection(); tick(); }
 		drawSky();
 		drawRoom();
 		if (!(opts && opts.reflected)) { drawBed(); drawKoi(); drawCrumbs(); }
