@@ -233,9 +233,13 @@ const K = {
 };
 
 function Geo() {
-	const g = { pos: [], nrm: [], kind: [], uv: [], idx: [] };
+	const g = { pos: [], nrm: [], kind: [], uv: [], anchor: [], idx: [] };
+	// things floating on the pool carry their centre, a seed and a flag
+	g.float = null;
 	g.v = (p, n, k, uv) => {
 		g.pos.push(p[0] + O[0], p[1] + O[1], p[2] + O[2]); g.nrm.push(n[0], n[1], n[2]); g.kind.push(k); g.uv.push(uv ? uv[0] : 0, uv ? uv[1] : 0);
+		if (g.float) g.anchor.push(g.float[0] + O[0], g.float[1] + O[2], g.float[2], 1);
+		else g.anchor.push(0, 0, 0, 0);
 		return g.pos.length / 3 - 1;
 	};
 	g.quad = (a, b, c, d, n, k, uvs) => {
@@ -512,7 +516,9 @@ function buildPetals(g) {
 	for (let i = 0; i < 70; i++) {
 		const x = POOL.x0 + 0.08 + rnd() * (POOL.x1 - POOL.x0 - 0.16), z = POOL.z0 + 0.08 + rnd() * (POOL.z1 - POOL.z0 - 0.16);
 		if (Math.hypot(x - VENUS.x, z - VENUS.z) < 0.6) continue;
+		g.float = [x, z, x * 5.1 + z * 2.9];
 		petal(x, 0.016, z, rnd() < 0.2);
+		g.float = null;
 	}
 }
 
@@ -570,6 +576,53 @@ function bougainvillea(g, leaf, rnd) {
 			}
 		}
 	}
+}
+
+
+// ------------------------------------------------------------------
+// PETALS FALLING from the bougainvillea: each drifts down, tumbling,
+// on a loop of its own; on the floor it lies a while and fades; in the
+// pool it floats, and the water rings out from where it touched.
+// The same sums run here (for the ripples) and in the shader.
+// ------------------------------------------------------------------
+
+const FALL = (() => {
+	const rnd = rng(9001);
+	const list = [];
+	const flowering = [];
+	for (const [kind, c, seed] of VINE) {
+		const [u0, u1] = vineRange(kind);
+		for (let u = u0; u <= u1; u += 0.1) if (vineClump(u, seed)) flowering.push(vinePoint(kind, c, u));
+	}
+	// half of them start over the pool, so the water gets its share
+	const overPool = flowering.filter((p) => p[0] > POOL.x0 - 0.6 && p[0] < POOL.x1 + 0.6 && p[2] > POOL.z0 && p[2] < POOL.z1);
+	for (let i = 0; i < 64; i++) {
+		const src = (i % 2 === 0 && overPool.length) ? overPool : flowering;
+		const p = src[Math.floor(rnd() * src.length)];
+		list.push({
+			start: [p[0] + (rnd() - 0.5) * 0.4, p[1] - 0.25 - rnd() * 0.3, p[2] + (rnd() - 0.5) * 0.4],
+			period: 18 + rnd() * 22,
+			offset: rnd() * 60,
+			drift: [(rnd() - 0.5) * 1.6, (rnd() - 0.5) * 1.6],
+			speed: 0.45 + rnd() * 0.25,
+			seed: rnd(),
+			white: rnd() < 0.18 ? 1 : 0
+		});
+	}
+	return list;
+})();
+const PIN = [POOL.x0 + 0.06, POOL.z0 + 0.06, POOL.x1 - 0.06, POOL.z1 - 0.06];
+// where a petal is in its loop at time t (seconds)
+function fallState(pt, t) {
+	const tt = t + pt.offset;
+	const cyc = Math.floor(tt / pt.period);
+	const ph = tt - cyc * pt.period;
+	const m = 0.6 + 0.4 * Math.sin(cyc * 1.7 + pt.seed * 5.0);
+	const lx = pt.start[0] + pt.drift[0] * m, lz = pt.start[2] + pt.drift[1] * m;
+	const inPool = lx > PIN[0] && lx < PIN[2] && lz > PIN[1] && lz < PIN[3];
+	const rest = inPool ? 0.017 : 0.006;
+	const Tf = (pt.start[1] - rest) / pt.speed;
+	return { ph, Tf, lx, lz, inPool };
 }
 
 // ------------------------------------------------------------------
@@ -805,6 +858,7 @@ function buildPond(g) {
 		}
 	}
 	for (const [x, z, r, rot, shade] of pads) {
+		g.float = [x, z, shade * 7.3 + r * 13.0];
 		const n = 30, notch = 0.34 + shade * 0.1;
 		const c = g.v([x, 0.012, z], [0, 1, 0], K.PAD, [0.5, shade]);
 		let prev = null;
@@ -827,9 +881,11 @@ function buildPond(g) {
 			prev = [i0, i1];
 		}
 	}
+	g.float = null;
 	// water lilies: cupped pink petals in three rings, a golden heart
 	const flowers = [[POOL.x0 + 0.75, 6.9, 1.0], [POOL.x1 - 0.65, 8.1, 0.85], [POOL.x1 - 0.95, 12.6, 1.1], [POOL.x0 + 0.95, 10.3, 0.8], [POOL.x1 - 0.55, 15.6, 0.9], [POOL.x0 + 1.15, 13.7, 0.75]];
 	for (const [x, z, open] of flowers) {
+		g.float = [x, z, x * 3.7 + z * 1.3];
 		const sz = 0.17;
 		const rings = [[12, 1.0, 70], [10, 0.86, 48], [8, 0.66, 26]];
 		rings.forEach(([cnt, len, tiltDeg], ri) => {
@@ -864,6 +920,7 @@ function buildPond(g) {
 		});
 		g.lathe(x, z, [[0.0, 0.03 + 0.05 * sz * 4], [0.025, 0.03 + 0.045 * sz * 4], [0.032, 0.035], [0.0, 0.03]], K.STAMEN, 12);
 	}
+	g.float = null;
 }
 
 function buildStudio(g) {
@@ -1115,6 +1172,31 @@ function loadTexture(regl, url) {
 	return state;
 }
 
+// the pool's motion, shared by the water and what floats on it:
+// a slow swell, and rings spreading from where petals land
+// (ripples[i] = world x, z, age in seconds, strength)
+const RIPPLE_N = 8;
+const RIPPLE_SPEED = 0.30;
+const WAVES = `
+	uniform float stime;
+	uniform vec4 ripples[${RIPPLE_N}];
+	// the height of the water at world xz (metres, tiny)
+	float poolHeight(vec2 xz) {
+		float h = 0.0025 * sin(xz.x * 2.1 + stime * 0.55) * sin(xz.y * 1.7 - stime * 0.43)
+		        + 0.0015 * sin(xz.x * 3.7 - xz.y * 2.9 + stime * 0.8);
+		for (int i = 0; i < ${RIPPLE_N}; i++) {
+			vec4 r = ripples[i];
+			if (r.w <= 0.0) continue;
+			float d = length(xz - r.xy);
+			float x = d - r.z * ${f(RIPPLE_SPEED)};
+			// a packet of a few rings, fading as it spreads
+			float env = exp(-x * x * 30.0) * exp(-r.z * 0.38) * r.w / (1.0 + d * 3.0);
+			h += 0.009 * sin(x * 42.0) * env;
+		}
+		return h;
+	}
+`;
+
 const VERT = `
 	precision highp float;
 	uniform mat4 proj, view;
@@ -1122,21 +1204,44 @@ const VERT = `
 	attribute vec3 position, normal;
 	attribute float kind;
 	attribute vec2 uv;
+	attribute vec4 anchor;
 	varying vec3 v_pos, v_nrm, v_eye;
 	varying float v_kind;
 	varying vec2 v_uv;
+	${WAVES}
 	void main() {
-		v_pos = position; v_nrm = normal; v_kind = kind; v_uv = uv;
+		vec3 q = position;
+		vec3 n = normal;
+		if (anchor.w > 0.5) {
+			// floating: a slow wander, a slow turn, and riding the water
+			vec2 c = anchor.xy;
+			float sd = anchor.z;
+			vec2 drift = vec2(sin(stime * 0.045 + sd * 6.3), cos(stime * 0.037 + sd * 4.1)) * 0.05;
+			float rot = sin(stime * 0.05 + sd * 9.0) * 0.18;
+			vec2 rel = q.xz - c;
+			float cr = cos(rot), sr = sin(rot);
+			rel = vec2(cr * rel.x - sr * rel.y, sr * rel.x + cr * rel.y);
+			vec2 cc = c + drift;
+			q.xz = cc + rel;
+			// lift and tilt with the water under it
+			float h0 = poolHeight(cc);
+			float e = 0.08;
+			vec2 grad = vec2(poolHeight(cc + vec2(e, 0.0)) - h0, poolHeight(cc + vec2(0.0, e)) - h0) / e;
+			q.y += h0 * 1.4 + dot(rel, grad) * 1.4;
+			n = normalize(vec3(n.x - grad.x * n.y, n.y, n.z - grad.y * n.y));
+		}
+		v_pos = q; v_nrm = n; v_kind = kind; v_uv = uv;
 		vec3 t = view[3].xyz;
 		v_eye = -vec3(dot(view[0].xyz, t), dot(view[1].xyz, t), dot(view[2].xyz, t));
 		v_eye.y *= yScale;
-		vec3 p = position; p.y *= yScale;
+		vec3 p = q; p.y *= yScale;
 		gl_Position = proj * view * vec4(p, 1.0);
 	}`;
 
 const FRAG = `
 	precision highp float;
 	uniform float night, time, yScale, mirrorOn;
+	${WAVES}
 	varying vec3 v_pos, v_nrm, v_eye;
 	varying float v_kind;
 	varying vec2 v_uv;
@@ -1375,14 +1480,31 @@ const FRAG = `
 		if (is(${K.WATER}.0)) {
 			// still, dark water: almost a mirror, the sky's light on it, a
 			// very slow breath of ripples
-			float cosV = clamp(V.y, 0.0, 1.0);
-			float rip = vnoise3(vec3(p.xz * 3.0, time * 0.15)) - 0.5;
+			// the moving surface: its slope from the swell and the rings
+			float e = 0.012;
+			float h0 = poolHeight(pw.xz);
+			vec2 grad = vec2(poolHeight(pw.xz + vec2(e, 0.0)) - h0, poolHeight(pw.xz + vec2(0.0, e)) - h0) / e;
+			vec3 Nw = normalize(vec3(-grad.x, 1.0, -grad.y));
+			float stir = clamp(length(grad) * 9.0, 0.0, 1.0);
+			float cosV = clamp(dot(Nw, V), 0.0, 1.0);
 			float F = 0.02 + 0.98 * pow(1.0 - cosV, 5.0);
-			float refl = mix(0.72, 0.98, F) + rip * 0.03;
-			col = base * light * 0.35 + spec * 1.6;
+			float refl = mix(0.30, 0.95, F);
+			// the sun (or the moon) glinting on the moving water
+			vec3 Rw = reflect(-V, Nw);
+			float glint = pow(max(dot(Rw, STUDIO_SUN), 0.0), 900.0) * sunVis;
+			vec3 glintC = mix(vec3(1.0, 0.92, 0.78) * 9.0, vec3(0.75, 0.85, 1.0) * 3.0, night);
+			col = base * light * 0.35 + glintC * glint;
+			// where the rings pass, the mirror breaks into bands: crests tipped
+			// away from you catch the bright roof, troughs show the dark depth
+			float side = clamp(dot(grad, normalize(V.xz + vec2(1e-4))) * 14.0, -1.0, 1.0);
+			vec3 hi = studioSky(Rw) * mix(0.55, 0.30, night) + light * 0.04;
+			vec3 lo = vec3(0.008, 0.011, 0.010);
+			vec3 ringC = mix(lo, hi, 0.5 + 0.5 * side);
+			col = mix(col, ringC, stir * 0.85);
 			col = studioAir(col, pw, v_eye);
-			alpha = 1.0 - refl * mirrorOn;
-			if (mirrorOn < 0.5) { col = mix(col, studioSky(R) * 0.35, F); alpha = 1.0; }
+			alpha = 1.0 - refl * mirrorOn * (1.0 - stir * 0.85);
+			alpha = max(alpha, glint);
+			if (mirrorOn < 0.5) { col = mix(col, studioSky(Rw) * 0.35, F); alpha = 1.0; }
 		}
 
 		col = max(col, vec3(0.0));
@@ -1399,6 +1521,31 @@ module.exports = function (regl) {
 
 	const BLEND = { enable: true, func: { srcRGB: 'src alpha', dstRGB: 'one minus src alpha', srcAlpha: 'one', dstAlpha: 'zero' } };
 
+	// the studio's own clock, and the rings on the pool from the petals
+	// that have landed in it lately
+	const t0 = performance.now();
+	const clock = { t: 0, ripples: [] };
+	for (let i = 0; i < RIPPLE_N; i++) clock.ripples.push([0, 0, 0, 0]);
+	const tick = () => {
+		clock.t = (performance.now() - t0) / 1000;
+		const live = [];
+		for (const pt of FALL) {
+			const st = fallState(pt, clock.t);
+			const age = st.ph - st.Tf;
+			if (st.inPool && age >= 0 && age < 9) live.push([st.lx + O[0], st.lz + O[2], age, 1]);
+		}
+		// a lily pad now and then nudged by something under the water
+		const k = Math.floor(clock.t / 11);
+		const age = clock.t - k * 11;
+		const r1 = Math.sin(k * 12.9898) * 43758.5453, r2 = Math.sin(k * 78.233) * 12345.678;
+		live.push([POOL.x0 + 0.3 + (r1 - Math.floor(r1)) * (POOL.x1 - POOL.x0 - 0.6) + O[0], POOL.z0 + 0.4 + (r2 - Math.floor(r2)) * (POOL.z1 - POOL.z0 - 0.8) + O[2], age, 0.5]);
+		live.sort((a, b) => a[2] - b[2]);
+		for (let i = 0; i < RIPPLE_N; i++) clock.ripples[i] = live[i] || [0, 0, 0, 0];
+	};
+	const POOL_UNIFORMS = { stime: () => clock.t };
+	if (typeof location !== 'undefined' && /tourdebug/.test(location.search)) window.__studioClock = clock;
+	for (let i = 0; i < RIPPLE_N; i++) POOL_UNIFORMS['ripples[' + i + ']'] = () => clock.ripples[i];
+
 	const makeDraw = (g, count) => regl({
 		vert: VERT,
 		frag: FRAG,
@@ -1406,10 +1553,12 @@ module.exports = function (regl) {
 			position: g.pos,
 			normal: g.nrm,
 			kind: g.kind,
-			uv: g.uv
+			uv: g.uv,
+			anchor: g.anchor && g.anchor.length ? g.anchor : new Float32Array(g.pos.length / 3 * 4)
 		},
 		elements: new Uint32Array(g.idx),
 		count: count || g.idx.length,
+		uniforms: POOL_UNIFORMS,
 		cull: { enable: false },
 		blend: BLEND
 	});
@@ -1421,7 +1570,7 @@ module.exports = function (regl) {
 		.then((r) => { if (!r.ok) throw new Error('Could not load ' + VENUS.file); return r.arrayBuffer(); })
 		.then((buf) => {
 			const m = decodeStatue(buf);
-			const g = { pos: [], nrm: [], kind: [], uv: [], idx: [] };
+			const g = { pos: [], nrm: [], kind: [], uv: [], anchor: null, idx: [] };
 			const s = VENUS.height, c = Math.cos(VENUS.yaw), sn = Math.sin(VENUS.yaw);
 			for (let i = 0; i < m.nV; i++) {
 				const x = (m.mn[0] + m.pos[i * 3] / 65535 * m.sz[0]) * s;
@@ -1536,6 +1685,120 @@ module.exports = function (regl) {
 		cull: { enable: false }
 	});
 
+
+	// the falling petals: one little card each, placed by the shader
+	const fl = (() => {
+		const g = { corner: [], start: [], par: [], misc: [], idx: [] };
+		FALL.forEach((pt, i) => {
+			for (const c of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
+				g.corner.push(c[0], c[1]);
+				g.start.push(pt.start[0] + O[0], pt.start[1], pt.start[2] + O[2]);
+				g.par.push(pt.period, pt.offset, pt.drift[0], pt.drift[1]);
+				g.misc.push(pt.speed, pt.seed, pt.white);
+			}
+			g.idx.push(i * 4, i * 4 + 1, i * 4 + 2, i * 4, i * 4 + 2, i * 4 + 3);
+		});
+		return g;
+	})();
+	const drawFalling = regl({
+		vert: `
+		precision highp float;
+		uniform mat4 proj, view;
+		uniform float yScale;
+		attribute vec2 corner;
+		attribute vec3 start;
+		attribute vec4 par;
+		attribute vec3 misc;
+		varying vec3 v_pos, v_nrm, v_eye;
+		varying vec2 v_uv;
+		varying float v_white, v_fade;
+		${WAVES}
+		mat3 rotAxis(vec3 a, float t) {
+			float c = cos(t), s = sin(t), ic = 1.0 - c;
+			return mat3(c + a.x * a.x * ic, a.y * a.x * ic + a.z * s, a.z * a.x * ic - a.y * s,
+			            a.x * a.y * ic - a.z * s, c + a.y * a.y * ic, a.z * a.y * ic + a.x * s,
+			            a.x * a.z * ic + a.y * s, a.y * a.z * ic - a.x * s, c + a.z * a.z * ic);
+		}
+		void main() {
+			float P = par.x, speed = misc.x, seed = misc.y;
+			float tt = stime + par.y;
+			float cyc = floor(tt / P);
+			float ph = tt - cyc * P;
+			float m = 0.6 + 0.4 * sin(cyc * 1.7 + seed * 5.0);
+			vec2 land = start.xz + par.zw * m;
+			vec2 lq = land - vec2(${f(O[0])}, ${f(O[2])});
+			bool inPool = lq.x > ${f(PIN[0])} && lq.x < ${f(PIN[2])} && lq.y > ${f(PIN[1])} && lq.y < ${f(PIN[3])};
+			float rest = inPool ? 0.017 : 0.006;
+			float Tf = (start.y - rest) / speed;
+			float s = clamp(ph / Tf, 0.0, 1.0);
+			float size = 0.03 + 0.012 * seed;
+			vec3 local = vec3(corner.x, 0.0, corner.y) * size;
+			vec3 n = vec3(0.0, 1.0, 0.0);
+			vec3 pos;
+			if (ph < Tf) {
+				// falling: a lazy sway from side to side, tumbling as it goes
+				vec2 sway = vec2(sin(tt * 1.3 + seed * 7.0), cos(tt * 1.05 + seed * 3.0)) * 0.35 * sin(s * 3.14159);
+				pos = vec3(start.x + (land.x - start.x) * s + sway.x, start.y - (start.y - rest) * s, start.z + (land.y - start.z) * s + sway.y);
+				vec3 ax = normalize(vec3(sin(seed * 11.0), 0.6, cos(seed * 7.0)));
+				mat3 R = rotAxis(ax, tt * (2.0 + seed * 2.5));
+				// it flutters flatter as it slows near the ground
+				local = R * local; n = R * n;
+			} else {
+				pos = vec3(land.x, rest, land.y);
+				float a = seed * 6.283;
+				mat3 Y = rotAxis(vec3(0.0, 1.0, 0.0), a);
+				local = Y * local;
+				if (inPool) {
+					// floating: carried slowly, riding the swell and the rings
+					float age = ph - Tf;
+					pos.xz += vec2(sin(age * 0.12 + seed * 9.0), cos(age * 0.1 + seed * 5.0)) * 0.06 * min(age * 0.2, 1.0);
+					float h0 = poolHeight(pos.xz);
+					vec2 grad = vec2(poolHeight(pos.xz + vec2(0.05, 0.0)) - h0, poolHeight(pos.xz + vec2(0.0, 0.05)) - h0) / 0.05;
+					pos.y += h0 * 1.4;
+					local.y += dot(local.xz, grad) * 1.4;
+					n = normalize(vec3(-grad.x, 1.0, -grad.y));
+				}
+			}
+			// grow out of the flower at the start, fade away at the end
+			v_fade = smoothstep(0.0, 1.2, ph) * (1.0 - smoothstep(P - 3.0, P - 0.2, ph));
+			vec3 q = pos + local * (0.4 + 0.6 * v_fade);
+			v_pos = q; v_nrm = n; v_uv = corner * 0.5 + 0.5; v_white = misc.z;
+			vec3 t = view[3].xyz;
+			v_eye = -vec3(dot(view[0].xyz, t), dot(view[1].xyz, t), dot(view[2].xyz, t));
+			v_eye.y *= yScale;
+			vec3 p = q; p.y *= yScale;
+			gl_Position = proj * view * vec4(p, 1.0);
+		}`,
+		frag: `
+		precision highp float;
+		uniform float night, time;
+		varying vec3 v_pos, v_nrm, v_eye;
+		varying vec2 v_uv;
+		varying float v_white, v_fade;
+		${LIGHT}
+		void main() {
+			vec2 u = v_uv * 2.0 - 1.0;
+			float heart = length(vec2(u.x * 1.1, u.y + 0.15 * abs(u.x) * 2.0 - 0.1));
+			if (heart > 0.85 + 0.1 * sin(atan(u.y, u.x) * 3.0)) discard;
+			if (v_fade < 0.02) discard;
+			vec3 V = normalize(v_eye - v_pos);
+			vec3 N = normalize(v_nrm);
+			if (dot(N, V) < 0.0) N = -N;
+			vec3 base = mix(vec3(0.62, 0.03, 0.22), vec3(0.86, 0.80, 0.80), v_white);
+			base *= 0.85 + 0.25 * smoothstep(0.9, 0.0, heart);
+			vec3 spec; float sv;
+			vec3 light = studioLight(v_pos, N, V, 0.3, spec, sv);
+			float through = abs(dot(N, STUDIO_SUN)) * sv;
+			vec3 col = base * light + base * vec3(1.0, 0.75, 0.8) * through * 1.6 * (1.0 - night);
+			col = studioAir(col, v_pos, v_eye);
+			gl_FragColor = vec4(sqrt(max(col, 0.0)), 1.0);
+		}`,
+		attributes: { corner: fl.corner, start: fl.start, par: fl.par, misc: fl.misc },
+		elements: new Uint32Array(fl.idx),
+		uniforms: POOL_UNIFORMS,
+		cull: { enable: false }
+	});
+
 	// the glass: a faint sheen, a little dust, the sky's reflection
 	const gl = buildGlass();
 	const drawGlass = regl({
@@ -1575,7 +1838,8 @@ module.exports = function (regl) {
 			}
 			gl_FragColor = vec4(sqrt(max(col, 0.0)), a);
 		}`,
-		attributes: { position: gl.pos, normal: gl.nrm, kind: gl.kind, uv: gl.uv },
+		attributes: { position: gl.pos, normal: gl.nrm, kind: gl.kind, uv: gl.uv, anchor: gl.anchor },
+		uniforms: POOL_UNIFORMS,
 		elements: new Uint32Array(gl.idx),
 		cull: { enable: false },
 		depth: { mask: false },
@@ -1643,10 +1907,12 @@ module.exports = function (regl) {
 	});
 
 	function draw(opts) {
+		if (!(opts && opts.reflected)) tick();
 		drawSky();
 		drawRoom();
 		if (drawVenus) drawVenus();
 		drawLeaves();
+		drawFalling();
 		if (!(opts && opts.reflected)) drawGlass();
 	}
 	return draw;
