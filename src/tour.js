@@ -1556,7 +1556,7 @@ module.exports = function createTour(opts) {
 
 	// 2: the skylight
 	const sky = el('div', 'tour-card tour-sky', `
-		<span class="tour-line tour-sub">Every painting here waits for the light.</span>`);
+		<span class="tour-line tour-sub">Every painting here is waiting.<br>The leaf will guide you.</span>`);
 	stagger(sky, 0.6, 0.3);
 
 	// 3: the masterpiece
@@ -1707,7 +1707,7 @@ module.exports = function createTour(opts) {
 	const HINTS = SHOTS.map((sh, i) =>
 		i === 0 ? (fine ? 'Scroll to begin' : 'Swipe up to begin')
 			: i === 1 ? verb + ' to follow the leaf'
-				: i === 2 ? verb + ', and let the leaf guide you'
+				: i === 2 ? verb + ' to follow the light'
 					: i === 3 ? verb + ' for its story'
 						: (i === 6 || i === 7 || i === SHOTS.length - 1) ? ''
 							: verb + ' on');
