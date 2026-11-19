@@ -1224,6 +1224,9 @@ button.tour-icon { padding: 0; cursor: pointer; font: inherit; }
 }
 .tour-hint.on { opacity: .85; }
 .tour-hint.waiting svg { visibility: hidden; }
+/* the leaf remembers: the painting the visitor stayed with longest */
+.tour-remember em { font-style: italic; color: #ecd4a4; }
+.tour-remember .tour-btn { margin: 12px 0 14px; }
 .tour-hint svg { animation: tour-nudge 2.4s ease-in-out infinite; }
 @keyframes tour-nudge { 0%, 100% { transform: translateY(0); opacity: .5; } 50% { transform: translateY(-6px); opacity: 1; } }
 
@@ -1573,6 +1576,7 @@ module.exports = function createTour(opts) {
 		const body = card.querySelector('.tour-body');
 		card.filled = false;
 		card.body = body;
+		card.find = find;          // (which painting: for "the leaf remembers")
 		card.fill = () => {
 			const p = find();
 			if (!p || card.filled) return;
@@ -1652,6 +1656,8 @@ module.exports = function createTour(opts) {
 
 	// 4: the masterpiece's story
 	const story = storyCard(() => paintings().find((p) => p.side === 'end'));
+	// (the masterpiece's own shot, with no words, counts for it too)
+	master.find = story.find;
 
 	// 5, 6, 7: no words, just the leaf and the footsteps
 	const quiet = () => el('div', 'tour-card', '');
@@ -1668,6 +1674,7 @@ module.exports = function createTour(opts) {
 	const end = el('div', 'tour-card tour-endcard', `
 		<span class="tour-line tour-kicker">Thank you for walking with me</span>
 		<span class="tour-rule"></span>
+		<span class="tour-line tour-sub tour-remember" hidden></span>
 		<span class="tour-line tour-sub">${CAN_WALK ? 'The rest of the gallery is yours to wander.' : (window.matchMedia && window.matchMedia('(pointer: fine)').matches ? 'Scroll back' : 'Swipe back') + ' to return to any painting.'}</span>
 		<span class="tour-line tour-sub tour-confess-line">Before you leave, the confessional is open.<br>Leave me a note; no one else will read it.</span>
 		<div class="tour-line tour-end"><button type="button" class="tour-btn" data-act="confess">Leave something behind</button></div>
@@ -1787,7 +1794,46 @@ module.exports = function createTour(opts) {
 		return best;
 	};
 
+	/* -------------------------------------------------------
+	 * THE LEAF REMEMBERS
+	 * How long the visitor has rested before each painting (with its
+	 * words on screen). At the end of the tour the leaf "remembers" the
+	 * one they stayed with longest, and offers to go back to it.
+	 * ----------------------------------------------------- */
+	const linger = new Map();          // painting's title -> { p, secs }
+	const MIN_LINGER = 4;              // less than this is passing by, not staying
+	function longest() {
+		let best = null, secs = 0;
+		linger.forEach((v) => { if (v.secs > secs) { best = v.p; secs = v.secs; } });
+		return secs >= MIN_LINGER ? best : null;
+	}
+	function rememberLine() {
+		const line = end.querySelector('.tour-remember');
+		const p = longest();
+		if (!p || !p.title) { line.hidden = true; return; }
+		line.hidden = false;
+		line.innerHTML = 'The leaf remembers: you stayed longest with <em>' + esc(p.title) + '</em>.' +
+			'<br><button type="button" class="tour-btn quiet" data-act="remember">Return to it</button>';
+	}
+	// back to that painting: a dip to black, then its shot (its story,
+	// when it has one)
+	function returnTo(p) {
+		const same = (q) => q && q.title === p.title;
+		let i = cards.findIndex((c) => c.find && c !== master && same(c.find()));
+		if (i < 0) i = cards.indexOf(master);
+		if (i < 0) return;
+		hideUI();
+		scroll = target = AT[i];
+		vel = 0;
+		auto = false;
+		shown = -1;
+		restClock = 0;
+		lastInput = now;
+		fadeIn = { start: now };
+	}
+
 	function showUI(i) {
+		if (cards[i] === end) rememberLine();
 		const c = cards[i];
 		if (c && c.fill) {
 			// write the words in first, so they can animate in
@@ -1998,6 +2044,7 @@ module.exports = function createTour(opts) {
 		e.stopPropagation();
 		if (b.dataset.act === 'free') exit();
 		if (b.dataset.act === 'replay') replay();
+		if (b.dataset.act === 'remember') { const p = longest(); if (p) returnTo(p); }
 		if (b.dataset.act === 'list') require('./listview').show(false);
 		if (b.dataset.act === 'confess') { sound.enter(); hideUI(); shown = -2; conf.start(camNow, look); }
 	});
@@ -2328,6 +2375,16 @@ module.exports = function createTour(opts) {
 		}
 		progress.querySelectorAll('i').forEach((e, k) => e.classList.toggle('on', k === near));
 
+		// the leaf remembers: time spent with each painting's words on screen
+		if (shown >= 0 && cards[shown].find && !document.hidden) {
+			const p = cards[shown].find();
+			if (p && p.title) {
+				const v = linger.get(p.title) || { p, secs: 0 };
+				v.secs += dt;
+				linger.set(p.title, v);
+			}
+		}
+
 		const sc = shown >= 0 ? cards[shown] : null;
 		if (sc && sc.fill && !sc.filled) {
 			// the painting's words arrived late (slow connection)
@@ -2363,6 +2420,7 @@ module.exports = function createTour(opts) {
 	if (DEBUG) {
 		window.__tour = {
 			go, exit, wind,
+			linger: () => [...linger].map(([k, v]) => [k, +v.secs.toFixed(1)]),
 			confess() { hideUI(); shown = -2; conf.start(camNow, look); },
 			note: () => leaveNote(),
 			conf,
