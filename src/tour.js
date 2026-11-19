@@ -42,7 +42,9 @@ const sound = require('./sound');
 // laptops and desktops only: phones and tablets get the guided tour.
 // The walking code is all still here; to offer it everywhere again, make
 // this true.
-const CAN_WALK = !quality.isPhone && !!(window.matchMedia && window.matchMedia('(pointer: fine)').matches);
+// walking freely is switched off on every device: the visit is the tour
+// (no "Explore freely", no "Walk the gallery", Escape does not leave it)
+const CAN_WALK = false;
 const { A: COURT } = require('./alcove');
 const { C: WING, PAINTING_X } = require('./wing');
 
@@ -1663,7 +1665,7 @@ module.exports = function createTour(opts) {
 	const end = el('div', 'tour-card tour-endcard', `
 		<span class="tour-line tour-kicker">Thank you for walking with me</span>
 		<span class="tour-rule"></span>
-		<span class="tour-line tour-sub">${CAN_WALK ? 'The rest of the gallery is yours to wander.' : 'Swipe back to return to any painting.'}</span>
+		<span class="tour-line tour-sub">${CAN_WALK ? 'The rest of the gallery is yours to wander.' : (window.matchMedia && window.matchMedia('(pointer: fine)').matches ? 'Scroll back' : 'Swipe back') + ' to return to any painting.'}</span>
 		<span class="tour-line tour-sub tour-confess-line">Before you leave, the confessional is open.<br>Leave me a note; no one else will read it.</span>
 		<div class="tour-line tour-end"><button type="button" class="tour-btn" data-act="confess">Leave something behind</button></div>
 		${contact.line('tour-line tour-contact')}

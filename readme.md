@@ -26,7 +26,8 @@ Pushing to `master` builds the site and publishes it to Cloudflare Pages and Git
 - `static/` – icons, the link-preview picture (`og.jpg`) and Cloudflare's cache rules (`_headers`).
 - `src/painting.js` – the paintings (canvas weave, varnish, light pool) and their gilded frames.
 - `src/mesh.js` – the architecture's materials and light (marble, plaster, the floor).
-- `src/tour.js` – the cinematic tour; `src/fps.js` – free walking.
+- `src/tour.js` – the cinematic tour, which is the whole visit (free walking is switched off
+  on every device: `CAN_WALK` at the top of the file; `src/fps.js` is the walking it would hand over to).
 - `src/loader.js` – the loading screen waits only for what the window corridor needs; the
   rooms further on (`LATER`: the tree court, the hall's statues, the piano room) load
   afterwards, one at a time in tour order, and the tour waits at the shot before a room
@@ -65,7 +66,7 @@ The gallery now opens with a guided, cinematic tour instead of dropping the visi
 10. **The hall** – it stops before each painting on one wall, curls out round the grand arch between its column and the wall, comes back in on the other side and stops before each painting on the other wall.
 11. **The end** – it falls into the sunlight under the skylight; the camera looks down on it lying in the pattern of the glazing, dust turning in the light.
 
-The camera only moves while you scroll or swipe, easing to a stop when you stop, and settling onto a shot (with its words) when you stop near one. Arrow keys, Space and taps glide on to the next shot. "Explore freely" (top right) or Escape hands over to the normal walking mode at any time, from wherever the tour is.
+The camera only moves while you scroll or swipe, easing to a stop when you stop, and settling onto a shot (with its words) when you stop near one. Arrow keys, Space and taps glide on to the next shot. There is no free walking: the tour is the whole visit, on phones and laptops alike.
 
 Where it lives:
 
