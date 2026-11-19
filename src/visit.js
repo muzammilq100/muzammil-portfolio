@@ -252,7 +252,7 @@ function open(p) {
 	const before = document.activeElement;
 	document.body.classList.add('visiting');
 
-	const art = 'images/web/' + p.slug + (quality.isPhone ? '-1024' : '') + '.webp';
+	const art = require('./imgurl')('images/web/' + p.slug + (quality.isPhone ? '-1024' : '') + '.webp');
 	const el = document.createElement('div');
 	el.className = 'visit';
 	el.setAttribute('role', 'dialog');

@@ -12,6 +12,7 @@ const paintings = require('../content/paintings');
 const contact = require('./contact');
 const caption = require('./caption');
 const quality = require('./quality');
+const imgUrl = require('./imgurl');
 
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
@@ -69,8 +70,8 @@ function show(no3d) {
 			${paintings.map((p) => `
 			<article class="plist-item" id="${esc(p.slug)}">
 				<img loading="lazy" decoding="async" alt="${esc(p.title)}, ${esc(caption(p))}"
-					src="images/web/${esc(p.slug)}${big ? '' : '-1024'}.webp"
-					onerror="this.onerror=null;this.src='images/${esc(p.file)}'">
+					src="${esc(imgUrl('images/web/' + p.slug + (big ? '' : '-1024') + '.webp'))}"
+					onerror="this.onerror=null;this.src='${esc(imgUrl('images/' + p.file))}'">
 				<p class="plist-meta">${esc(caption(p))}</p>
 				<h2>${esc(p.title)}</h2>
 				<details><summary>Read its story</summary>

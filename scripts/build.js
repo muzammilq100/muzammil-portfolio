@@ -27,8 +27,26 @@ const DIST = path.join(ROOT, 'dist');
 const SITE = (process.env.SITE_URL || 'https://muzammil-gallery.pages.dev').replace(/\/$/, '');
 const serve = process.argv.includes('--serve');
 
+// a short fingerprint of every painting's picture (images/ and images/web/),
+// so a replaced photo gets a new address and browsers fetch it at once
+// instead of showing the old one from their cache (see src/imgurl.js)
+function imageVersions() {
+	const out = {};
+	for (const dir of ['images', 'images/web']) {
+		const d = path.join(ROOT, dir);
+		if (!fs.existsSync(d)) continue;
+		for (const name of fs.readdirSync(d)) {
+			const f = path.join(d, name);
+			if (!/\.(jpe?g|png|webp)$/i.test(name) || !fs.statSync(f).isFile()) continue;
+			out[dir + '/' + name] = crypto.createHash('sha1').update(fs.readFileSync(f)).digest('hex').slice(0, 8);
+		}
+	}
+	return out;
+}
+
 const BUNDLE = {
 	entryPoints: [path.join(ROOT, 'src/index.js')],
+	define: { __IMAGE_VERSIONS__: JSON.stringify(imageVersions()) },
 	bundle: true,
 	minify: true,
 	format: 'iife',
