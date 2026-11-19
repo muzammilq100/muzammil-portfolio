@@ -430,7 +430,8 @@ module.exports = (regl, quality) => {
 		vec2 p = uv;
 
 		// letterbox: the picture is framed by black bars top and bottom
-		float bar = letterbox * 0.11;
+		// (slim, so the room keeps most of the screen)
+		float bar = letterbox * 0.07;
 		if (p.y < bar || p.y > 1.0 - bar) {
 			gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
 			return;
@@ -474,12 +475,17 @@ module.exports = (regl, quality) => {
 
 		vec3 col = pow(lin, vec3(1.0 / 2.2));
 
-		// a gentle S-curve, warm shadows, a touch less saturation
-		col = col * col * (3.0 - 2.0 * col) * (0.35 + 0.15 * night) + col * (0.65 - 0.15 * night);
+		// an S-curve with real blacks, then the classic film split: the
+		// shadows a little cool, the lamp-lit highlights warm, and a touch
+		// less saturation overall
+		col = col * col * (3.0 - 2.0 * col) * (0.48 + 0.02 * night) + col * (0.52 - 0.02 * night);
 		float l2 = luma(col);
-		// by night the shadows turn cold and blue-green, like moonlit film
-		col = mix(col, col * mix(vec3(1.05, 0.99, 0.90), vec3(0.86, 0.97, 1.10), night), (1.0 - smoothstep(0.0, 0.5, l2)) * 0.7);
-		col = mix(vec3(l2), col, 0.93 - 0.13 * night);
+		// by day the shadows lean cool; by night cold and blue-green, like moonlit film
+		col = mix(col, col * mix(vec3(0.95, 0.99, 1.05), vec3(0.86, 0.97, 1.10), night), (1.0 - smoothstep(0.0, 0.45, l2)) * 0.7);
+		col *= mix(vec3(1.0), vec3(1.045, 1.0, 0.93), smoothstep(0.35, 0.9, l2) * (1.0 - night));
+		col = mix(vec3(l2), col, 0.92 - 0.12 * night);
+		// the darkest blacks stay just off pure black, like a print
+		col = max(col, vec3(0.012, 0.011, 0.010));
 
 		// vignette
 		vec2 q = (p - 0.5) * vec2(res.x / res.y, 1.0);

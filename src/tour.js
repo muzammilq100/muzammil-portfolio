@@ -309,7 +309,7 @@ const SHOTS = [
 	{
 		name: 'corridor',
 		ui: 'intro',
-		look: { letterbox: 1, exposure: 1.0, focus: 14, aperture: 0.25, vignette: 0.1 },
+		look: { letterbox: 1, exposure: 1.0, focus: 9, aperture: 0.08, vignette: 0.1 },
 		cam(tt) {
 			const push = 0.9 * (1 - Math.exp(-tt / 14));
 			const sway = [0, Math.sin(tt * 0.37) * 0.025, Math.sin(tt * 0.23) * 0.06];
@@ -1081,9 +1081,10 @@ const CSS = `
 /* the gallery's name, quietly in the corner */
 .tour-mark {
 	position: absolute;
-	top: max(18px, env(safe-area-inset-top));
+	/* on the same line as the buttons on the right */
+	top: max(10px, env(safe-area-inset-top));
 	left: 22px;
-	font: 500 13px/1 'Cormorant Garamond', Georgia, serif;
+	font: 600 14px/44px 'Cormorant Garamond', Georgia, serif;
 	letter-spacing: .42em;
 	text-transform: uppercase;
 	opacity: .78;
@@ -1256,10 +1257,12 @@ button.tour-icon { padding: 0; cursor: pointer; font: inherit; }
 }
 
 .tour-kicker {
-	font: 500 12px/1.4 Georgia, serif;
+	font: 600 13px/1.4 'Cormorant Garamond', Georgia, serif;
 	letter-spacing: .38em;
 	text-transform: uppercase;
-	color: #e9cf9a;
+	color: #ecd4a4;
+	/* (it often sits over the bright door glass) */
+	text-shadow: 0 0 2px rgba(0,0,0,.55), 0 1px 14px rgba(0,0,0,.75);
 }
 .tour-title {
 	margin: 0;

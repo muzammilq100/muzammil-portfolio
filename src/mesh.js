@@ -253,8 +253,11 @@ module.exports = (regl, data, useReflexion, ranged) => {
       vec3 marbleVein   = vec3(0.46, 0.41, 0.34);
       vec3 ceilingMat   = vec3(0.56, 0.51, 0.42);
 
-      vec3 tileLight    = vec3(0.80, 0.74, 0.60);   // darker cream instead of white
-      vec3 tileDark     = vec3(0.028, 0.026, 0.024);
+      // Botticino cream and Nero Marquina: a real marble pair, the dark
+      // a deep grey-black rather than a hole, so the floor does not
+      // shout louder than the paintings
+      vec3 tileLight    = vec3(0.76, 0.71, 0.60);
+      vec3 tileDark     = vec3(0.058, 0.056, 0.054);
 
 
       // ---------------------------------------------------------
@@ -298,7 +301,9 @@ module.exports = (regl, data, useReflexion, ranged) => {
         marbleMaterial = marbleBase * (0.92 + 0.14 * warp);
         // warmer and cooler drifts through the block
         marbleMaterial *= mix(vec3(1.02, 1.0, 0.96), vec3(0.97, 0.99, 1.02), tone);
-        marbleMaterial = mix(marbleMaterial, marbleVein, clamp(line1 * 0.20 + halo1 * 0.08 + line2 * 0.08, 0.0, 1.0) * fadeFar(6.0, 26.0, dist * 0.8));
+        // the veins gather in drifts and vanish between them, as in a real block
+        float drift = smoothstep(0.35, 0.75, vnoise(m * 0.45 + 2.0));
+        marbleMaterial = mix(marbleMaterial, marbleVein, clamp(line1 * 0.11 + halo1 * 0.10 + line2 * 0.035, 0.0, 1.0) * drift * fadeFar(6.0, 26.0, dist * 0.8));
       }
 
       vec3 material = mix(marbleMaterial, wallMaterial, isShell);
@@ -317,12 +322,29 @@ module.exports = (regl, data, useReflexion, ranged) => {
       vec3 lightTile = tileLight * (0.93 + 0.10 * rnd);
       vec3 darkTile  = tileDark + vec3(0.012) * rnd;
 
-      float vein = abs(sin(tq.x * 5.5 + tq.y * 2.0 + sin(tq.y * 1.6) + rnd * 6.0));
-      vein = 1.0 - smoothstep(0.0, 0.09, vein);
+      // each tile is cut from its own part of the block: its veins run
+      // their own way, wander, branch and fade (no repeating stripes)
+      float va = rnd * 6.2832;
+      vec2 vq = mat2(cos(va), sin(va), -sin(va), cos(va)) * tq * 1.6 + rnd * 37.0;
+      // (the fine stone detail only near the eye: far tiles cannot show
+      // it, and it is the floor's most expensive part)
+      bool nearEye = detail && dist < 18.0;
+      float vw = nearEye ? fbm(vq * 0.9) : 0.5;
+      float vein = abs(sin(vq.x * 1.7 + vq.y * 0.6 + vw * 6.0));
+      float veinFine = abs(sin(vq.x * 3.9 - vq.y * 1.2 + vw * 8.0 + 1.3));
+      // the veins come and go across a tile
+      float veinMask = nearEye ? smoothstep(0.25, 0.60, vnoise(vq * 0.5 + 4.0)) * fadeFar(12.0, 18.0, dist) : 0.0;
+      // a vein is a soft cloud of mineral round a thin bright core, not a
+      // drawn line
+      vein = ((1.0 - smoothstep(0.0, 0.32, vein)) * 0.45 + (1.0 - smoothstep(0.0, 0.05, vein)) * 0.55) * veinMask
+           + (1.0 - smoothstep(0.0, 0.03, veinFine)) * veinMask * 0.22;
+      float cloudF = nearEye ? fbm(vq * 0.35 + 9.0) : 0.5;
 
       vec3 floorMaterial = mix(lightTile, darkTile, checker);
-      floorMaterial = mix(floorMaterial, floorMaterial * 0.80, vein * 0.35 * (1.0 - checker));
-      floorMaterial = mix(floorMaterial, floorMaterial * 1.5 + 0.02, vein * 0.18 * checker);
+      floorMaterial *= 0.93 + 0.14 * mix(0.5, cloudF, fadeFar(12.0, 18.0, dist));
+      // grey veins in the cream; white calcite veins in the black
+      floorMaterial = mix(floorMaterial, vec3(0.55, 0.51, 0.45), clamp(vein, 0.0, 1.0) * 0.22 * (1.0 - checker));
+      floorMaterial = mix(floorMaterial, vec3(0.62, 0.60, 0.57), clamp(vein, 0.0, 1.0) * 0.38 * checker);
 
       // hair-line grout between tiles
       vec2 tf = fract(tq / tileSize);
@@ -385,6 +407,15 @@ module.exports = (regl, data, useReflexion, ranged) => {
       material = mix(material, vec3(0.150, 0.285, 0.090), isStem);
       material = mix(material, vec3(0.022, 0.018, 0.014), isSoil);
       material = mix(material, vec3(0.010, 0.010, 0.011), isPot);
+      float isBronze = isPot * step(v_pos.z, ${g4(WING.z0 + 0.3)}) * step(${g4(WING.x0)}, v_pos.x);
+      if (isBronze > 0.5) {
+        float pat = detail ? fbm(vec2(v_pos.x * 7.0 + v_pos.z * 5.0, v_pos.y * 6.0)) : 0.5;
+        // the patina sits where the hand and the weather do not reach: in
+        // the downward-facing hollows
+        float hollow = smoothstep(0.2, -0.6, N.y) * 0.6 + smoothstep(0.45, 0.75, pat) * 0.5;
+        vec3 bronze = mix(vec3(0.115, 0.072, 0.040), vec3(0.060, 0.082, 0.062), clamp(hollow, 0.0, 1.0));
+        material = bronze * (0.85 + 0.3 * pat);
+      }
       material = mix(material, vec3(0.045, 0.045, 0.048), isSteel);
 
       // cream plaster of the skylight, with a faint carved texture
@@ -578,11 +609,18 @@ module.exports = (regl, data, useReflexion, ranged) => {
 
         // black statues in the niches: crisp highlights from the niche lamp
         // and a soft sheen of the lit niche wall around them
-        if (v_pos.z < ${g4(WING.z0 + 0.3)} && v_pos.x > ${g4(WING.x0)}) {
+        if (isBronze > 0.5) {
+          // bronze: the reflection takes the metal's own warm colour, the
+          // highlights are wider and softer, and the patina dulls them
+          finalColour -= (env * fres * 0.70 + vec3(1.0, 0.97, 0.92) * hot * 0.80) * ${ROOM_BRIGHTNESS.toFixed(3)} * 0.75;
+          vec3 metal = vec3(0.95, 0.66, 0.40);
+          float rubbed = detail ? smoothstep(0.35, 0.65, fbm(vec2(v_pos.y * 9.0, v_pos.x * 9.0 + v_pos.z * 7.0))) : 0.5;
           vec3 Lp = normalize(nicheLamp(v_pos) - v_pos);
-          float spec = pow(max(dot(R, Lp), 0.0), 60.0);
-          float sheen = pow(max(dot(R, Lp), 0.0), 8.0);
-          finalColour += vec3(1.0, 0.95, 0.86) * (spec * 1.6 + sheen * 0.22) + vec3(0.62, 0.58, 0.52) * fres * 0.25;
+          float spec = pow(max(dot(R, Lp), 0.0), mix(18.0, 48.0, rubbed));
+          float sheen = pow(max(dot(R, Lp), 0.0), 5.0);
+          float lit = max(dot(N, Lp), 0.0);
+          finalColour += material * vec3(1.0, 0.86, 0.66) * lit * 0.9;
+          finalColour += metal * (spec * mix(0.35, 0.9, rubbed) + sheen * 0.10) + metal * env * fres * 0.18;
         }
       }
 
