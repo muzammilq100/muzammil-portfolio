@@ -1707,7 +1707,7 @@ module.exports = function createTour(opts) {
 	const HINTS = SHOTS.map((sh, i) =>
 		i === 0 ? (fine ? 'Scroll to begin' : 'Swipe up to begin')
 			: i === 1 ? verb + ' to follow the leaf'
-				: i === 2 ? verb + ' to follow the light'
+				: i === 2 ? ''          // (the words above already say the leaf will guide them)
 					: i === 3 ? verb + ' for its story'
 						: (i === 6 || i === 7 || i === SHOTS.length - 1) ? ''
 							: verb + ' on');
