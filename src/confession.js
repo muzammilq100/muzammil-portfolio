@@ -27,7 +27,6 @@
 const C = require('./confessional');
 const SH = require('./stairhall');
 const HandWriter = require('./handwriter');
-const sound = require('./sound');
 
 // the note goes to his inbox through Web3Forms (this key only allows
 // sending to the address it was made for)
@@ -211,8 +210,6 @@ module.exports = function createConfession(opts) {
 		C.STATE.ink = inkCanvas; C.STATE.inkDirty = true;
 		// (the booth behind the brass is empty: only the lamp burns there)
 		document.body.classList.add('confessing');
-		// his music: only now, and only heard in the piano room (sound.js)
-		sound.enter();
 		// across the hall and in through the arch, gathering speed, and
 		// straight into a quick sweep round behind him that pulls out as it
 		// goes and settles on the first sight
@@ -463,7 +460,6 @@ module.exports = function createConfession(opts) {
 			if (u >= 1) {
 				active = false;
 				C.STATE.active = false;
-				sound.exit();
 				C.STATE.shown = true;
 				C.STATE.fold = 0; C.STATE.slide = 0;
 				const g = inkCanvas.getContext('2d');

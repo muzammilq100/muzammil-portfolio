@@ -320,10 +320,8 @@ module.exports = (regl) => {
 		if (paintingMask > 0.5 && frontMask > 0.0) {
 			// ---- the light pool from the picture light ----
 			float pool = lampAt(pm) / lampAt(psize * vec2(0.5, 0.62));
-			// (a gallery lights its paintings almost evenly: only a gentle
-			// fall-off from top to bottom, never a hot spot at the top)
-			pool = clamp(pool, 0.0, 1.3);
-			float lamp = 0.93 + 0.14 * pow(pool, 0.5);
+			pool = clamp(pool, 0.0, 1.8);
+			float lamp = 0.88 + 0.26 * pow(pool, 0.5);
 
 			vec3 N = v_n;
 			float sheen = 0.0;
@@ -395,7 +393,7 @@ module.exports = (regl) => {
 				float nh = max(dot(N, H), 0.0);
 				float fres = 0.04 + 0.96 * pow(1.0 - max(dot(N, V), 0.0), 5.0);
 				float gloss = 0.55 + 0.45 * smoothstep(0.30, 0.70, vnoise2(cm * 0.11 + 7.3));
-				sheen = (pow(nh, 90.0) * 0.055 * gloss + pow(nh, 18.0) * 0.016) * min(pool, 1.1) + fres * (0.03 + 0.03 * gloss);
+				sheen = (pow(nh, 90.0) * 0.10 * gloss + pow(nh, 18.0) * 0.022) * min(pool, 1.2) + fres * (0.03 + 0.03 * gloss);
 				// the same highlight, tight, on the wet-looking ridges of thick paint
 				sheen += pow(nh, 220.0) * 0.12 * body * gloss * min(pool, 1.2);
 			}

@@ -7,8 +7,7 @@ const quality = require('../src/quality');
 // phones get the 1024 px copy, everything else the 2048 px one; if the
 // web copies are missing (e.g. a dev server before a build) the original
 // photograph is used
-const imgUrl = require('../src/imgurl');
-const webFile = (p) => imgUrl('images/web/' + p.slug + (quality.isPhone ? '-1024' : '') + '.webp');
+const webFile = (p) => 'images/web/' + p.slug + (quality.isPhone ? '-1024' : '') + '.webp';
 
 async function get(url) {
 	const response = await fetch(url);
@@ -29,7 +28,7 @@ module.exports = {
 		try {
 			image = await get(webFile(obj));
 		} catch (e) {
-			image = await get(imgUrl('images/' + obj.file));
+			image = await get('images/' + obj.file);
 		}
 		return { title: obj.title, image };
 	}

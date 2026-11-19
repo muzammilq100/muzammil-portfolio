@@ -35,16 +35,12 @@ const contact = require('./contact');
 const caption = require('./caption');
 const visit = require('./visit');
 const quality = require('./quality');
-const loader = require('./loader');
-const sound = require('./sound');
 
 // Free walking ("Explore freely", "Walk the gallery", Esc) is offered on
 // laptops and desktops only: phones and tablets get the guided tour.
 // The walking code is all still here; to offer it everywhere again, make
 // this true.
-// walking freely is switched off on every device: the visit is the tour
-// (no "Explore freely", no "Walk the gallery", Escape does not leave it)
-const CAN_WALK = false;
+const CAN_WALK = !quality.isPhone && !!(window.matchMedia && window.matchMedia('(pointer: fine)').matches);
 const { A: COURT } = require('./alcove');
 const { C: WING, PAINTING_X } = require('./wing');
 
@@ -309,7 +305,7 @@ const SHOTS = [
 	{
 		name: 'corridor',
 		ui: 'intro',
-		look: { letterbox: 1, exposure: 1.0, focus: 9, aperture: 0.08, vignette: 0.1 },
+		look: { letterbox: 1, exposure: 1.0, focus: 14, aperture: 0.25, vignette: 0.1 },
 		cam(tt) {
 			const push = 0.9 * (1 - Math.exp(-tt / 14));
 			const sway = [0, Math.sin(tt * 0.37) * 0.025, Math.sin(tt * 0.23) * 0.06];
@@ -1081,10 +1077,9 @@ const CSS = `
 /* the gallery's name, quietly in the corner */
 .tour-mark {
 	position: absolute;
-	/* on the same line as the buttons on the right */
-	top: max(10px, env(safe-area-inset-top));
+	top: max(18px, env(safe-area-inset-top));
 	left: 22px;
-	font: 600 14px/44px 'Cormorant Garamond', Georgia, serif;
+	font: 500 13px/1 'Cormorant Garamond', Georgia, serif;
 	letter-spacing: .42em;
 	text-transform: uppercase;
 	opacity: .78;
@@ -1223,10 +1218,6 @@ button.tour-icon { padding: 0; cursor: pointer; font: inherit; }
 	white-space: nowrap;
 }
 .tour-hint.on { opacity: .85; }
-.tour-hint.waiting svg { visibility: hidden; }
-/* the leaf remembers: the painting the visitor stayed with longest */
-.tour-remember em { font-style: italic; color: #ecd4a4; }
-.tour-remember .tour-btn { margin: 12px 0 14px; }
 .tour-hint svg { animation: tour-nudge 2.4s ease-in-out infinite; }
 @keyframes tour-nudge { 0%, 100% { transform: translateY(0); opacity: .5; } 50% { transform: translateY(-6px); opacity: 1; } }
 
@@ -1260,12 +1251,10 @@ button.tour-icon { padding: 0; cursor: pointer; font: inherit; }
 }
 
 .tour-kicker {
-	font: 600 13px/1.4 'Cormorant Garamond', Georgia, serif;
+	font: 500 12px/1.4 Georgia, serif;
 	letter-spacing: .38em;
 	text-transform: uppercase;
-	color: #ecd4a4;
-	/* (it often sits over the bright door glass) */
-	text-shadow: 0 0 2px rgba(0,0,0,.55), 0 1px 14px rgba(0,0,0,.75);
+	color: #e9cf9a;
 }
 .tour-title {
 	margin: 0;
@@ -1538,10 +1527,10 @@ module.exports = function createTour(opts) {
 
 	// 0: the opening
 	const intro = el('div', 'tour-card tour-intro', `
-		<span class="tour-line tour-kicker">My Portfolio</span>
+		<span class="tour-line tour-kicker">A virtual gallery</span>
 		<span class="tour-rule"></span>
 		<h1 class="tour-line tour-title">${esc(about.name)}</h1>
-		<span class="tour-line tour-sub tour-motto">Every canvas holds<br>what I could not say aloud.</span>`);
+		<span class="tour-line tour-sub tour-motto">I don’t paint what happened.<br>I paint what remained<br>after it happened</span>`);
 	stagger(intro, 0.4, 0.35);
 
 	// 1: about him
@@ -1556,7 +1545,7 @@ module.exports = function createTour(opts) {
 
 	// 2: the skylight
 	const sky = el('div', 'tour-card tour-sky', `
-		<span class="tour-line tour-sub">Every painting here is waiting.<br>The leaf will guide you.</span>`);
+		<span class="tour-line tour-sub">Every painting here waits for the light.</span>`);
 	stagger(sky, 0.6, 0.3);
 
 	// 3: the masterpiece
@@ -1576,7 +1565,6 @@ module.exports = function createTour(opts) {
 		const body = card.querySelector('.tour-body');
 		card.filled = false;
 		card.body = body;
-		card.find = find;          // (which painting: for "the leaf remembers")
 		card.fill = () => {
 			const p = find();
 			if (!p || card.filled) return;
@@ -1656,8 +1644,6 @@ module.exports = function createTour(opts) {
 
 	// 4: the masterpiece's story
 	const story = storyCard(() => paintings().find((p) => p.side === 'end'));
-	// (the masterpiece's own shot, with no words, counts for it too)
-	master.find = story.find;
 
 	// 5, 6, 7: no words, just the leaf and the footsteps
 	const quiet = () => el('div', 'tour-card', '');
@@ -1674,8 +1660,7 @@ module.exports = function createTour(opts) {
 	const end = el('div', 'tour-card tour-endcard', `
 		<span class="tour-line tour-kicker">Thank you for walking with me</span>
 		<span class="tour-rule"></span>
-		<span class="tour-line tour-sub tour-remember" hidden></span>
-		<span class="tour-line tour-sub">${CAN_WALK ? 'The rest of the gallery is yours to wander.' : (window.matchMedia && window.matchMedia('(pointer: fine)').matches ? 'Scroll back' : 'Swipe back') + ' to return to any painting.'}</span>
+		<span class="tour-line tour-sub">${CAN_WALK ? 'The rest of the gallery is yours to wander.' : 'Swipe back to return to any painting.'}</span>
 		<span class="tour-line tour-sub tour-confess-line">Before you leave, the confessional is open.<br>Leave me a note; no one else will read it.</span>
 		<div class="tour-line tour-end"><button type="button" class="tour-btn" data-act="confess">Leave something behind</button></div>
 		${contact.line('tour-line tour-contact')}
@@ -1707,7 +1692,7 @@ module.exports = function createTour(opts) {
 	const HINTS = SHOTS.map((sh, i) =>
 		i === 0 ? (fine ? 'Scroll to begin' : 'Swipe up to begin')
 			: i === 1 ? verb + ' to follow the leaf'
-				: i === 2 ? ''          // (the words above already say the leaf will guide them)
+				: i === 2 ? verb + ' to follow the light'
 					: i === 3 ? verb + ' for its story'
 						: (i === 6 || i === 7 || i === SHOTS.length - 1) ? ''
 							: verb + ' on');
@@ -1728,31 +1713,6 @@ module.exports = function createTour(opts) {
 	const AT = [0];
 	MOVES.forEach((m) => AT.push(AT[AT.length - 1] + m.dur));
 	const END = AT[AT.length - 1];
-
-	// how far the film may run while the rooms further on are still
-	// arriving (loader.js): it waits at the corridor until the tree court
-	// is in, and at the artist until the hall is
-	function reach() {
-		if (!loader.ready('court')) return AT[0];
-		if (!loader.ready('hall')) return AT[1];
-		return END;
-	}
-	let waitingFor = null;       // the hint shown while it waits
-	function waitHint(limit) {
-		hintText.textContent = 'The next room is still arriving\u2026';
-		hint.classList.add('on', 'waiting');
-		if (waitingFor === limit) return;
-		waitingFor = limit;
-		const room = limit === AT[0] ? 'court' : 'hall';
-		loader.onReady(room, () => {
-			if (waitingFor !== limit) return;
-			waitingFor = null;
-			hint.classList.remove('waiting');
-			const i = AT.indexOf(limit);
-			hintText.textContent = HINTS[i] || '';
-			hint.classList.toggle('on', !!HINTS[i] && shown === i);
-		});
-	}
 
 	// how far a scroll wheel or a finger winds the film
 	const WHEEL_PX_PER_SEC = 210;       // pixels of scrolling per second of film
@@ -1794,46 +1754,7 @@ module.exports = function createTour(opts) {
 		return best;
 	};
 
-	/* -------------------------------------------------------
-	 * THE LEAF REMEMBERS
-	 * How long the visitor has rested before each painting (with its
-	 * words on screen). At the end of the tour the leaf "remembers" the
-	 * one they stayed with longest, and offers to go back to it.
-	 * ----------------------------------------------------- */
-	const linger = new Map();          // painting's title -> { p, secs }
-	const MIN_LINGER = 4;              // less than this is passing by, not staying
-	function longest() {
-		let best = null, secs = 0;
-		linger.forEach((v) => { if (v.secs > secs) { best = v.p; secs = v.secs; } });
-		return secs >= MIN_LINGER ? best : null;
-	}
-	function rememberLine() {
-		const line = end.querySelector('.tour-remember');
-		const p = longest();
-		if (!p || !p.title) { line.hidden = true; return; }
-		line.hidden = false;
-		line.innerHTML = 'The leaf remembers: you stayed longest with <em>' + esc(p.title) + '</em>.' +
-			'<br><button type="button" class="tour-btn quiet" data-act="remember">Return to it</button>';
-	}
-	// back to that painting: a dip to black, then its shot (its story,
-	// when it has one)
-	function returnTo(p) {
-		const same = (q) => q && q.title === p.title;
-		let i = cards.findIndex((c) => c.find && c !== master && same(c.find()));
-		if (i < 0) i = cards.indexOf(master);
-		if (i < 0) return;
-		hideUI();
-		scroll = target = AT[i];
-		vel = 0;
-		auto = false;
-		shown = -1;
-		restClock = 0;
-		lastInput = now;
-		fadeIn = { start: now };
-	}
-
 	function showUI(i) {
-		if (cards[i] === end) rememberLine();
 		const c = cards[i];
 		if (c && c.fill) {
 			// write the words in first, so they can animate in
@@ -1880,9 +1801,6 @@ module.exports = function createTour(opts) {
 		target = Math.max(gesture.lo, Math.min(gesture.hi, target + secs));
 		// never let the camera fall too far behind a fast flick
 		target = Math.max(scroll - MAX_LEAD, Math.min(scroll + MAX_LEAD, target));
-		// nor into a room that has not arrived yet
-		const limit = reach();
-		if (target > limit) { target = Math.max(limit, Math.min(target, scroll)); if (secs > 0) waitHint(limit); }
 	}
 
 	// a key, click or tap: glide on to the next shot (or back to the last)
@@ -1894,7 +1812,6 @@ module.exports = function createTour(opts) {
 		if (dir > 0) i = AT.findIndex((a) => a > here + 0.05);
 		else { i = -1; for (let k = AT.length - 1; k >= 0; k--) if (AT[k] < here - 0.05) { i = k; break; } }
 		if (i < 0) return;
-		if (AT[i] > reach()) { waitHint(reach()); return; }
 		target = AT[i];
 		auto = true;
 		lastInput = now;
@@ -2015,22 +1932,6 @@ module.exports = function createTour(opts) {
 	let noteJumped = false;
 	function leaveNote() {
 		if (!active || exiting || conf.active || noteGo) return;
-		// his music may start now, while this is still the visitor's click
-		// (some browsers only allow sound from a touch); it stays silent
-		// until the camera is in the piano room (sound.js)
-		sound.enter();
-		// the piano room may not have arrived yet: fetch it now, and set
-		// off as soon as it is in
-		if (!loader.ready('rest')) {
-			loader.hurry();
-			hintText.textContent = 'Opening the piano room\u2026';
-			hint.classList.add('on', 'waiting');
-			loader.onReady('rest', () => {
-				hint.classList.remove('waiting', 'on');
-				leaveNote();
-			});
-			return;
-		}
 		hideUI();
 		shown = -2;
 		const e = camNow.eye;
@@ -2044,9 +1945,8 @@ module.exports = function createTour(opts) {
 		e.stopPropagation();
 		if (b.dataset.act === 'free') exit();
 		if (b.dataset.act === 'replay') replay();
-		if (b.dataset.act === 'remember') { const p = longest(); if (p) returnTo(p); }
 		if (b.dataset.act === 'list') require('./listview').show(false);
-		if (b.dataset.act === 'confess') { sound.enter(); hideUI(); shown = -2; conf.start(camNow, look); }
+		if (b.dataset.act === 'confess') { hideUI(); shown = -2; conf.start(camNow, look); }
 	});
 
 
@@ -2375,16 +2275,6 @@ module.exports = function createTour(opts) {
 		}
 		progress.querySelectorAll('i').forEach((e, k) => e.classList.toggle('on', k === near));
 
-		// the leaf remembers: time spent with each painting's words on screen
-		if (shown >= 0 && cards[shown].find && !document.hidden) {
-			const p = cards[shown].find();
-			if (p && p.title) {
-				const v = linger.get(p.title) || { p, secs: 0 };
-				v.secs += dt;
-				linger.set(p.title, v);
-			}
-		}
-
 		const sc = shown >= 0 ? cards[shown] : null;
 		if (sc && sc.fill && !sc.filled) {
 			// the painting's words arrived late (slow connection)
@@ -2420,7 +2310,6 @@ module.exports = function createTour(opts) {
 	if (DEBUG) {
 		window.__tour = {
 			go, exit, wind,
-			linger: () => [...linger].map(([k, v]) => [k, +v.secs.toFixed(1)]),
 			confess() { hideUI(); shown = -2; conf.start(camNow, look); },
 			note: () => leaveNote(),
 			conf,

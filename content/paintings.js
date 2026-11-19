@@ -49,7 +49,7 @@ It asks one question, quietly but sharply:
 Why must someone die before we finally decide they were worthy of love?`
 	},
 	{
-		file: "the-hardest-gift-i-gave.jpg",
+		file: "lv_0_20260703041118.jpg",
 		slug: "the-hardest-gift-i-gave",
 		title: "The Hardest Gift I Gave",
 		medium: 'Oil on canvas',
