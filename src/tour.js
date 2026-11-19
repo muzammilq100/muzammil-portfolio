@@ -1538,7 +1538,7 @@ module.exports = function createTour(opts) {
 		<span class="tour-line tour-kicker">My Portfolio</span>
 		<span class="tour-rule"></span>
 		<h1 class="tour-line tour-title">${esc(about.name)}</h1>
-		<span class="tour-line tour-sub tour-motto">I don’t paint what happened.<br>I paint what remained<br>after it happened</span>`);
+		<span class="tour-line tour-sub tour-motto">Every canvas holds<br>what I could not say aloud.</span>`);
 	stagger(intro, 0.4, 0.35);
 
 	// 1: about him

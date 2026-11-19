@@ -61,7 +61,7 @@ function show(no3d) {
 		${no3d ? '' : '<button type="button" class="plist-close">Back to the gallery</button>'}
 		<header class="plist-head">
 			<h1>Muzammil</h1>
-			<p class="plist-motto">I don’t paint what happened.<br>I paint what remained<br>after it happened</p>
+			<p class="plist-motto">Every canvas holds<br>what I could not say aloud.</p>
 			${contact.line('plist-contact')}
 		</header>
 		${no3d ? '<p class="plist-note">This device could not open the 3D gallery, so here are the paintings on their own.</p>' : ''}
