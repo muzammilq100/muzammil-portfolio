@@ -12,9 +12,29 @@
  *    .bin is fetched as before. The rest of the code does not notice.
  *
  * 2. The loading screen in base.html: it counts the gallery's files as
- *    they arrive, moves the thin line, and fades away once everything that
- *    was asked for has come in.
+ *    they arrive, paints the name, and fades away once everything that
+ *    the first sight (the window corridor) needs has come in.
+ *
+ * 3. Everything else comes afterwards. The files of the rooms further on
+ *    (LATER below) are not counted by the loading screen and are not even
+ *    asked for until the corridor is in; then they come one room at a
+ *    time, in the order the tour reaches them. `ready(name)` says whether
+ *    a room's files are all in, and `onReady(name, f)` calls back when
+ *    they are; the tour waits at the shot before a room that is not
+ *    ready yet (tour.js).
  */
+
+// the rooms further on and their files, in the order the tour shows them
+const LATER = [
+	// under the dome: the tree and the artist (his body and its textures; his motion
+	// capture can follow, he walks by the older cycles until it comes)
+	{ name: 'court', test: /res\/(tree\.bin|tree\/|avatar\/(?!motion\.))/ },
+	// down the hall: the Pietà, Venus and David, and his motion capture
+	// (for his footsteps there)
+	{ name: 'hall', test: /res\/(pieta\.bin|venus\.bin|david\.bin|avatar\/motion\.)/ },
+	// the rest: the piano and its music's timings, the street by night
+	{ name: 'rest', test: /res\/(piano\.bin|audio\/|street\/photo_night)/ }
+];
 
 const screen = document.getElementById('loader');
 const nameEl = screen && screen.querySelector('.loader-name');
@@ -79,6 +99,8 @@ function close() {
 function finish() {
 	if (finished) return;
 	finished = true;
+	corridorIn = true;
+	settleRooms();
 	window.__galleryReady = true;
 	if (!screen) return;
 	target = 1;
@@ -109,21 +131,80 @@ async function gunzip(url, init) {
 	return new Response(out, { status: 200, headers: { 'Content-Type': 'application/octet-stream' } });
 }
 
+// one room of LATER: its files wait until the room before it is in
+const rooms = LATER.map((r) => ({ name: r.name, test: r.test, waiting: [], asked: 0, done: 0, open: false, cbs: [] }));
+const roomOf = (url) => rooms.find((r) => r.test.test(url));
+let corridorIn = false;
+
+function roomDone(r) {
+	return r.open && r.done >= r.asked && r.waiting.length === 0;
+}
+function settleRooms() {
+	// each room opens once the one before it has all come in (or when
+	// hurried); each room's waiters are told as soon as it is in
+	for (let i = 0; i < rooms.length; i++) {
+		const r = rooms[i];
+		const before = i === 0 ? corridorIn : roomDone(rooms[i - 1]);
+		if (!r.open && before) {
+			r.open = true;
+			r.waiting.splice(0).forEach((go) => go());
+		}
+		if (roomDone(r)) {
+			r.cbs.splice(0).forEach((f) => { try { f(); } catch (e) { console.error(e); } });
+		}
+	}
+}
+
+function get(input, init, url) {
+	if (/\.bin$/.test(url) && typeof DecompressionStream !== 'undefined') {
+		return gunzip(url, init).catch(() => plainFetch(input, init));
+	}
+	return plainFetch(input, init);
+}
+
 window.fetch = function (input, init) {
 	const url = typeof input === 'string' ? input : (input && input.url) || '';
 	if (!ours(url)) return plainFetch(input, init);
 
+	const room = roomOf(url);
+	if (room) {
+		room.asked++;
+		const settle = () => { room.done++; settleRooms(); };
+		// (the whole file, not just its first bytes, before the room counts it in)
+		const whole = (r) => r.blob().then((b) => new Response(b, { status: r.status, statusText: r.statusText, headers: r.headers }));
+		const start = () => get(input, init, url).then(whole).then((x) => { settle(); return x; }, (e) => { settle(); throw e; });
+		if (room.open) return start();
+		return new Promise((resolve, reject) => {
+			room.waiting.push(() => start().then(resolve, reject));
+		});
+	}
+
 	asked++;
 	update();
 	const settle = (x) => { done++; update(); check(); return x; };
-
-	let p;
-	if (/\.bin$/.test(url) && typeof DecompressionStream !== 'undefined') {
-		p = gunzip(url, init).catch(() => plainFetch(input, init));
-	} else {
-		p = plainFetch(input, init);
-	}
-	return p.then(settle, (e) => { settle(); throw e; });
+	return get(input, init, url).then(settle, (e) => { settle(); throw e; });
 };
 
-module.exports = { finish };
+// the visitor wants the last room now (a note, from anywhere): every
+// room's files are asked for at once
+function hurry() {
+	if (!corridorIn) return;
+	rooms.forEach((r) => {
+		if (r.open) return;
+		r.open = true;
+		r.waiting.splice(0).forEach((go) => go());
+	});
+	settleRooms();
+}
+
+// whether a room's files have all come in (true for a name not in LATER)
+function ready(name) {
+	const r = rooms.find((x) => x.name === name);
+	return !r || roomDone(r);
+}
+function onReady(name, f) {
+	if (ready(name)) { f(); return; }
+	rooms.find((x) => x.name === name).cbs.push(f);
+}
+
+module.exports = { finish, ready, onReady, hurry };

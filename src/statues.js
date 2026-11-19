@@ -65,31 +65,28 @@ function decode(buf) {
 
 module.exports = (regl, map) => {
 
-	const position = [];
-	const normal = [];
-	const mat = [];
-	const elements = [];
-
-	let draw = null;
-	let pending = map.statues.length;
-
-	// where each statue's triangles are in the list, and the box it stands in
-	const ranges = [];
+	// each statue is drawn as soon as its own file has come (the ones in
+	// the corridor first; the hall's arrive while the visitor looks
+	// round), so each gets its own draw command
+	const statues = [];
 
 	const addModel = (m, st) => {
 
-		const base = position.length / 3;
+		const position = [];
+		const normal = [];
+		const mat = [];
+		const elements = [];
 		const r = st.height * 0.75;
 		const yb = st.base !== undefined ? st.base : map.pedestalTop;
-		ranges.push({
-			offset: elements.length,
+		const range = {
+			offset: 0,
 			count: m.nI,
 			box: [st.x - r, yb - 0.1, st.z - r, st.x + r, yb + st.height + 0.2, st.z + r]
-		});
+		};
 		const s = st.height;
 		const c = Math.cos(st.yaw);
 		const sn = Math.sin(st.yaw);
-		const y0 = st.base !== undefined ? st.base : map.pedestalTop;
+		const y0 = yb;
 
 		for (let i = 0; i < m.nV; i++) {
 
@@ -118,32 +115,30 @@ module.exports = (regl, map) => {
 		}
 
 		for (let i = 0; i < m.nI; i++) {
-			elements.push(base + m.idx[i]);
-		}
-	};
-
-	const finish = () => {
-
-		if (elements.length === 0) {
-			return;
+			elements.push(m.idx[i]);
 		}
 
-		draw = mesh(
-			regl,
-			{
-				position,
-				normal,
-				mat,
-				elements,
-				lights: map.lights,
-				// the shader picks the picture lights nearest the visitor
-				get viewer() {
-					return map.viewer;
-				}
-			},
-			false,
-			true
-		);
+		if (elements.length === 0) return;
+
+		statues.push({
+			range,
+			draw: mesh(
+				regl,
+				{
+					position,
+					normal,
+					mat,
+					elements,
+					lights: map.lights,
+					// the shader picks the picture lights nearest the visitor
+					get viewer() {
+						return map.viewer;
+					}
+				},
+				false,
+				true
+			)
+		});
 	};
 
 	map.statues.forEach((st) => {
@@ -156,20 +151,16 @@ module.exports = (regl, map) => {
 				return r.arrayBuffer();
 			})
 			.then((buf) => addModel(decode(buf), st))
-			.catch((e) => console.error(e))
-			.then(() => {
-				if (--pending === 0) {
-					finish();
-				}
-			});
+			.catch((e) => console.error(e));
 	});
 
 	// only the statues the camera can see (or, for the floor's reflection,
 	// whose reflection it can see)
 	return function (opts) {
-		if (!draw) return;
 		const mirrored = !!(opts && opts.reflected);
-		const list = ranges.filter((r) => cull.box(r.box, mirrored));
-		if (list.length) draw(list);
+		for (let i = 0; i < statues.length; i++) {
+			const st = statues[i];
+			if (cull.box(st.range.box, mirrored)) st.draw([st.range]);
+		}
 	};
 };

@@ -35,6 +35,8 @@ const contact = require('./contact');
 const caption = require('./caption');
 const visit = require('./visit');
 const quality = require('./quality');
+const loader = require('./loader');
+const sound = require('./sound');
 
 // Free walking ("Explore freely", "Walk the gallery", Esc) is offered on
 // laptops and desktops only: phones and tablets get the guided tour.
@@ -1218,6 +1220,7 @@ button.tour-icon { padding: 0; cursor: pointer; font: inherit; }
 	white-space: nowrap;
 }
 .tour-hint.on { opacity: .85; }
+.tour-hint.waiting svg { visibility: hidden; }
 .tour-hint svg { animation: tour-nudge 2.4s ease-in-out infinite; }
 @keyframes tour-nudge { 0%, 100% { transform: translateY(0); opacity: .5; } 50% { transform: translateY(-6px); opacity: 1; } }
 
@@ -1714,6 +1717,31 @@ module.exports = function createTour(opts) {
 	MOVES.forEach((m) => AT.push(AT[AT.length - 1] + m.dur));
 	const END = AT[AT.length - 1];
 
+	// how far the film may run while the rooms further on are still
+	// arriving (loader.js): it waits at the corridor until the tree court
+	// is in, and at the artist until the hall is
+	function reach() {
+		if (!loader.ready('court')) return AT[0];
+		if (!loader.ready('hall')) return AT[1];
+		return END;
+	}
+	let waitingFor = null;       // the hint shown while it waits
+	function waitHint(limit) {
+		hintText.textContent = 'The next room is still arriving\u2026';
+		hint.classList.add('on', 'waiting');
+		if (waitingFor === limit) return;
+		waitingFor = limit;
+		const room = limit === AT[0] ? 'court' : 'hall';
+		loader.onReady(room, () => {
+			if (waitingFor !== limit) return;
+			waitingFor = null;
+			hint.classList.remove('waiting');
+			const i = AT.indexOf(limit);
+			hintText.textContent = HINTS[i] || '';
+			hint.classList.toggle('on', !!HINTS[i] && shown === i);
+		});
+	}
+
 	// how far a scroll wheel or a finger winds the film
 	const WHEEL_PX_PER_SEC = 210;       // pixels of scrolling per second of film
 	const TOUCH_PX_PER_SEC = 95;        // pixels of finger travel per second of film
@@ -1801,6 +1829,9 @@ module.exports = function createTour(opts) {
 		target = Math.max(gesture.lo, Math.min(gesture.hi, target + secs));
 		// never let the camera fall too far behind a fast flick
 		target = Math.max(scroll - MAX_LEAD, Math.min(scroll + MAX_LEAD, target));
+		// nor into a room that has not arrived yet
+		const limit = reach();
+		if (target > limit) { target = Math.max(limit, Math.min(target, scroll)); if (secs > 0) waitHint(limit); }
 	}
 
 	// a key, click or tap: glide on to the next shot (or back to the last)
@@ -1812,6 +1843,7 @@ module.exports = function createTour(opts) {
 		if (dir > 0) i = AT.findIndex((a) => a > here + 0.05);
 		else { i = -1; for (let k = AT.length - 1; k >= 0; k--) if (AT[k] < here - 0.05) { i = k; break; } }
 		if (i < 0) return;
+		if (AT[i] > reach()) { waitHint(reach()); return; }
 		target = AT[i];
 		auto = true;
 		lastInput = now;
@@ -1932,6 +1964,22 @@ module.exports = function createTour(opts) {
 	let noteJumped = false;
 	function leaveNote() {
 		if (!active || exiting || conf.active || noteGo) return;
+		// his music may start now, while this is still the visitor's click
+		// (some browsers only allow sound from a touch); it stays silent
+		// until the camera is in the piano room (sound.js)
+		sound.enter();
+		// the piano room may not have arrived yet: fetch it now, and set
+		// off as soon as it is in
+		if (!loader.ready('rest')) {
+			loader.hurry();
+			hintText.textContent = 'Opening the piano room\u2026';
+			hint.classList.add('on', 'waiting');
+			loader.onReady('rest', () => {
+				hint.classList.remove('waiting', 'on');
+				leaveNote();
+			});
+			return;
+		}
 		hideUI();
 		shown = -2;
 		const e = camNow.eye;
@@ -1946,7 +1994,7 @@ module.exports = function createTour(opts) {
 		if (b.dataset.act === 'free') exit();
 		if (b.dataset.act === 'replay') replay();
 		if (b.dataset.act === 'list') require('./listview').show(false);
-		if (b.dataset.act === 'confess') { hideUI(); shown = -2; conf.start(camNow, look); }
+		if (b.dataset.act === 'confess') { sound.enter(); hideUI(); shown = -2; conf.start(camNow, look); }
 	});
 
 

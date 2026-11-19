@@ -4,15 +4,14 @@
  * THE PIANO, HEARD FROM WHERE YOU STAND
  * -------------------------------------
  * He is playing in the round stair hall, and the music comes from there.
- * In that room it is close and clear. Out in the gallery it is what you
- * would hear through an arch and down a long stone hall: quieter the
- * further you are, the high notes lost first, and more of it the room's
- * own echo than the instrument. Walk towards it and it grows.
+ * In that room it is close and clear, with the stone room's echo round
+ * it; outside the room it is not heard at all, so it fades in as the
+ * camera comes through the arch and out again as it leaves.
  *
- * The recording (res/audio/) plays in a loop. Browsers do not let a page
- * make sound until the visitor has touched it, so it starts with their
- * first tap, click or key; the button in the corner turns it off and on,
- * and the choice is remembered.
+ * The recording (res/audio/) is only heard while the visitor is leaving
+ * him a note (confession.js calls `enter()` and `exit()`), and only once
+ * the camera is inside the piano room; it is not even downloaded before.
+ * The button in the corner mutes it, and the choice is remembered.
  *
  * His hands follow the same recording (avatar.js): res/audio/*.json
  * lists when keys go down in the bass and the treble, how hard, and
@@ -35,6 +34,8 @@ try { if (localStorage.getItem(KEY) === 'off') wanted = false; } catch (e) { /* 
 
 let audio = null, ctx = null, dry = null, wet = null, tone = null, master = null;
 let started = false;
+let inside = false;        // leaving a note: the music may sound
+let stopping = null;
 let cues = null;
 const listeners = [];
 const t0 = (typeof performance !== 'undefined' ? performance.now() : 0) / 1000;
@@ -91,21 +92,34 @@ function build() {
 	}
 }
 
+// his clock: where in the piece he is. It runs on silently whenever the
+// music is not playing, and the music starts from wherever his hands are
+let clockAt = 0;                   // seconds into the piece...
+let clockWall = performance.now() / 1000 - t0;   // ...at this moment
+const dur = () => (cues && cues.dur) || 158;
+const silentTime = () => clockAt + (performance.now() / 1000 - t0 - clockWall);
+const playing = () => audio && started && !audio.paused && inside;
+
 function begin() {
-	if (started || !wanted) return;
+	if (started || !wanted || !inside) return;
 	build();
-	const go = () => audio.play().then(() => { started = true; }).catch(() => { /* not yet: the next touch will try again */ });
+	const go = () => {
+		try { audio.currentTime = silentTime() % dur(); } catch (e) { /* not seekable yet */ }
+		audio.play().then(() => { started = true; }).catch(() => { /* not yet: the next touch will try again */ });
+	};
 	if (ctx && ctx.state === 'suspended') ctx.resume().then(go, go); else go();
 }
 
 if (typeof window !== 'undefined') {
+	// (should the browser want another touch before it lets the music
+	// start, the next one does it)
 	['pointerdown', 'pointerup', 'touchend', 'keydown', 'click'].forEach((n) =>
 		window.addEventListener(n, begin, { capture: true, passive: true }));
 	// nothing plays while the page is hidden
 	document.addEventListener('visibilitychange', () => {
 		if (!audio || !started) return;
 		if (document.hidden) audio.pause();
-		else if (wanted) audio.play().catch(() => {});
+		else if (wanted && inside) audio.play().catch(() => {});
 	});
 	fetch(CUES).then((r) => (r.ok ? r.json() : null)).then((j) => {
 		if (!j) return;
@@ -137,13 +151,11 @@ const sound = {
 			echoed = 0.22 + 0.16 * near;
 			cut = 16000;
 		} else {
-			// through the arch and away down the hall
-			const far = 5.5 / Math.max(d, 5.5);
-			// the tree court is round a corner: duller and fainter still
-			const corner = eye[0] > 14.2 && eye[2] < 12 ? 0.6 : 1;
-			direct = 0.5 * Math.pow(far, 1.5) * corner;
-			echoed = 0.34 * Math.pow(far, 0.95) * corner;
-			cut = (650 + 9000 * Math.pow(far, 1.3)) * (corner < 1 ? 0.7 : 1);
+			// outside the piano room it is not heard at all (it fades in as
+			// the camera comes through the arch, and out as it leaves)
+			direct = 0;
+			echoed = 0;
+			cut = 1500;
 		}
 		const now = ctx.currentTime;
 		dry.gain.setTargetAtTime(direct, now, 0.35);
@@ -154,10 +166,34 @@ const sound = {
 	// seconds into the piece (it runs silently until the sound starts, so
 	// he is always playing; once it sounds, his hands follow what is heard)
 	time() {
-		const dur = (cues && cues.dur) || 158;
-		if (audio && started && !audio.paused) return audio.currentTime % dur;
-		if (audio && started) return audio.currentTime % dur;
-		return ((performance.now() / 1000 - t0) % dur + dur) % dur;
+		const d = dur();
+		if (playing()) return audio.currentTime % d;
+		return (silentTime() % d + d) % d;
+	},
+
+	// leaving a note: the music may play (it downloads now, the first time)
+	enter() {
+		inside = true;
+		if (stopping) { clearTimeout(stopping); stopping = null; }
+		if (!wanted) return;
+		if (!started) begin();
+		else {
+			if (master) master.gain.setTargetAtTime(1, ctx.currentTime, 0.2);
+			if (audio.paused) {
+				try { audio.currentTime = silentTime() % dur(); } catch (e) { /* as it is */ }
+				audio.play().catch(() => {});
+			}
+		}
+	},
+	// the note is done: fade out, then stop
+	exit() {
+		// his hands carry on from where the music is
+		if (playing()) { clockAt = audio.currentTime; clockWall = performance.now() / 1000 - t0; }
+		inside = false;
+		if (!audio) return;
+		if (master) master.gain.setTargetAtTime(0, ctx.currentTime, 0.3);
+		clearTimeout(stopping);
+		stopping = setTimeout(() => { stopping = null; if (!inside) audio.pause(); }, master ? 1500 : 0);
 	},
 
 	get cues() { return cues; },
@@ -167,9 +203,11 @@ const sound = {
 		wanted = !!on;
 		try { localStorage.setItem(KEY, wanted ? 'on' : 'off'); } catch (e) { /* not remembered */ }
 		if (wanted) {
-			begin();
-			if (audio && started) audio.play().catch(() => {});
-			if (master) master.gain.setTargetAtTime(1, ctx.currentTime, 0.2);
+			if (inside) {
+				begin();
+				if (audio && started) audio.play().catch(() => {});
+				if (master) master.gain.setTargetAtTime(1, ctx.currentTime, 0.2);
+			}
 		} else {
 			if (master) master.gain.setTargetAtTime(0, ctx.currentTime, 0.15);
 			else if (audio) audio.pause();
@@ -188,8 +226,8 @@ const sound = {
 		b.className = cls + ' sound-toggle';
 		const show = () => {
 			b.innerHTML = wanted ? ON : OFF;
-			b.setAttribute('aria-label', wanted ? 'Turn the music off' : 'Turn the music on');
-			b.title = wanted ? 'Music on' : 'Music off';
+			b.setAttribute('aria-label', wanted ? 'Turn the piano off' : 'Turn the piano on');
+			b.title = wanted ? 'Piano on (heard in the piano room, while you leave a note)' : 'Piano off';
 			b.setAttribute('aria-pressed', wanted ? 'true' : 'false');
 		};
 		show();

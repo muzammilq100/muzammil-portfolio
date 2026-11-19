@@ -27,6 +27,12 @@ Pushing to `master` builds the site and publishes it to Cloudflare Pages and Git
 - `src/painting.js` – the paintings (canvas weave, varnish, light pool) and their gilded frames.
 - `src/mesh.js` – the architecture's materials and light (marble, plaster, the floor).
 - `src/tour.js` – the cinematic tour; `src/fps.js` – free walking.
+- `src/loader.js` – the loading screen waits only for what the window corridor needs; the
+  rooms further on (`LATER`: the tree court, the hall's statues, the piano room) load
+  afterwards, one at a time in tour order, and the tour waits at the shot before a room
+  that has not arrived yet.
+- `src/sound.js` – the piano music. It is only downloaded and played when the visitor
+  chooses "Leave a note", and only heard inside the piano room.
 - `src/listview.js` – all paintings as a plain list (`#list`, and the fallback without 3D).
 - `source/` – source files that are not published (e.g. the Blender wall model).
 
