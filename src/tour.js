@@ -1535,7 +1535,7 @@ module.exports = function createTour(opts) {
 
 	// 0: the opening
 	const intro = el('div', 'tour-card tour-intro', `
-		<span class="tour-line tour-kicker">A virtual gallery</span>
+		<span class="tour-line tour-kicker">My Portfolio</span>
 		<span class="tour-rule"></span>
 		<h1 class="tour-line tour-title">${esc(about.name)}</h1>
 		<span class="tour-line tour-sub tour-motto">I don’t paint what happened.<br>I paint what remained<br>after it happened</span>`);
@@ -1700,7 +1700,7 @@ module.exports = function createTour(opts) {
 	const HINTS = SHOTS.map((sh, i) =>
 		i === 0 ? (fine ? 'Scroll to begin' : 'Swipe up to begin')
 			: i === 1 ? verb + ' to follow the leaf'
-				: i === 2 ? verb + ' to follow the light'
+				: i === 2 ? verb + ', and let the leaf guide you'
 					: i === 3 ? verb + ' for its story'
 						: (i === 6 || i === 7 || i === SHOTS.length - 1) ? ''
 							: verb + ' on');

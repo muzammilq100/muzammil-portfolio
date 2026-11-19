@@ -45,7 +45,8 @@ const LOOK = {
 	shafts: 1.0,         // strength of the light shafts
 	bloom: 1.0,
 	vignette: 0.42,
-	grain: 0.032
+	grain: 0.032,
+	ao: 0.75             // the soft shadow where things meet (0 = none)
 };
 
 function invert(out, a) {
@@ -125,6 +126,7 @@ module.exports = (regl, quality) => {
 	const quarter = [fbo(), fbo()];     // bloom, near
 	const eighth = [fbo(), fbo()];      // bloom, wide
 	const vol = [fbo(), fbo()];         // light shafts
+	const occl = [fbo(), fbo()];        // ambient occlusion (half size)
 
 	const invVP = new Array(16).fill(0);
 	const vp = new Array(16).fill(0);
@@ -382,7 +384,8 @@ module.exports = (regl, quality) => {
 	const finalPass = pass(`
 	precision highp float;
 	varying vec2 uv;
-	uniform sampler2D scene, depthTex, soft, bloomA, bloomB, shafts;
+	uniform sampler2D scene, depthTex, soft, bloomA, bloomB, shafts, occlTex;
+	uniform float aoK;
 	uniform vec2 res;
 	uniform float time, exposure, vignette, grain, letterbox, fade, aperture, focus, hasDepth, bloomK, night;
 	uniform vec3 fadeColor;
@@ -460,6 +463,12 @@ module.exports = (regl, quality) => {
 		// into linear light
 		vec3 lin = pow(c, vec3(2.2));
 
+		// the soft shadow where things meet (it takes away ambient light,
+		// so it is gentler on what is brightly lit)
+		float occ = texture2D(occlTex, p).r;
+		float Lc = dot(lin, vec3(0.2126, 0.7152, 0.0722));
+		lin *= mix(1.0, occ, aoK * (1.0 - 0.6 * smoothstep(0.25, 0.9, Lc)));
+
 		// darker, more ambient: the room sinks, the light stays light
 		float L = dot(lin, vec3(0.2126, 0.7152, 0.0722));
 		lin *= mix(0.62, 1.0, smoothstep(0.04, 0.55, L)) * exposure;
@@ -505,6 +514,8 @@ module.exports = (regl, quality) => {
 		bloomA: () => quarter[0],
 		bloomB: () => eighth[0],
 		shafts: () => vol[0],
+		occlTex: () => occl[0],
+		aoK: () => LOOK.ao,
 		res: () => [scene.width, scene.height],
 		time: regl.context('time'),
 		exposure: () => LOOK.exposure * shot.exposure,
@@ -521,6 +532,117 @@ module.exports = (regl, quality) => {
 	}, { framebuffer: null });
 
 	const sceneScope = regl({ framebuffer: () => scene });
+
+
+	/* -------------------------------------------------------
+	 * SOFT SHADOW WHERE THINGS MEET (ambient occlusion)
+	 * Real rooms darken softly wherever surfaces come close: the corners,
+	 * the foot of each wall, under and behind a frame, round the foot of a
+	 * statue, inside the coffers. Worked out each frame from the room's
+	 * depth: for each point, a dozen little probes into the half-sphere
+	 * above its surface; the more of them are buried in something, the
+	 * less of the room's light reaches it. (Laptops only: quality.post 2.)
+	 * ----------------------------------------------------- */
+
+	const AO_RADIUS = 0.55;      // metres: how far a surface feels its neighbours
+	const AO_SAMPLES = 12;
+
+	const aoPass = pass(`
+	precision highp float;
+	varying vec2 uv;
+	uniform sampler2D depthTex;
+	uniform mat4 invVP, vp;
+	uniform vec3 eye;
+	uniform vec2 res;
+
+	vec3 world(vec2 p) {
+		float d = texture2D(depthTex, p).r;
+		vec4 w = invVP * vec4(p * 2.0 - 1.0, d * 2.0 - 1.0, 1.0);
+		return w.xyz / w.w;
+	}
+	float hash12(vec2 p) {
+		vec3 p3 = fract(vec3(p.x, p.y, p.x) * 0.1031);
+		p3 += dot(p3, p3.yzx + 33.33);
+		return fract((p3.x + p3.y) * p3.z);
+	}
+
+	void main() {
+		float d = texture2D(depthTex, uv).r;
+		if (d > 0.99999) { gl_FragColor = vec4(1.0); return; }
+		vec3 P = world(uv);
+		float dist = length(P - eye);
+
+		// the surface's facing, from its neighbours (the nearer one on
+		// each side, so an edge does not bend it)
+		vec2 px = 1.0 / res;
+		vec3 dx1 = world(uv + vec2(px.x, 0.0)) - P, dx0 = P - world(uv - vec2(px.x, 0.0));
+		vec3 dy1 = world(uv + vec2(0.0, px.y)) - P, dy0 = P - world(uv - vec2(0.0, px.y));
+		vec3 dx = dot(dx1, dx1) < dot(dx0, dx0) ? dx1 : dx0;
+		vec3 dy = dot(dy1, dy1) < dot(dy0, dy0) ? dy1 : dy0;
+		vec3 N = normalize(cross(dx, dy));
+		if (dot(N, eye - P) < 0.0) N = -N;
+		vec3 T = normalize(cross(N, abs(N.y) < 0.9 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0)));
+		vec3 B = cross(N, T);
+
+		float R = ${f(AO_RADIUS)};
+		float a0 = hash12(gl_FragCoord.xy) * 6.2832;
+		float occ = 0.0;
+		for (int i = 0; i < ${AO_SAMPLES}; i++) {
+			float fi = float(i);
+			float r = (fi + 0.5) / ${f(AO_SAMPLES)};
+			float ang = a0 + fi * 2.39996;
+			vec2 dk = vec2(cos(ang), sin(ang)) * sqrt(r);
+			vec3 dir = T * dk.x + B * dk.y + N * sqrt(max(0.0, 1.0 - dot(dk, dk)));
+			// more probes close in, where the shadow is deepest
+			vec3 S = P + dir * R * mix(0.12, 1.0, r * r) + N * 0.015;
+			vec4 c = vp * vec4(S, 1.0);
+			vec2 suv = c.xy / c.w * 0.5 + 0.5;
+			if (suv.x < 0.0 || suv.x > 1.0 || suv.y < 0.0 || suv.y > 1.0) continue;
+			float dQ = length(world(suv) - eye);
+			float dS = length(S - eye);
+			// buried, and by something nearby (not a wall far behind it)
+			float range = smoothstep(0.0, 1.0, R / max(abs(dist - dQ), 1e-3));
+			occ += step(dQ, dS - 0.02) * range;
+		}
+		float ao = 1.0 - occ / ${f(AO_SAMPLES)};
+		// (far away it fades: the probes would be smaller than a pixel)
+		ao = mix(ao, 1.0, smoothstep(18.0, 40.0, dist));
+		gl_FragColor = vec4(vec3(ao), 1.0);
+	}`, {
+		depthTex: () => sceneDepth,
+		invVP: () => invVP,
+		vp: () => vp,
+		eye: () => eye,
+		res: (ctx, p) => [p.size[0], p.size[1]]
+	});
+
+	// a blur that keeps to its own surface: across an edge (a big jump
+	// in depth) the shadow does not leak
+	const aoBlur = pass(`
+	precision highp float;
+	varying vec2 uv;
+	uniform sampler2D src, depthTex;
+	uniform vec2 dir;
+	float lin(float d) {
+		float z = d * 2.0 - 1.0;
+		return 2.0 * ${f(NEAR)} * ${f(FAR)} / (${f(FAR + NEAR)} - z * ${f(FAR - NEAR)});
+	}
+	void main() {
+		float z0 = lin(texture2D(depthTex, uv).r);
+		float sum = 0.0, wsum = 0.0;
+		for (int i = -3; i <= 3; i++) {
+			vec2 q = uv + dir * float(i);
+			float z = lin(texture2D(depthTex, q).r);
+			float w = (1.0 - abs(float(i)) / 4.5) * (1.0 - smoothstep(0.0, 0.06 * z0, abs(z - z0)));
+			sum += texture2D(src, q).r * w;
+			wsum += w;
+		}
+		gl_FragColor = vec4(vec3(sum / max(wsum, 1e-4)), 1.0);
+	}`, {
+		src: regl.prop('src'),
+		depthTex: () => sceneDepth,
+		dir: (ctx, p) => [p.dir[0] / p.size[0], p.dir[1] / p.size[1]]
+	});
 
 
 	/* -------------------------------------------------------
@@ -545,6 +667,7 @@ module.exports = (regl, quality) => {
 			quarter.forEach((b) => b.resize(Math.max(1, Math.ceil(W / 4)), Math.max(1, Math.ceil(H / 4))));
 			eighth.forEach((b) => b.resize(Math.max(1, Math.ceil(W / 8)), Math.max(1, Math.ceil(H / 8))));
 			vol.forEach((b) => b.resize(Math.max(1, Math.ceil(W / volDiv())), Math.max(1, Math.ceil(H / volDiv()))));
+			occl.forEach((b) => b.resize(hw, hh));
 
 			multiply(vp, camera.proj, camera.view);
 			invert(invVP, vp);
@@ -567,6 +690,15 @@ module.exports = (regl, quality) => {
 				blurPass({ out: vol[0], src: vol[1], dir: [0, 1], size: sz(vol[0]) });
 			} else {
 				regl.clear({ color: [0, 0, 0, 1], framebuffer: vol[0] });
+			}
+
+			// the soft shadow where things meet
+			if (hasDepth && quality.post >= 2) {
+				aoPass({ out: occl[0], size: sz(occl[0]) });
+				aoBlur({ out: occl[1], src: occl[0], dir: [1, 0], size: sz(occl[0]) });
+				aoBlur({ out: occl[0], src: occl[1], dir: [0, 1], size: sz(occl[0]) });
+			} else {
+				regl.clear({ color: [1, 1, 1, 1], framebuffer: occl[0] });
 			}
 
 			// the soft room (depth of field) and the glow
