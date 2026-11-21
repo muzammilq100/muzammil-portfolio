@@ -27,6 +27,7 @@ Pushing to `master` builds the site and publishes it to Cloudflare Pages and Git
 - `src/painting.js` – the paintings (canvas weave, varnish, light pool) and their gilded frames.
 - `src/mesh.js` – the architecture's materials and light (marble, plaster, the floor).
 - `src/tour.js` – the cinematic tour; `src/fps.js` – free walking.
+- `src/studiotour.js` – the studio's tour (?studio): a petal of bougainvillea leads the camera, scroll by scroll, from the roof through a window's beam, through the rotunda's arches on the pool's line, over the water to the nymph, onto the pool, where a koi rises and takes it.
 - `src/studio.js` – the painter's studio (a leaded glass roof hung with bougainvillea, rough stone slab walls with arched windows on one side, bougainvillea and green vines climbing between them, ivy and dark red climbing roses on the others, a flagstone floor with grass and weeds in its joints; the red Gothic door through to the piano room, and facing it an old stone niche with the nymph, res/nymph.bin, inside, and a weathered stone lily pool running from the niche back towards the door). Not joined to the gallery yet: open the site with `?studio` (add `&night` for night) to look round it; a tap turns day to night.
 - `src/listview.js` – all paintings as a plain list (`#list`, and the fallback without 3D).
 - `source/` – source files that are not published (e.g. the Blender wall model).

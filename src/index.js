@@ -1176,9 +1176,29 @@ if (STUDIO_PREVIEW) {
 	const st = document.createElement('style');
 	st.textContent = '.tour, #museum-mobile-controls, .painting-plaque { display: none !important; }';
 	document.head.appendChild(st);
-	window.addEventListener('pointerdown', (e) => { if (!koiFeed.takes(e)) require('./env').toggle(); });
-	window.addEventListener('keydown', (e) => { if (e.key === 'n' || e.key === ' ') require('./env').toggle(); });
+	// the tour (studiotour.js): scrolling, swiping or tapping winds it on;
+	// a small moon (or sun) in the corner turns day to night and back
+	const ui = document.createElement('button');
+	ui.type = 'button';
+	ui.className = 'st-ui';
+	ui.setAttribute('aria-label', 'Day or night');
+	ui.textContent = '\u263E';
+	st.textContent += '.st-ui { position: fixed; top: 18px; right: 18px; z-index: 30; width: 42px; height: 42px; border-radius: 50%; border: 1px solid rgba(244,236,223,0.4); background: rgba(12,10,8,0.3); color: #f4ecdf; font-size: 20px; cursor: pointer; backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }';
+	document.body.appendChild(ui);
+	ui.addEventListener('pointerdown', (e) => e.stopPropagation());
+	ui.addEventListener('click', (e) => { e.stopPropagation(); require('./env').toggle(); setTimeout(() => { ui.textContent = require('./env').night > 0.5 ? '\u2600' : '\u263E'; }, 50); });
+	let downAt = null;
+	window.addEventListener('pointerdown', (e) => { downAt = { x: e.clientX, y: e.clientY, t: performance.now() }; });
+	window.addEventListener('pointerup', (e) => {
+		const d = downAt; downAt = null;
+		if (!d || Math.hypot(e.clientX - d.x, e.clientY - d.y) > 10 || performance.now() - d.t > 500) return;
+		if (e.target.closest && e.target.closest('button')) return;
+		if (!koiFeed.takes(e)) studioTour().tap();
+	});
+	window.addEventListener('keydown', (e) => { if (e.key === 'n') require('./env').toggle(); else if (e.key === ' ') studioTour().tap(); });
 }
+let studioTourNow = null;
+function studioTour() { if (!studioTourNow) studioTourNow = require('./studiotour')(); return studioTourNow; }
 
 // Feeding the koi: when the camera looks down into the pond, a line
 // invites the visitor to cast a crumb; the camera holds still, they
@@ -1339,10 +1359,10 @@ function setCamera(time) {
 
 	// ?studio: a preview of the painter's studio (see studio.js)
 	if (STUDIO_PREVIEW && !(/tourdebug/.test(location.search) && window.__camOverride)) {
-		const sc = require('./studio').previewCam(koiFeed.time(time));
+		const sc = studioTour().update(koiFeed.time(time));
 		koiFeed.update(sc);
 		c = sc;
-		look = Object.assign({}, FREE_LOOK, { fade: sc.fade, focus: 8 });
+		look = Object.assign({}, FREE_LOOK, sc.look);
 	}
 
 	if (c) {

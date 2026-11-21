@@ -98,7 +98,7 @@ const POOL = { x0: W / 2 - 1.7, x1: W / 2 + 1.7, z0: L - NICHE.face + 0.44, z1: 
 // its arches frame the niche's arch, with the nymph in it, down the pool.
 // Openings face the door (angle 0, +z), the niche (PI) and the two sides;
 // an angle is measured as atan(x - cx, z - cz).
-const ROT = { cx: W / 2, cz: 18.1, ri: 1.66, ro: 2.06, top: 6.0, hw: 0.84, spring: 3.4, cornice: 4.85, cloth: 2.35, gap: 1.05 };
+const ROT = { cx: W / 2, cz: 18.1, ri: 1.66, ro: 2.06, top: 6.0, hw: 0.84, spring: 3.4, cornice: 4.85, cloth: 2.6, gap: 0.92 };
 // the folds of the cloth round the drum, taken from his draped-cloth
 // simulation (Nylon_Canvas.glb: the cloth fallen over a sphere), sampled at
 // 64 steps round its hem, -1..1
@@ -111,12 +111,20 @@ const PZ = (z) => POOL.z1 - (z - 5.6) / 11.0 * (POOL.z1 - POOL.z0);
 const VENUS = { x: W / 2, z: 1.0, plinth: NICHE.floor + 0.26, height: 2.75, yaw: 0.35, file: 'res/nymph.bin' };
 const NZ = L - VENUS.z;
 
-// the sun: the direction towards it. Bright morning sun, fairly low, from
-// the window wall (x = 0) and a little from behind the red door's end, so
-// it pours in through those windows and the roof and falls across the floor
-// towards the niche and the nymph. At night the moon comes in the same way.
+// the sun: the direction towards it. Low (about 24 degrees), from the
+// window wall (x = 0) and a little from behind the red door's end, so long
+// raking beams cross the room on the diagonal, over the floor and the pool,
+// and fall on the niche and the nymph; the rest of the room stays in shade.
 const SUN = (() => {
-	const v = [-0.68, 0.60, 0.36];
+	const v = [-0.80, 0.42, 0.43];
+	const l = Math.hypot(v[0], v[1], v[2]);
+	return v.map((x) => x / l);
+})();
+// the moon: high and cold, from behind the rotunda, mostly through the roof:
+// a pale shaft down onto the pool and the nymph, the rotunda's shadow long
+// down the water
+const MOON = (() => {
+	const v = [-0.30, 0.82, 0.48];
 	const l = Math.hypot(v[0], v[1], v[2]);
 	return v.map((x) => x / l);
 })();
@@ -152,7 +160,9 @@ function sunGLSL() {
 			}
 		}`).join('');
 	return `
-	const vec3 STUDIO_SUN = vec3(${f(SUN[0])}, ${f(SUN[1])}, ${f(SUN[2])});
+	const vec3 STUDIO_SUN_D = vec3(${f(SUN[0])}, ${f(SUN[1])}, ${f(SUN[2])});
+	const vec3 STUDIO_MOON_D = vec3(${f(MOON[0])}, ${f(MOON[1])}, ${f(MOON[2])});
+#define STUDIO_SUN normalize(mix(STUDIO_SUN_D, STUDIO_MOON_D, smoothstep(0.25, 0.75, night)))
 
 	// how open a window is at (y, z) on the wall's face; b softens edges
 	float studioWinOpen(vec3 q, float b) {
@@ -680,7 +690,7 @@ function buildRotunda(g) {
 
 function buildCloth() {
 	const { cx, cz, ro } = ROT;
-	const pos = [], nrm = [], uv = [], idx = [];
+	const pos = [], nrm = [], uv = [], idx = [], sw = [];
 	const fold = (a) => {
 		// the simulated fold, four times round the drum, with a slow wander
 		const t = ((a / (2 * PI)) * 4 % 1 + 1) % 1 * 64;
@@ -690,38 +700,51 @@ function buildCloth() {
 	const rnd = rng(9090);
 	// the two drapes: from beside the door's opening round to beside the niche's, each side
 	const gapA = Math.asin(Math.min(0.999, ROT.gap / ROT.cloth));
-	const sections = [[gapA, PI - gapA], [-PI + gapA, -gapA]];
+	// (and across each gap, the same cloth falls only to just above the arch,
+	// so it runs on unbroken round the top and the opening shows beneath)
+	const sections = [[gapA, PI - gapA, 0], [-PI + gapA, -gapA, 0], [-gapA - 0.02, gapA + 0.02, 1], [PI - gapA - 0.02, PI + gapA + 0.02, 1]];
 	const NV = 46, POOLN = 8;
-	for (const [a0, a1] of sections) {
+	for (const [a0, a1, short] of sections) {
 		const NA = Math.round((a1 - a0) * ROT.cloth / 0.035);
 		const base = pos.length / 3;
 		const grid = [];
-		const hemLen = []; for (let i = 0; i <= NA; i++) hemLen.push(0.25 + 0.3 * rnd());
-		for (let j = 0; j <= NV + POOLN; j++) {
+		const hemLen = []; for (let i = 0; i <= NA; i++) hemLen.push(0.2 + 0.25 * rnd());
+		for (let j = 0; j <= (short ? NV : NV + POOLN); j++) {
 			const row = [];
 			for (let i = 0; i <= NA; i++) {
 				const a = a0 + (a1 - a0) * i / NA;
 				const top = rotTop(a) + 0.04;
 				const edge = Math.min(a - a0, a1 - a) * ROT.cloth;       // distance to the drape's edge
 				let r, y;
-				if (j <= NV) {
-					const v = j / NV;                // 0 at the top, 1 at the floor
-					y = top * (1 - v);
-					// caught over the rim, then falling and flaring
-					// falling clear of the drum and flaring wide towards the floor
-					const flare = 0.5 * Math.pow(v, 2.2) + 0.1 * Math.sqrt(v);
+				if (j === 0) {
+					// laid across the top of the wall, so it is one piece over the rim
+					r = ROT.ri + 0.12; y = top + 0.03;
+				} else if (j === 1) {
+					r = ro + 0.08; y = top + 0.07;
+				} else if (j <= NV) {
+					const v = (j - 1) / (NV - 1);    // 0 at the rim, 1 at the floor
+					y = (top + 0.02) * (1 - v);
+					if (short) {
+						// a swag: lowest at the drape's edges, lifting over the arch's middle
+						const mid = Math.abs(Math.sin(a)) * ROT.cloth / ROT.gap;
+						const hem = ROT.spring + ROT.hw + 0.32 + 0.35 * (1 - Math.min(1, mid));
+						y = top + 0.02 - (top + 0.02 - hem) * v;
+					}
+					// falling clear of the drum (and its cornice: no band of stone
+					// shows through), flaring wide towards the floor
+					const flare = 0.38 * Math.pow(v, 2.0) + 0.1 * Math.sqrt(v) + 0.26;
 					const big = (0.05 + 0.34 * Math.pow(v, 1.3)) * fold(a);
 					// many slimmer folds within the big ones, and fine gathers at the top
 					const mid = (0.02 + 0.07 * v) * Math.sin(a * ROT.cloth / 0.16 + 2.0 * fold(a * 1.7));
 					const pleat = 0.03 * (1 - v) * Math.sin(a * ROT.cloth / 0.055) + 0.015 * Math.sin(a * ROT.cloth / 0.031 + v * 3.0);
 					const midP = mid + pleat;
 					const edgeFold = 0.12 * Math.exp(-edge / 0.25) * Math.sin(edge * 18.0) * v;
-					r = ro + 0.05 + flare + big + midP + edgeFold;
-					if (j === 0) { r = ro - 0.15; y = top + 0.02; }
+					r = Math.max(ro + 0.26, ro + flare + big + midP + edgeFold);
+					if (short) r = ro + 0.26 + 0.06 * Math.sin(a * ROT.cloth / 0.09) + 0.05 * v;
 				} else {
 					// lying on the floor, crumpled, reaching out unevenly
 					const u = (j - NV) / POOLN;
-					const rFloor = ro + 0.05 + 0.6 + 0.39 * fold(a);
+					const rFloor = ro + 0.74 + 0.39 * fold(a);
 					r = rFloor + u * hemLen[i] * (0.7 + 0.3 * (1 + fold(a + 0.3)));
 					y = 0.012 + 0.05 * Math.max(0, Math.sin(u * 7.0 + a * 23.0)) * (1 - u) + 0.03 * (1 - u);
 				}
@@ -739,6 +762,8 @@ function buildCloth() {
 			const l = Math.hypot(...n) || 1; n = n.map((x) => x / l);
 			pos.push(p[0] + O[0], p[1] + O[1], p[2] + O[2]); nrm.push(...n);
 			uv.push((a0 + (a1 - a0) * i / NA) * ROT.cloth, j / (NV + POOLN));
+			const vv = j <= 1 ? 0 : j <= NV ? (j - 1) / (NV - 1) : 1 - (j - NV) / POOLN * 0.9;
+			sw.push(j <= NV ? Math.pow(vv, 1.3) * (1 - 0.6 * Math.pow(vv, 6)) : 0.4 * vv * vv);
 		}
 		const w = NA + 1;
 		for (let j = 0; j < grid.length - 1; j++) for (let i = 0; i < NA; i++) {
@@ -757,6 +782,7 @@ function buildCloth() {
 			const along = (ROT.ri + ROT.ro) / 2 + 0.06 * Math.sin(d * 34.0) * (0.3 + v) + 0.12 * v * v;
 			const p = [cx + u[0] * along + t[0] * d, y, cz + u[2] * along + t[2] * d];
 			pos.push(p[0] + O[0], p[1] + O[1], p[2] + O[2]);
+			sw.push(0.6 * v);
 			const nn = [u[0] + t[0] * Math.cos(d * 34.0) * 0.6, 0.1, u[2] + t[2] * Math.cos(d * 34.0) * 0.6];
 			const l = Math.hypot(...nn); nrm.push(nn[0] / l, nn[1] / l, nn[2] / l);
 			uv.push(d, v);
@@ -766,7 +792,7 @@ function buildCloth() {
 			idx.push(a, a + 1, a + NA + 2, a, a + NA + 2, a + NA + 1);
 		}
 	}
-	return { pos, nrm, uv, idx };
+	return { pos, nrm, uv, idx, sw };
 }
 
 // add geometry d to g, turned half round about the room's centre (so a
@@ -1182,7 +1208,7 @@ function koiSim() {
 	const events = [];
 	const crumbs = [];
 	for (let i = 0; i < CRUMB_N; i++) crumbs.push({ x: 0, z: 0, alive: 0, born: 0, seed: i * 0.37 });
-	const feed = { on: false, x: 0, z: 0, t0: 0 };
+	const feed = { on: false, x: 0, z: 0, t0: 0, petal: false, eaten: 0, lure: null };
 	let simT = 0, seq = 0;
 	const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 	const R = () => rnd(++seq * 1.618 + simT * 0.37);
@@ -1190,7 +1216,7 @@ function koiSim() {
 	const drop = (x, z) => {
 		x = Math.max(FEED_BOX[0], Math.min(FEED_BOX[2], x));
 		z = Math.max(FEED_BOX[1], Math.min(FEED_BOX[3], z));
-		Object.assign(feed, { on: true, x, z, t0: simT });
+		Object.assign(feed, { on: true, x, z, t0: simT, petal: false, eaten: 0 });
 		crumbs.forEach((c, i) => {
 			const a = rnd(simT + i) * Math.PI * 2, r = 0.04 + 0.16 * Math.sqrt(rnd(simT * 1.7 + i * 3.1));
 			Object.assign(c, { x: x + Math.cos(a) * r, z: z + Math.sin(a) * r, alive: 1, born: simT + rnd(i * 5.3 + simT) * 0.35 });
@@ -1198,6 +1224,29 @@ function koiSim() {
 		events.push([x, z, simT, 1.0]);
 		// the farther a koi is, the later it notices
 		for (const F of fish) F.notice = simT + 0.3 + Math.hypot(F.x - x, F.z - z) * 0.35 + rnd(F.i * 9.1 + simT) * 0.7;
+	};
+	// the tour's petal: before it lands, the nearest koi drifts over to
+	// wait beneath the place; when it lands, it alone comes up for it
+	const lure = (x, z) => {
+		let best = null, bd = 1e9;
+		for (const F of fish) { const d = Math.hypot(F.x - x, F.z - z); if (d < bd) { bd = d; best = F; } }
+		feed.lure = { x, z, fish: best };
+	};
+	const petal = (x, z) => {
+		Object.assign(feed, { on: true, x, z, t0: simT, petal: true, eaten: 0 });
+		crumbs.forEach((c, i) => Object.assign(c, { x, z, alive: i === 0 ? 1 : 0, born: simT }));
+		events.push([x, z, simT, 0.45]);
+		let F0 = feed.lure && feed.lure.fish;
+		if (!F0) { let bd = 1e9; for (const F of fish) { const d = Math.hypot(F.x - x, F.z - z); if (d < bd) { bd = d; F0 = F; } } }
+		// if it has not reached the place yet, it is already near, out of sight below
+		if (Math.hypot(F0.x - x, F0.z - z) > 1.4) { F0.x = x + 0.2; F0.z = z - 1.2; F0.th = Math.PI / 2; F0.y = -0.22; F0.v = 0.06; }
+		for (const F of fish) F.notice = F === F0 ? simT + 0.9 : simT + 4.5 + Math.hypot(F.x - x, F.z - z) * 0.8 + rnd(F.i * 9.1) * 2;
+		feed.lure = null;
+	};
+	const unpetal = () => {
+		if (!feed.petal) { feed.lure = null; return; }
+		feed.on = false; feed.petal = false; feed.eaten = 0; feed.lure = null;
+		for (const c of crumbs) c.alive = 0;
 	};
 	const step = (dt) => {
 		simT += dt;
@@ -1210,7 +1259,8 @@ function koiSim() {
 			c.x += Math.sin(t * 0.7 + c.seed * 11) * 0.004 * dt;
 			c.z += Math.cos(t * 0.6 + c.seed * 7) * 0.004 * dt;
 		}
-		if (feed.on && ((left === 0 && t > feed.t0 + 1) || t > feed.t0 + 40)) {
+		if (feed.on && ((left === 0 && t > feed.t0 + 1 && !feed.petal) || (feed.petal && feed.eaten && t > feed.eaten + 3) || t > feed.t0 + 40)) {
+			feed.petal = false;
 			feed.on = false;
 			for (const c of crumbs) c.alive = 0;
 		}
@@ -1224,6 +1274,9 @@ function koiSim() {
 				F.gx = KOI_BOX[0] + R() * (KOI_BOX[2] - KOI_BOX[0]);
 				F.gz = KOI_BOX[1] + R() * (KOI_BOX[3] - KOI_BOX[1]);
 				F.nextAim = t + 12 + R() * 14;
+			}
+			if (feed.lure && feed.lure.fish === F) {
+				F.gx = feed.lure.x + Math.cos(t * 0.3) * 0.3; F.gz = feed.lure.z - 0.45 + Math.sin(t * 0.3) * 0.2; F.nextAim = t + 1; F.yAim = -0.2;
 			}
 			// heading there, with a lazy meander
 			F.aim = Math.atan2(F.gz - F.z, F.gx - F.x) + 0.35 * Math.sin(t * 0.21 + F.i * 1.7);
@@ -1290,7 +1343,8 @@ function koiSim() {
 				if (st < 2.4 && F.sipT >= 2.4) events.push([F.x, F.z, t, 0.55]);
 				if (F.sipT > 4.2 || hungry) F.sipT = -1;
 			}
-			const wantThrust = (F.stroking ? (hungry ? 2.4 : 1.0) : 0) * (1 - 0.6 * lift);
+			const slowUp = hungry && feed.petal ? 0.7 : 1;
+			const wantThrust = (F.stroking ? (hungry ? 2.4 * slowUp : 1.0) : 0) * (1 - 0.6 * lift);
 			F.thrust += (wantThrust - F.thrust) * Math.min(dt * 3, 1);
 			// water drags it to a stop; strokes push it on (bigger koi a little faster)
 			const drag = hungry ? 0.9 : 0.55;
@@ -1308,14 +1362,19 @@ function koiSim() {
 			if (hungry) {
 				const tx = target ? target.x : feed.x, tz = target ? target.z : feed.z;
 				const near = 1 - Math.min(1, Math.max(0, (Math.hypot(tx - F.x, tz - F.z) - 0.15) / 0.9));
-				yt += (-0.04 - yt) * near;
+				// for the petal: rising slowly from below, its face up out of the water
+				yt += ((feed.petal ? 0.012 : -0.04) - yt) * near;
 				// a gulp when the mouth reaches a crumb at the surface
-				if (target && t > F.bite && F.y > -0.08) {
-					const mx = F.x + Math.cos(F.th) * 0.02, mz = F.z + Math.sin(F.th) * 0.02;
-					if (Math.hypot(target.x - mx, target.z - mz) < 0.09) {
+				if (target && t > F.bite && F.y > (feed.petal ? -0.02 : -0.08)) {
+					const mx = F.x + Math.cos(F.th) * (feed.petal ? 0.09 : 0.02), mz = F.z + Math.sin(F.th) * (feed.petal ? 0.09 : 0.02);
+					if (Math.hypot(target.x - mx, target.z - mz) < (feed.petal ? 0.14 : 0.09)) {
 						target.alive = 0;
 						F.bite = t + 1.3;
-						events.push([target.x, target.z, t, 0.75]);
+						if (feed.petal) {
+							feed.eaten = t;
+							events.push([target.x, target.z, t, 1.6]);
+							events.push([target.x + Math.cos(F.th) * 0.12, target.z + Math.sin(F.th) * 0.12, t + 0.01, 1.0]);
+						} else events.push([target.x, target.z, t, 0.75]);
 					}
 				}
 			}
@@ -1326,7 +1385,8 @@ function koiSim() {
 			F.z = Math.max(POOL.z0 + 0.15, Math.min(POOL.z1 - 0.15, F.z));
 			const dy = (yt - F.y) * Math.min(dt * (hungry ? 2.0 : 0.8), 1);
 			F.y += dy;
-			F.pitch += (Math.max(-0.4, Math.min(0.4, dy / dt / Math.max(F.v, 0.06))) - F.pitch) * Math.min(dt * 2.5, 1);
+			const pMax = hungry && feed.petal ? 0.75 : 0.4;
+			F.pitch += (Math.max(-pMax, Math.min(pMax, dy / dt / Math.max(F.v, 0.06) * (hungry && feed.petal ? 1.8 : 1))) - F.pitch) * Math.min(dt * 2.5, 1);
 			// the body bends into the turn: a gentle C at most
 			const kWant = Math.max(-1.0 / L, Math.min(1.0 / L, F.w / Math.max(F.v, 0.1)));
 			F.kappa += (kWant - F.kappa) * Math.min(dt * 4, 1);
@@ -1337,7 +1397,7 @@ function koiSim() {
 		}
 		while (events.length && t - events[0][2] > 10) events.shift();
 	};
-	return { fish, events, crumbs, feed, drop, step, get t() { return simT; } };
+	return { fish, events, crumbs, feed, drop, lure, petal, unpetal, step, get t() { return simT; } };
 }
 
 // ------------------------------------------------------------------
@@ -3073,16 +3133,27 @@ module.exports = function (regl) {
 		precision highp float;
 		uniform mat4 proj, view;
 		uniform float yScale;
+		uniform float time;
 		attribute vec3 position, normal;
 		attribute vec2 uv;
+		attribute float sw;
 		varying vec3 v_pos, v_nrm, v_eye;
 		varying vec2 v_uv;
 		void main() {
-			v_pos = position; v_nrm = normal; v_uv = uv;
+			// a slow flow in the still air: waves running down the fall, the
+			// hem lifting and settling, never in step round the drum
+			vec2 c = position.xz - vec2(${f(ROT.cx + O[0])}, ${f(ROT.cz + O[2])});
+			float a = atan(c.x, c.y);
+			vec2 out2 = normalize(c);
+			float y = position.y;
+			float w = sin(time * 0.55 + a * 2.3 - y * 0.9) * 0.6 + sin(time * 0.93 + a * 5.1 + y * 1.7) * 0.3 + sin(time * 0.31 - a * 1.3) * 0.4;
+			float side = sin(time * 0.7 + a * 3.7 - y * 1.3);
+			vec3 p0 = position + vec3(out2.x, 0.0, out2.y) * w * 0.07 * sw + vec3(-out2.y, 0.0, out2.x) * side * 0.035 * sw;
+			v_pos = p0; v_nrm = normalize(normal + vec3(out2.x, 0.0, out2.y) * side * 0.25 * sw); v_uv = uv;
 			vec3 t = view[3].xyz;
 			v_eye = -vec3(dot(view[0].xyz, t), dot(view[1].xyz, t), dot(view[2].xyz, t));
 			v_eye.y *= yScale;
-			vec3 p = position; p.y *= yScale;
+			vec3 p = p0; p.y *= yScale;
 			gl_Position = proj * view * vec4(p, 1.0);
 		}`),
 		frag: `
@@ -3101,20 +3172,20 @@ module.exports = function (regl) {
 			vec2 w = v_uv * vec2(260.0, 900.0);
 			float threads = max(smoothstep(0.78, 0.98, abs(sin(w.x))), smoothstep(0.78, 0.98, abs(sin(w.y))));
 			float streak = 0.5 + 0.5 * sin(v_uv.x * 41.0 + sin(v_uv.y * 9.0 + v_uv.x * 3.0) * 2.0);
-			float sheer = 0.3 + 0.14 * streak + 0.08 * threads;
+			float sheer = 0.5 + 0.16 * streak + 0.08 * threads;
 			// edge on, the net closes up into solid colour
 			float a = clamp(sheer + (1.0 - sheer) * pow(1.0 - cosV, 2.6) * 0.9, 0.0, 0.9);
-			vec3 base = vec3(0.14, 0.006, 0.03) * (0.8 + 0.4 * streak);
+			vec3 base = vec3(0.2, 0.008, 0.036) * (0.8 + 0.4 * streak);
 			vec3 spec; float sv;
 			vec3 light = studioLight(v_pos, N, V, 0.35, spec, sv);
 			float tr = max(dot(-N, STUDIO_SUN), 0.0) * sv * (1.0 - night * 0.6);
 			float sheen = pow(1.0 - cosV, 3.0);
 			// (a little of the room's own dim light caught in the net, so it reads even in the shade)
-			vec3 col = base * (light + vec3(0.35, 0.3, 0.28)) * (1.0 + 1.6 * sheen) + vec3(0.3, 0.012, 0.025) * tr * 0.45 + spec * 0.03;
+			vec3 col = base * (light + vec3(0.6, 0.5, 0.48)) * (1.0 + 1.6 * sheen) + vec3(0.3, 0.012, 0.025) * tr * 0.45 + spec * 0.03;
 			col = studioAir(col, v_pos, v_eye);
 			gl_FragColor = vec4(sqrt(max(col, 0.0)) * a, a);
 		}`,
-		attributes: { position: cloth.pos, normal: cloth.nrm, uv: cloth.uv },
+		attributes: { position: cloth.pos, normal: cloth.nrm, uv: cloth.uv, sw: cloth.sw },
 		elements: new Uint32Array(cloth.idx),
 		cull: { enable: false },
 		depth: { enable: true, mask: false },
@@ -3193,6 +3264,83 @@ module.exports = function (regl) {
 		.catch((e) => console.error(e));
 	const drawWeeds = makeGreen(green.ground);
 	if (typeof location !== 'undefined' && /tourdebug/.test(location.search)) console.log('studio greenery: ivy verts', green.walls.pos.length / 3, 'ground verts', green.ground.pos.length / 3);
+
+	// the tour's petal (see studiotour.js): one bract, set each frame by
+	// the tour; on the water it rides the swell where the koi will find it
+	const drawGuide = regl({
+		vert: V(`
+		precision highp float;
+		uniform mat4 proj, view;
+		uniform float yScale, gFloat, gSize;
+		uniform vec3 gPos, gAxis;
+		uniform float gAng;
+		attribute vec2 corner;
+		varying vec3 v_pos, v_nrm, v_eye;
+		varying vec2 v_uv;
+		${WAVES}
+		mat3 rotAxis(vec3 a, float t) {
+			float c = cos(t), s = sin(t), ic = 1.0 - c;
+			return mat3(c + a.x * a.x * ic, a.y * a.x * ic + a.z * s, a.z * a.x * ic - a.y * s,
+			            a.x * a.y * ic - a.z * s, c + a.y * a.y * ic, a.z * a.y * ic + a.x * s,
+			            a.x * a.z * ic + a.y * s, a.y * a.z * ic - a.x * s, c + a.z * a.z * ic);
+		}
+		void main() {
+			vec3 local = vec3(corner.x, 0.0, corner.y) * gSize;
+			// a little cupped, like a real bract
+			local.y += 0.25 * gSize * (corner.x * corner.x + corner.y * corner.y) * 0.5;
+			vec3 n = vec3(0.0, 1.0, 0.0);
+			vec3 pos = gPos;
+			mat3 R = rotAxis(normalize(gAxis), gAng);
+			if (gFloat > 0.5) {
+				float h0 = poolHeight(pos.xz);
+				vec2 grad = vec2(poolHeight(pos.xz + vec2(0.05, 0.0)) - h0, poolHeight(pos.xz + vec2(0.0, 0.05)) - h0) / 0.05;
+				pos.y = 0.017 + h0 * 1.4;
+				R = rotAxis(vec3(0.0, 1.0, 0.0), gAng);
+				local = R * local;
+				local.y += dot(local.xz, grad) * 1.4;
+				n = normalize(vec3(-grad.x, 1.0, -grad.y));
+			} else { local = R * local; n = R * n; }
+			vec3 q = pos + local;
+			v_pos = q; v_nrm = n; v_uv = corner * 0.5 + 0.5;
+			vec3 t = view[3].xyz;
+			v_eye = -vec3(dot(view[0].xyz, t), dot(view[1].xyz, t), dot(view[2].xyz, t));
+			v_eye.y *= yScale;
+			vec3 p = q; p.y *= yScale;
+			gl_Position = proj * view * vec4(p, 1.0);
+		}`),
+		frag: `
+		precision highp float;
+		uniform float night, time;
+		varying vec3 v_pos, v_nrm, v_eye;
+		varying vec2 v_uv;
+		${LIGHT}
+		void main() {
+			vec2 u = v_uv * 2.0 - 1.0;
+			float heart = length(vec2(u.x * 1.1, u.y + 0.15 * abs(u.x) * 2.0 - 0.1));
+			if (heart > 0.85 + 0.1 * sin(atan(u.y, u.x) * 3.0)) discard;
+			vec3 V = normalize(v_eye - v_pos);
+			vec3 N = normalize(v_nrm);
+			if (dot(N, V) < 0.0) N = -N;
+			// veined from the heart out, deeper magenta at the base
+			float vein = 0.5 + 0.5 * cos(atan(u.y, u.x) * 9.0);
+			vec3 base = vec3(0.62, 0.03, 0.22) * (0.85 + 0.25 * smoothstep(0.9, 0.0, heart)) * (0.92 + 0.12 * vein);
+			vec3 spec; float sv;
+			vec3 light = studioLight(v_pos, N, V, 0.3, spec, sv);
+			float through = abs(dot(N, STUDIO_SUN)) * sv;
+			// it carries a little light of its own, so the eye can follow it through the shade
+			vec3 col = base * (light + vec3(0.22, 0.16, 0.18)) + base * vec3(1.0, 0.75, 0.8) * through * 1.8 * (1.0 - night * 0.5);
+			col = studioAir(col, v_pos, v_eye);
+			gl_FragColor = vec4(sqrt(max(col, 0.0)), 1.0);
+		}`,
+		attributes: { corner: [[-1, -1], [1, -1], [1, 1], [-1, 1]] },
+		elements: [[0, 1, 2], [0, 2, 3]],
+		uniforms: Object.assign({
+			gPos: () => { const g = GUIDE, c = koi.sim.crumbs[0]; return g.floating ? [c.x + O[0], 0, c.z + O[2]] : [g.pos[0] + O[0], g.pos[1], g.pos[2] + O[2]]; },
+			gAxis: () => GUIDE.axis, gAng: () => GUIDE.ang, gSize: () => GUIDE.size,
+			gFloat: () => (GUIDE.floating ? 1 : 0)
+		}, POOL_UNIFORMS),
+		cull: { enable: false }
+	});
 
 	// the falling petals: one little card each, placed by the shader
 	const fl = (() => {
@@ -3722,7 +3870,7 @@ module.exports = function (regl) {
 	const crumbUniforms = Object.assign({}, POOL_UNIFORMS);
 	for (let i = 0; i < CRUMB_N; i++) crumbUniforms['crumbs[' + i + ']'] = () => {
 		const c = koi.sim.crumbs[i], t = koi.sim.t;
-		const k = c.alive ? Math.min(1, Math.max(0, (t - c.born) / 0.25)) : 0;
+		const k = c.alive && !koi.sim.feed.petal ? Math.min(1, Math.max(0, (t - c.born) / 0.25)) : 0;
 		return [c.x + O[0], c.z + O[2], k, c.seed];
 	};
 	const drawCrumbs = regl({
@@ -3971,6 +4119,7 @@ module.exports = function (regl) {
 		if (drawRoses) drawRoses();
 		if (!(opts && opts.reflected)) drawWeeds();
 		drawFalling();
+		if (GUIDE.vis && !(GUIDE.floating && koi.sim.feed.eaten)) drawGuide();
 		drawCloth();
 		if (!(opts && opts.reflected)) { drawGlass(); drawMotes(); }
 	}
@@ -3980,6 +4129,14 @@ module.exports = function (regl) {
 // feeding the koi (from the page): which koi pond is live, where a ray
 // from the eye meets the water, and a handful of crumbs cast there
 let ACTIVE = null;
+// the tour's petal (studio coordinates), set by studiotour.js
+const GUIDE = { vis: false, pos: [0, 0, 0], axis: [0, 1, 0], ang: 0, size: 0.06, floating: false };
+function setGuide(g) { Object.assign(GUIDE, g); }
+// the petal's end: a koi waits below; it lands; it is taken
+function petalLure(x, z) { if (ACTIVE && !ACTIVE.feed.lure && !ACTIVE.feed.petal) ACTIVE.lure(x, z); }
+function petalLand(x, z) { if (ACTIVE && !ACTIVE.feed.petal) { ACTIVE.petal(x, z); GUIDE.floating = true; } }
+function petalReset() { if (ACTIVE) ACTIVE.unpetal(); GUIDE.floating = false; }
+function petalState() { const f = ACTIVE && ACTIVE.feed; return { landed: !!(f && (f.petal || f.eaten)) && GUIDE.floating, eaten: !!(f && f.eaten && GUIDE.floating) }; }
 function poolHit(eye, dir) {
 	if (dir[1] >= -1e-4) return null;
 	const k = -eye[1] / dir[1];
@@ -4020,6 +4177,12 @@ function previewCam(time) {
 
 // for the light shafts (post.js) and the culling (cull.js)
 module.exports.previewCam = previewCam;
+module.exports.setGuide = setGuide;
+module.exports.petalLure = petalLure;
+module.exports.petalLand = petalLand;
+module.exports.petalReset = petalReset;
+module.exports.petalState = petalState;
+module.exports.STUDIO = { W, L, H, POOL, ROT, NICHE, VENUS, WIN, TRUSS_Z };
 module.exports.poolHit = poolHit;
 module.exports.feedAt = feedAt;
 module.exports.feeding = feeding;
