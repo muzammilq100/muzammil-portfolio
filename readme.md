@@ -27,7 +27,7 @@ Pushing to `master` builds the site and publishes it to Cloudflare Pages and Git
 - `src/painting.js` – the paintings (canvas weave, varnish, light pool) and their gilded frames.
 - `src/mesh.js` – the architecture's materials and light (marble, plaster, the floor).
 - `src/tour.js` – the cinematic tour; `src/fps.js` – free walking.
-- `src/studio.js` – the painter's studio (a leaded glass roof hung with bougainvillea, arched windows on one side and rough stone slab walls on the other three, the gallery's chequered floor; the red Gothic door through to the piano room, and facing it an old stone niche with the nymph, res/nymph.bin, inside, and a weathered stone lily pool running from the niche back towards the door). Not joined to the gallery yet: open the site with `?studio` (add `&night` for night) to look round it; a tap turns day to night.
+- `src/studio.js` – the painter's studio (a leaded glass roof hung with bougainvillea, rough stone slab walls with arched windows on one side, bougainvillea climbing between them and ivy on the others, a flagstone floor with grass and weeds in its joints; the red Gothic door through to the piano room, and facing it an old stone niche with the nymph, res/nymph.bin, inside, and a weathered stone lily pool running from the niche back towards the door). Not joined to the gallery yet: open the site with `?studio` (add `&night` for night) to look round it; a tap turns day to night.
 - `src/listview.js` – all paintings as a plain list (`#list`, and the fallback without 3D).
 - `source/` – source files that are not published (e.g. the Blender wall model).
 
@@ -46,6 +46,8 @@ The two statues are real 3D scans, slimmed down for the web and stored in `res/v
 - Lily pad and petal textures: "Water lily" by ivanzubak on TurboSquid (free), in `res/pond/`.
 - Gravel: Gravel030 from ambientCG (CC0), in `res/pond/gravel.jpg`.
 - Stone: "Coral Stone Wall" by Dimitrios Savva (the rough slab walls) and "Large Sandstone Blocks 01" by Rob Tuytel (the niche and the pool), both from Poly Haven (https://polyhaven.com, CC0), in `res/studio/` (colour, and the normal map with the hollows packed in its blue).
+- Floor: "Grassy Cobblestone" by Dario Barresi and Charlotte Baglioni, from Poly Haven (CC0), in `res/studio/floor_*`.
+- Plants: ivy leaves (LeafSet017), lobed leaves (LeafSet029), grass blades (Foliage001) and daisies (FlowerSet001) from ambientCG (https://ambientcg.com, CC0), cut out and packed into `res/studio/plants.webp`.
 
 ## The street outside
 

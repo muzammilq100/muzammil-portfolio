@@ -4,9 +4,12 @@
  * THE STUDIO
  * ----------
  * The painter's studio: a big, tall room under a glass roof of leaded,
- * patterned panes on black steel trusses. One long wall is old warm
- * plaster with tall arched steel windows; the other three are rough,
- * uneven slabs of pale coral stone (res/studio/rock_*). Bright morning
+ * patterned panes on black steel trusses. All four walls are rough,
+ * uneven slabs of pale coral stone (res/studio/rock_*), one of them with
+ * tall arched steel windows; bougainvillea climbs between the windows into
+ * the vine on the roof, ivy covers the other walls and the niche, and the
+ * floor is flagstones with grass, weeds and daisies in the joints (see
+ * GREENERY). Bright morning
  * sun pours in through the windows and the roof, and every bar of the
  * glazing shows in the light on the floor, the walls and the dusty air.
  *
@@ -385,21 +388,25 @@ const winTop = (dz) => (Math.abs(dz) >= WIN.hw ? null : WIN.spring + Math.sqrt(W
 //   'truss'  along x at z = c (the tie beams, at the eaves)
 //   'rafter' along x at z = c, following the roof's slope
 //   'ridge'  along z at x = W / 2
+//   'wall'   up the window wall between the windows at z = c, from the
+//            floor to the eaves, where it meets the vine on the trusses
 const VINE = [
 	['truss', TRUSS_Z[0], 3.1], ['truss', TRUSS_Z[1], 5.4], ['truss', TRUSS_Z[2], 7.7],
 	['rafter', ROOF.rafter * 2, 1.7], ['rafter', ROOF.rafter * 5, 8.5], ['rafter', ROOF.rafter * 8, 13.6], ['rafter', ROOF.rafter * 10, 17.0],
-	['ridge', W / 2, 0.9]
+	['ridge', W / 2, 0.9],
+	...[0.75, ...WIN.c.slice(1).map((c, i) => (c + WIN.c[i]) / 2), L - 0.75].map((c, i) => ['wall', c, 2.3 + i * 4.1])
 ];
 // whether a stretch of beam is in flower (identical in the shader)
 const vineClump = (u, seed) => 0.5 * Math.sin(u * 1.9 + seed) + 0.5 * Math.sin(u * 0.77 + seed * 1.3) > -0.25;
 const roofY = (x) => (x < W / 2 ? H + KR * x : H + KR * (W - x));
 // a point along a vine beam, slightly under the steel
 function vinePoint(kind, c, u) {
+	if (kind === 'wall') return [0.12, u, c];
 	if (kind === 'truss') return [u, H - 0.12, c];
 	if (kind === 'rafter') return [u, roofY(u) - 0.2, c];
 	return [c, RIDGE - 0.32, u];
 }
-const vineRange = (kind) => (kind === 'ridge' ? [0.4, L - 0.4] : [0.35, W - 0.35]);
+const vineRange = (kind) => (kind === 'ridge' ? [0.4, L - 0.4] : kind === 'wall' ? [0.15, H - 0.05] : [0.35, W - 0.35]);
 
 // ------------------------------------------------------------------
 // THE RED DOOR (after his reference): a tall pointed Gothic arch, deep
@@ -707,8 +714,10 @@ function buildVineStems(g) {
 			for (let u = u0; u <= u1; u += 0.18) {
 				const p = vinePoint(kind, c, u);
 				const tw = Math.sin(u * 3.1 + strand * 2 + seed) * 0.07, tw2 = Math.cos(u * 2.3 + strand + seed) * 0.05;
-				const q = kind === 'ridge' ? [p[0] + tw, p[1] + tw2 + 0.12, p[2]] : [p[0], p[1] + tw2 + 0.12, p[2] + tw];
-				if (prev && (vineClump(u, seed) || rnd() < 0.5)) g.beam(prev, q, 0.012 + 0.008 * rnd(), K.WOOD);
+				const spread = kind === 'wall' ? 0.25 + 0.5 * u / H : 0;
+				const q = kind === 'wall' ? [0.05 + Math.abs(tw2) * 0.6, p[1], p[2] + tw * (1.5 + strand) * (1 + 2 * spread) + (strand - 0.5) * spread]
+					: kind === 'ridge' ? [p[0] + tw, p[1] + tw2 + 0.12, p[2]] : [p[0], p[1] + tw2 + 0.12, p[2] + tw];
+				if (prev && (kind === 'wall' || vineClump(u, seed) || rnd() < 0.5)) g.beam(prev, q, (kind === 'wall' ? 0.022 * (1.2 - u / H) : 0.012) + 0.008 * rnd(), K.WOOD);
 				prev = q;
 			}
 		}
@@ -776,9 +785,34 @@ function bougainvillea(g, leaf, rnd) {
 		}
 		g.idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
 	};
+	// up the window wall: bare stems low down, leaf and blossom thickening
+	// and spreading as it climbs, so it fans out under the eaves and runs on
+	// into the vine on the trusses and the roof
+	function wallVine(c, y, seed) {
+		const t = y / H;
+		const half = Math.min(0.15 + 0.9 * t, c < 1 || c > L - 1 ? 0.6 : 1.15);
+		const leaves = Math.round(3 + 7 * t), blooms = y < 1.0 ? 0 : Math.round((2 + 9 * t) * (vineClump(y * 1.4, seed) ? 1 : 0.45));
+		for (let k = 0; k < leaves; k++) {
+			const a = rnd() * 2 * PI;
+			leaf([0.04 + rnd() * 0.22, y + (rnd() - 0.5) * 0.12, c + (rnd() - 0.5) * 2 * half], [Math.cos(a) * 0.4 + 0.5, -0.2 - rnd() * 0.5, Math.sin(a)], [0, 0, 1], 0.07 + rnd() * 0.06, 0.1);
+		}
+		for (let k = 0; k < blooms; k++) {
+			card([0.06 + rnd() * 0.28, y + (rnd() - 0.5) * 0.18, c + (rnd() - 0.5) * 2 * half * 0.9], 0.34 + rnd() * 0.32, rnd() * 2 * PI, (rnd() - 0.5) * 2.4, rnd() < 0.14);
+		}
+		// now and then a spray falling forward off the wall
+		if (y > 3.0 && rnd() < 0.05) {
+			let q = [0.15, y, c + (rnd() - 0.5) * 2 * half];
+			const len = 0.4 + rnd() * 1.2;
+			for (let d = 0; d < len; d += 0.13) {
+				q = [q[0] + 0.03, q[1] - 0.13, q[2] + (rnd() - 0.5) * 0.06];
+				card([q[0], q[1], q[2]], (0.26 + rnd() * 0.2) * (1 - 0.4 * d / len), rnd() * 2 * PI, (rnd() - 0.5) * 0.8, rnd() < 0.15);
+			}
+		}
+	}
 	for (const [kind, c, seed] of VINE) {
 		const [u0, u1] = vineRange(kind);
 		for (let u = u0; u <= u1; u += 0.1) {
+			if (kind === 'wall') { wallVine(c, u, seed); continue; }
 			if (!vineClump(u, seed)) continue;
 			const p = vinePoint(kind, c, u);
 			const off = () => (rnd() - 0.5) * 0.7;
@@ -1099,7 +1133,7 @@ function buildRoom() {
 			for (const [y0, y1] of ys) {
 				if (y1 <= y0) continue;
 				if (side) g.quad([xi, y0, zb], [xi, y0, za], [xi, y1, za], [xi, y1, zb], n, K.ROCK, [[zb, y0], [za, y0], [za, y1], [zb, y1]]);
-				else g.quad([xi, y0, za], [xi, y0, zb], [xi, y1, zb], [xi, y1, za], n, K.PLASTER, [[za, y0], [zb, y0], [zb, y1], [za, y1]]);
+				else g.quad([xi, y0, za], [xi, y0, zb], [xi, y1, zb], [xi, y1, za], n, K.ROCK, [[za, y0], [zb, y0], [zb, y1], [za, y1]]);
 			}
 		}
 		// the reveals: the jambs, the arch's soffit, and a stone sill
@@ -1109,8 +1143,8 @@ function buildRoom() {
 				const z = c + s * WIN.hw;
 				const nn = [0, 0, -s];
 				const a = [xi, WIN.sill, z], b = [xo, WIN.sill, z], cc = [xo, WIN.spring, z], d = [xi, WIN.spring, z];
-				if ((s > 0) !== !!side) g.quad(a, b, cc, d, nn, K.PLASTER, [[0, WIN.sill], [T, WIN.sill], [T, WIN.spring], [0, WIN.spring]]);
-				else g.quad(d, cc, b, a, nn, K.PLASTER, [[0, WIN.spring], [T, WIN.spring], [T, WIN.sill], [0, WIN.sill]]);
+				if ((s > 0) !== !!side) g.quad(a, b, cc, d, nn, K.ROCK, [[0, WIN.sill], [T, WIN.sill], [T, WIN.spring], [0, WIN.spring]]);
+				else g.quad(d, cc, b, a, nn, K.ROCK, [[0, WIN.spring], [T, WIN.spring], [T, WIN.sill], [0, WIN.sill]]);
 			}
 			const M = 28;
 			for (let i = 0; i < M; i++) {
@@ -1118,28 +1152,18 @@ function buildRoom() {
 				const z0 = c + Math.cos(p0) * WIN.hw, z1 = c + Math.cos(p1) * WIN.hw;
 				const y0 = WIN.spring + Math.sin(p0) * WIN.hw, y1 = WIN.spring + Math.sin(p1) * WIN.hw;
 				const nm = [0, -Math.sin((p0 + p1) / 2), -Math.cos((p0 + p1) / 2)];
-				if (side) g.quad([xi, y0, z0], [xo, y0, z0], [xo, y1, z1], [xi, y1, z1], nm, K.PLASTER, [[0, p0], [T, p0], [T, p1], [0, p1]]);
-				else g.quad([xi, y1, z1], [xo, y1, z1], [xo, y0, z0], [xi, y0, z0], nm, K.PLASTER, [[0, p1], [T, p1], [T, p0], [0, p0]]);
+				if (side) g.quad([xi, y0, z0], [xo, y0, z0], [xo, y1, z1], [xi, y1, z1], nm, K.ROCK, [[0, p0], [T, p0], [T, p1], [0, p1]]);
+				else g.quad([xi, y1, z1], [xo, y1, z1], [xo, y0, z0], [xi, y0, z0], nm, K.ROCK, [[0, p1], [T, p1], [T, p0], [0, p0]]);
 			}
 			// the sill: a stone slab, a little proud of the wall
 			const sx0 = side ? W - 0.08 : -T, sx1 = side ? W + T : 0.08;
-			g.box(sx0, WIN.sill - 0.09, c - WIN.hw - 0.12, sx1, WIN.sill, c + WIN.hw + 0.12, K.STONE);
+			g.box(sx0, WIN.sill - 0.09, c - WIN.hw - 0.12, sx1, WIN.sill, c + WIN.hw + 0.12, K.OLDSTONE);
 		}
-		// pilasters between the windows, a plinth along the foot of the wall
-		// (the window wall only: the others are rough stone slabs)
+		// (all four walls are rough stone slabs now: no pilasters or plinth;
+		// the bougainvillea climbs where the pilasters were)
 		const xs = side ? W : 0, sg = side ? -1 : 1;
-		const pil = [0.6, ...WIN.c.slice(1).map((c, i) => (c + WIN.c[i]) / 2), L - 0.6];
-		if (!side) for (const z of pil) {
-			const a = Math.min(xs, xs + sg * 0.14), b = Math.max(xs, xs + sg * 0.14);
-			g.box(a, 0, z - 0.34, b, H - 0.7, z + 0.34, K.STONE, { bottom: true });
-			const a2 = Math.min(xs, xs + sg * 0.24), b2 = Math.max(xs, xs + sg * 0.24);
-			g.box(a2, 0, z - 0.44, b2, 0.55, z + 0.44, K.STONE, { bottom: true });
-			g.box(a2, H - 0.95, z - 0.46, b2, H - 0.7, z + 0.46, K.STONE);
-		}
-		const a = Math.min(xs, xs + sg * 0.05), b = Math.max(xs, xs + sg * 0.05);
-		if (!side) g.box(a, 0, 0, b, 0.22, L, K.STONE, { bottom: true });
 		// a cornice under the eaves
-		const ck = side ? K.OLDSTONE : K.STONE;
+		const ck = K.OLDSTONE;
 		const a3 = Math.min(xs, xs + sg * 0.32), b3 = Math.max(xs, xs + sg * 0.32);
 		g.box(a3, H - 0.55, 0, b3, H - 0.3, L, ck);
 		const a4 = Math.min(xs, xs + sg * 0.42), b4 = Math.max(xs, xs + sg * 0.42);
@@ -1465,6 +1489,237 @@ function buildGlass() {
 	return g;
 }
 
+
+// ------------------------------------------------------------------
+// GREENERY: ivy over the stone walls and the niche, and grass, weeds and
+// daisies growing in the joints of the floor, along the foot of the walls
+// and round the pool, after his garden references. Every leaf, blade and
+// flower is a photographed cut-out (res/studio/plants.webp, packed from
+// ambientCG's LeafSet017 ivy, LeafSet029, Foliage001 and FlowerSet001, CC0).
+// ------------------------------------------------------------------
+
+// where each cut-out sits in plants.webp ([u0, v0, u1, v1], v down)
+const PLANT_UV = {ivy: [[0.00293, 0.0127, 0.12207, 0.23633], [0.13037, 0.00586, 0.24463, 0.24414], [0.25293, 0.0166, 0.37207, 0.23242], [0.37793, 0.02344, 0.49707, 0.22656], [0.50293, 0.01367, 0.62207, 0.23535], [0.62793, 0.03418, 0.74707, 0.21582]], blade: [[0.01855, 0.50391, 0.02832, 0.99512], [0.05762, 0.50391, 0.08301, 0.99512], [0.10889, 0.50391, 0.12549, 0.99609], [0.1582, 0.50391, 0.16943, 0.99512], [0.19922, 0.50391, 0.22266, 0.99512], [0.25, 0.50391, 0.26562, 0.99609], [0.29932, 0.50391, 0.31006, 0.99609], [0.33008, 0.50781, 0.37305, 0.99121], [0.38721, 0.50391, 0.40918, 0.99609]], daisy: [[0.75684, 0.00586, 0.86768, 0.24414], [0.87793, 0.00781, 0.99707, 0.24121], [0.00342, 0.25586, 0.12158, 0.49414], [0.12842, 0.25586, 0.24609, 0.49414], [0.25293, 0.25684, 0.37207, 0.49219], [0.37891, 0.25586, 0.49609, 0.49316]], weed: [[0.50293, 0.25781, 0.62207, 0.49121], [0.62793, 0.26562, 0.74707, 0.48438], [0.75293, 0.26855, 0.87207, 0.48047], [0.88281, 0.25586, 0.99219, 0.49414], [0.44043, 0.50977, 0.55957, 0.73926], [0.5752, 0.50586, 0.67432, 0.74414], [0.69043, 0.50586, 0.80908, 0.74414], [0.81738, 0.50586, 0.93213, 0.74414], [0.44043, 0.75781, 0.55957, 0.99219]]};
+const JOINTS = [[0.248, 0.8613], [0.3438, 0.9785], [0.4492, 0.584], [0.5957, 0.3281], [0.5371, 0.918], [0.1699, 0.4062], [0.752, 0.6699], [0.5879, 0.2207], [0.3789, 0.8477], [0.2637, 0.2266], [0.6758, 0.7422], [0.6016, 0.0273], [0.5762, 0.502], [0.0469, 0.5078], [0.1406, 0.7773], [0.791, 0.7539], [0.6113, 0.5605], [0.9121, 0.6777], [0.6523, 0.1523], [0.2871, 0.3301], [0.2109, 0.832], [0.4297, 0.625], [0.168, 0.4434], [0.1348, 0.1211], [0.9668, 0.0859], [0.3164, 0.873], [0.1777, 0.7539], [0.0215, 0.3281], [0.6719, 0.334], [0.9844, 0.6172], [0.6523, 0.3828], [0.1152, 0.2988], [0.0176, 0.1328], [0.207, 0.0996], [0.6152, 0.9844], [0.0234, 0.0117], [0.0723, 0.6328], [0.2695, 0.7695], [0.2539, 0.9395], [0.502, 0.9941], [0.1504, 0.9961], [0.957, 0.8145], [0.5117, 0.123], [0.4062, 0.4941], [0.0547, 0.1387], [0.4375, 0.2949], [0.373, 0.2109], [0.1699, 0.3086], [0.5176, 0.6445], [0.4863, 0.3027], [0.877, 0.6602], [0.5977, 0.8887], [0.5488, 0.0098], [0.5156, 0.5332], [0.6973, 0.1094], [0.4707, 0.2051], [0.498, 0.7559], [0.0312, 0.7363], [0.2051, 0.4629], [0.541, 0.8379], [0.8398, 0.8965], [0.1426, 0.1855], [0.3711, 0.1172], [0.1328, 0.9082], [0.75, 0.9629], [0.2812, 0.0449], [0.6367, 0.4277], [0.2051, 0.9824], [0.7012, 0.9766], [0.0059, 0.9102], [0.7168, 0.3379], [0.1602, 0.584], [0.8594, 0.1973], [0.3516, 0.7227], [0.0918, 0.9727], [0.416, 0.3359], [0.6465, 0.9355], [0.3418, 0.627], [0.7578, 0.332], [0.0293, 0.6973], [0.9004, 0.957], [0.7012, 0.7617], [0.1855, 0.8652], [0.6914, 0.8184], [0.5684, 0.543], [0.6523, 0.8672], [0.5742, 0.7441], [0.2949, 0.4121], [0.2363, 0.6387], [0.25, 0.1953], [0.0352, 0.5918], [0.248, 0.293], [0.0762, 0.4863], [0.9785, 0.4922], [0.9004, 0.7305], [0.9277, 0.5527], [0.9395, 0.125], [0.3691, 0.8789], [0.4805, 0.0469], [0.5703, 0.4551], [0.4199, 0.2246], [0.0371, 0.625], [0.3281, 0.4941], [0.1152, 0.6094], [0.2793, 0.834], [0.5039, 0.166], [0.4609, 0.5312], [0.0645, 0.7715], [0.6035, 0.7227], [0.4746, 0.6348], [0.6777, 0.5684], [0.2773, 0.4512], [0.8008, 0.1191], [0.3945, 0.9297], [0.2109, 0.6855], [0.5977, 0.1875], [0.5195, 0.0742], [0.1309, 0.4609], [0.9531, 0.4277], [0.4785, 0.9648], [0.543, 0.3262], [0.9121, 0.041], [0.5059, 0.7188], [0.0098, 0.2969], [0.8438, 0.3789], [0.1504, 0.2637], [0.7969, 0.873], [0.8613, 0.9863], [0.834, 0.7461], [0.377, 0.6211], [0.791, 0.7227], [0.6758, 0.8457], [0.7832, 0.8066], [0.834, 0.5293], [0.1973, 0.6562], [0.8281, 0.9609], [0.5332, 0.7773], [0.9062, 0.8008], [0.3262, 0.0234], [0.8984, 0.7676]];
+// JOINTS: points in the joints between the flagstones (in one 2 m tile of
+// the floor's texture, 0..1), found from its height map and colour
+const PT = { IVY: 0, BLADE: 1, DAISY: 2, WEED: 3 };
+const ATLAS_ASPECT = 2.0;
+
+function buildGreenery() {
+	const walls = { pos: [], nrm: [], uv: [], info: [], idx: [] };
+	const ground = { pos: [], nrm: [], uv: [], info: [], idx: [] };
+	let g = walls;
+	const rnd = rng(2718);
+	const norm = (v) => { const l = Math.hypot(v[0], v[1], v[2]) || 1; return [v[0] / l, v[1] / l, v[2] / l]; };
+	const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+	const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+	const madd = (a, b, k) => [a[0] + b[0] * k, a[1] + b[1] * k, a[2] + b[2] * k];
+	const pick = (arr) => arr[Math.floor(rnd() * arr.length)];
+	const aspect = (r) => (r[2] - r[0]) * ATLAS_ASPECT / (r[3] - r[1]);
+	const add = (p, n, uv, shade, type, t) => {
+		g.pos.push(p[0] + O[0], p[1] + O[1], p[2] + O[2]); g.nrm.push(n[0], n[1], n[2]); g.uv.push(uv[0], uv[1]); g.info.push(shade, type, t);
+		return g.pos.length / 3 - 1;
+	};
+	// a cut-out card from its base up along ay (its full length), ax its half
+	// width; its tip bends by `bend` along bd; n is the normal it is lit with
+	const card = (base, ax, ay, r, shade, type, n, bd, bend) => {
+		const S = bend ? 2 : 1;
+		const b0 = g.pos.length / 3;
+		for (let i = 0; i <= S; i++) {
+			const t = i / S;
+			const c = bend ? madd(madd(base, ay, t), bd, bend * t * t) : madd(base, ay, t);
+			const v = r[3] + (r[1] - r[3]) * t;
+			add(madd(c, ax, -1), n, [r[0], v], shade, type, t);
+			add(madd(c, ax, 1), n, [r[2], v], shade, type, t);
+		}
+		for (let i = 0; i < S; i++) { const a = b0 + i * 2; g.idx.push(a, a + 1, a + 3, a, a + 3, a + 2); }
+	};
+
+	// ---- ivy -------------------------------------------------------------
+	const IVY = [...PLANT_UV.ivy, ...PLANT_UV.ivy, ...PLANT_UV.weed.slice(0, 7)];
+	const UP = [0, 1, 0];
+	// one leaf at `at`, facing out along n from a wall whose upward is up
+	const ivyLeaf = (at, n, up, size, shade) => {
+		const r = pick(IVY);
+		const side = cross(up, n);
+		const ln = norm(madd(madd(n, up, rnd() * 0.9 - 0.25), side, (rnd() - 0.5) * 0.8));
+		let ay = norm(madd(up, ln, -dot(up, ln)));
+		const th = (rnd() - 0.5) * 2.0, c = Math.cos(th), s = Math.sin(th);
+		ay = norm(madd(madd([0, 0, 0], ay, c), cross(ln, ay), s));
+		const ax = cross(ay, ln);
+		const w = size * aspect(r);
+		card(madd(at, ay, -size * 0.18), madd([0, 0, 0], ax, w / 2), madd([0, 0, 0], ay, size), r, shade, PT.IVY, ln);
+	};
+	// a patch of ivy on a wall face: o its foot (on the face), u along it, n
+	// out into the room. Stems climb (or, draping, hang) and wander, branching
+	// now and then, thick with leaves; their reach falls off towards the
+	// patch's edges, so it reads as one growth rather than a box of leaves
+	const ivyPatch = (o, u, n, s0, width, height, density, drape, stopAt) => {
+		const stems = Math.max(3, Math.round(width * 3.4 * density));
+		const stack = [];
+		for (let k = 0; k < stems; k++) {
+			const s = s0 + (rnd() - 0.5) * width;
+			const edge = Math.min(1, Math.abs(s - s0) / (width / 2 + 1e-3));
+			const reach = height * (0.6 + 0.4 * rnd()) * (1 - 0.5 * edge * edge);
+			stack.push([s, drape ? drape : rnd() * 0.15, (rnd() - 0.5) * 0.5, reach, 0]);
+		}
+		let guard = 0;
+		while (stack.length && guard++ < 4000) {
+			let [s, y, ang, reach, gen] = stack.pop();
+			const y0 = y;
+			for (let step = 0; step < 260; step++) {
+				ang += (rnd() - 0.5) * 0.45;
+				ang = Math.max(-1.0, Math.min(1.0, ang));
+				s += Math.sin(ang) * 0.09;
+				y += (drape ? -1 : 1) * Math.cos(ang) * 0.09;
+				const done = drape ? (y0 - y > reach || y < (stopAt ? stopAt(s) : 0.05)) : y - y0 > reach;
+				if (done) break;
+				const t = drape ? (y0 - y) / reach : (y - y0) / reach;
+				const leaves = rnd() < 0.9 * density ? (rnd() < 0.5 ? 2 : 1) : 0;
+				for (let l = 0; l < leaves; l++) {
+					const out = 0.015 + rnd() * 0.11;
+					const at = madd(madd(madd(o, u, s + (rnd() - 0.5) * 0.2), UP, y + (rnd() - 0.5) * 0.12), n, out);
+					const size = (0.12 + 0.09 * rnd()) * (drape ? 1.05 - 0.3 * t : 1.2 - 0.4 * t);
+					ivyLeaf(at, n, UP, size, 0.45 + 0.55 * (out / 0.125) * (0.6 + 0.4 * rnd()));
+				}
+				if (gen < 2 && rnd() < 0.035) stack.push([s, y, ang + (rnd() < 0.5 ? -0.7 : 0.7), reach * (0.35 + 0.4 * rnd()) * (1 - t * 0.5), gen + 1]);
+			}
+		}
+	};
+	const NW = { o: [0, 0, 0], u: [1, 0, 0], n: [0, 0, 1] };          // the niche wall
+	const DW = { o: [0, 0, L], u: [1, 0, 0], n: [0, 0, -1] };         // the red door's wall
+	const GW = { o: [W, 0, 0], u: [0, 0, 1], n: [-1, 0, 0] };         // the wall shared with the gallery
+	const patch = (w, ...a) => ivyPatch(w.o, w.u, w.n, ...a);
+	// round the niche: thick on its left as in his photograph, lighter on its right
+	patch(NW, 4.25, 2.6, 6.6, 1.25);
+	patch(NW, 11.9, 3.0, 5.2, 1.0);
+	patch(NW, 1.0, 1.8, 3.2, 0.9);
+	patch(NW, 15.0, 1.8, 3.8, 0.9);
+	// spilling over the niche's cornice and down across the arch and the left pier
+	{
+		const zc = NICHE.face - 0.26, front = { o: [0, 0, L - zc + 0.03], u: [1, 0, 0], n: [0, 0, 1] };
+		const top = 5.35 + 1.02;
+		ivyPatch(front.o, front.u, front.n, W - NICHE.x1 + 1.0, 1.9, 2.2, 1.2, top, () => 3.2);
+		ivyPatch(front.o, front.u, front.n, W - NICHE.x0 - 0.5, 0.8, 1.0, 0.8, top, () => 4.6);
+		// and a crest of leaves along the pediment's top
+		for (let i = 0; i < 70; i++) {
+			const x = NICHE.x0 + 0.2 + Math.pow(rnd(), 1.6) * 2.4;
+			const hx = (NICHE.x1 - NICHE.x0) / 2 + 0.2;
+			const y = top + 0.62 * (1 - Math.abs(x - NICHE.cx) / hx) + 0.02;
+			ivyLeaf([W - x, y + rnd() * 0.05, 0.1 + rnd() * (L - zc - 0.15)], norm([0, 1, 0.3]), [0, 0, 1], 0.08 + rnd() * 0.05, 0.7 + 0.3 * rnd());
+		}
+	}
+	// round the red door, and over its arch (never across it)
+	patch(DW, 5.4, 2.8, 5.6, 1.1);
+	patch(DW, 11.0, 3.2, 6.4, 1.1);
+	patch(DW, 1.2, 2.0, 3.0, 0.8);
+	patch(DW, 14.9, 2.0, 4.4, 0.9);
+	ivyPatch(DW.o, DW.u, DW.n, W / 2 + 0.3, 3.6, 1.6, 1.1, 5.2, (s) => (Math.abs(s - W / 2) < 1.25 ? 4.15 : 2.6));
+	// along the gallery wall
+	patch(GW, 2.6, 3.6, 6.6, 1.1);
+	patch(GW, 9.2, 4.0, 4.6, 0.9);
+	patch(GW, 15.6, 4.6, 7.0, 1.2);
+	patch(GW, 20.9, 1.6, 3.0, 0.9);
+	// and low tufts of it at the feet of the bougainvillea on the window wall
+	for (const [k, c] of VINE.filter((v) => v[0] === 'wall')) { void k; ivyPatch([0, 0, 0], [0, 0, 1], [1, 0, 0], c, 1.2, 1.1, 0.8); }
+
+	// ---- the ground: grass, weeds and daisies ---------------------------
+	g = ground;
+	const blade = (x, y, z, h, lean, dir, shade) => {
+		const r = pick(PLANT_UV.blade);
+		const d = [Math.cos(dir), 0, Math.sin(dir)];
+		const w = Math.max(h * 0.16, 0.012);
+		card([x, y, z], [-d[2] * w / 2, 0, d[0] * w / 2], [d[0] * lean * h * 0.4, h, d[2] * lean * h * 0.4], r, shade, PT.BLADE, norm([d[0] * 0.5, 1, d[2] * 0.5]), d, h > 0.12 ? h * lean * 0.6 : 0);
+	};
+	const tuft = (x, y, z, h, n) => {
+		for (let i = 0; i < n; i++) {
+			const a = rnd() * 2 * PI, rr = rnd() * 0.035;
+			blade(x + Math.cos(a) * rr, y, z + Math.sin(a) * rr, h * (0.45 + 0.55 * rnd()), 0.25 + 0.75 * rnd(), a + (rnd() - 0.5), 0.6 + 0.4 * rnd());
+		}
+	};
+	const rosette = (x, y, z, size) => {
+		const n = 4 + Math.floor(rnd() * 3), a0 = rnd() * 2 * PI;
+		for (let i = 0; i < n; i++) {
+			const r = pick(PLANT_UV.weed), a = a0 + i * 2 * PI / n + (rnd() - 0.5) * 0.4;
+			const d = [Math.cos(a), 0, Math.sin(a)], lift = 0.35 + rnd() * 0.45, sz = size * (0.7 + 0.5 * rnd());
+			const ay = [d[0] * Math.cos(lift) * sz, Math.sin(lift) * sz, d[2] * Math.cos(lift) * sz];
+			const w = sz * aspect(r);
+			card([x, y + 0.004, z], [-d[2] * w / 2, 0, d[0] * w / 2], ay, r, 0.7 + 0.3 * rnd(), PT.WEED, norm([-d[0] * Math.sin(lift), Math.cos(lift), -d[2] * Math.sin(lift)]), [0, -1, 0], sz * 0.15);
+		}
+	};
+	const daisy = (x, y, z) => {
+		const h = 0.05 + rnd() * 0.12;
+		blade(x, y, z, h + 0.02, 0.15, rnd() * 2 * PI, 0.8);
+		const r = pick(PLANT_UV.daisy), sz = 0.03 + rnd() * 0.025;
+		const tl = (rnd() - 0.5) * 0.6, a = rnd() * 2 * PI;
+		// the flower head, facing up (a flat card, its 'up' lying across)
+		const ay = [Math.cos(a) * sz * 2, Math.sin(tl) * sz, Math.sin(a) * sz * 2];
+		const ax = [-Math.sin(a) * sz, 0, Math.cos(a) * sz];
+		card([x - Math.cos(a) * sz, y + h, z - Math.sin(a) * sz], ax, ay, r, 1.0, PT.DAISY, [0, 1, 0]);
+		rosette(x, y, z, 0.04);
+	};
+	const plant = (x, y, z, big) => {
+		const k = rnd();
+		if (k < 0.8) tuft(x, y, z, big ? 0.2 + 0.3 * rnd() : 0.08 + 0.1 * rnd(), big ? 5 + Math.floor(rnd() * 6) : 3 + Math.floor(rnd() * 3));
+		else if (k < 0.93) rosette(x, y, z, big ? 0.09 + 0.06 * rnd() : 0.06 + 0.03 * rnd());
+		else daisy(x, y, z);
+	};
+	// where nothing grows: in the pool, on the niche's base, in the doorway
+	const pX0 = POOL.x0 - POOL.curb - 0.08, pX1 = POOL.x1 + POOL.curb + 0.08, pZ0 = POOL.z0 - POOL.curb - 0.08, pZ1 = POOL.z1 + POOL.curb + 0.08;
+	const nX0 = W - NICHE.x1 - 0.16, nX1 = W - NICHE.x0 + 0.16, nZ1 = L - NICHE.face + 0.36;
+	const blocked = (x, z) => (x > pX0 && x < pX1 && z > pZ0 && z < pZ1) || (x > nX0 && x < nX1 && z < nZ1) || (Math.abs(x - W / 2) < 1.15 && z > L - 0.5) || x < 0.06 || x > W - 0.06 || z < 0.06 || z > L - 0.06;
+	const nearEdge = (x, z) => {
+		const dw = Math.min(x, W - x, z, L - z);
+		const dp = Math.max(pX0 - x, x - pX1, pZ0 - z, z - pZ1);
+		const dn = Math.max(nX0 - x, x - nX1, z - nZ1);
+		return Math.min(dw, Math.max(dp, 0) + (dp < 0 ? 9 : 0), Math.max(dn, 0) + (dn < 0 ? 9 : 0));
+	};
+	// a slow variation across the room, so the weeds come in drifts
+	const drift = (x, z) => 0.5 + 0.5 * Math.sin(x * 0.9 + 1.3) * Math.sin(z * 0.7 - 0.4) + 0.25 * Math.sin(x * 2.3 + z * 1.7);
+	// in the joints of the flagstones
+	for (let ix = 0; ix * 2 < W; ix++) for (let iz = 0; iz * 2 < L; iz++) {
+		for (const [ju, jv] of JOINTS) {
+			const x = (ix + ju) * 2, z = (iz + jv) * 2;
+			if (blocked(x, z)) continue;
+			const e = nearEdge(x, z);
+			const pr = (e < 1.2 ? 0.75 - 0.4 * e : 0.2) * Math.max(0.2, drift(x, z));
+			if (rnd() < pr) plant(x, 0.002, z, e < 0.8 && rnd() < 0.85);
+		}
+	}
+	// a line of grass and weeds at the foot of the walls
+	const footLine = (p0, p1, inward) => {
+		const len = Math.hypot(p1[0] - p0[0], p1[1] - p0[1]);
+		for (let d = 0; d < len; d += 0.08) {
+			if (rnd() > 0.8) continue;
+			const t = d / len, off = 0.04 + Math.pow(rnd(), 2) * 0.3;
+			const x = p0[0] + (p1[0] - p0[0]) * t + inward[0] * off, z = p0[1] + (p1[1] - p0[1]) * t + inward[1] * off;
+			if (blocked(x, z)) continue;
+			plant(x, 0.002, z, true);
+		}
+	};
+	footLine([0, 0], [0, L], [1, 0]);
+	footLine([W, 0], [W, L], [-1, 0]);
+	footLine([0, 0], [W, 0], [0, 1]);
+	footLine([0, L], [W, L], [0, -1]);
+	// round the pool's curb and the niche's base
+	footLine([pX0, pZ0], [pX1, pZ0], [0, -1]);
+	footLine([pX0, pZ0], [pX0, pZ1], [-1, 0]);
+	footLine([pX1, pZ0], [pX1, pZ1], [1, 0]);
+	footLine([nX0, nZ1], [nX1, nZ1], [0, 1]);
+	footLine([nX0, 0], [nX0, nZ1], [-1, 0]);
+	footLine([nX1, 0], [nX1, nZ1], [1, 0]);
+	// and a few small tufts in the joints of the coping on top of the curb
+	for (let i = 0; i < 60; i++) {
+		const side = Math.floor(rnd() * 3);
+		let x, z;
+		if (side < 2) { x = side ? POOL.x1 + 0.08 + rnd() * 0.38 : POOL.x0 - 0.08 - rnd() * 0.38; z = POOL.z0 + rnd() * (POOL.z1 - POOL.z0); }
+		else { z = POOL.z1 + 0.08 + rnd() * 0.38; x = POOL.x0 + rnd() * (POOL.x1 - POOL.x0); }
+		tuft(x, POOL.top, z, 0.04 + 0.06 * rnd(), 2 + Math.floor(rnd() * 3));
+	}
+	return { walls, ground };
+}
+
 // ------------------------------------------------------------------
 // GLSL: shared noise and the room's light
 // ------------------------------------------------------------------
@@ -1681,7 +1936,7 @@ const FRAG = `
 	precision highp float;
 	uniform float night, time, yScale, mirrorOn;
 	uniform sampler2D padTex, petalTex, reflTex;
-	uniform sampler2D rockCol, rockNrm, oldCol, oldNrm;
+	uniform sampler2D rockCol, rockNrm, oldCol, oldNrm, floorCol, floorNrm;
 	uniform vec2 reflSize;
 	uniform float reflOn;
 	uniform mat4 view;
@@ -1817,27 +2072,22 @@ const FRAG = `
 			base = vec3(0.035, 0.036, 0.038) * (0.8 + 0.4 * vnoise3(p * 3.0));
 			gloss = 0.45;
 		} else if (is(${K.FLOOR}.0)) {
-			// the gallery's own floor: polished chequered marble, black and
-			// dark cream, laid on the diagonal, with fine veins and hair-line
-			// grout, the polish duller where people walk
-			vec2 tq = mat2(0.70711, 0.70711, -0.70711, 0.70711) * (p.xz - vec2(${f(W / 2)}, 0.0));
-			float tileSize = 0.62;
-			vec2 tile = floor(tq / tileSize);
-			checker = mod(tile.x + tile.y, 2.0);
-			float rnd = hash13(vec3(tile, 5.0));
-			vec3 lightTile = vec3(0.44, 0.37, 0.24) * (0.9 + 0.16 * rnd);
-			vec3 darkTile = vec3(0.0008, 0.0007, 0.0006) + vec3(0.0002) * rnd;
-			float vein = abs(sin(tq.x * 5.5 + tq.y * 2.0 + sin(tq.y * 1.6) + rnd * 6.0));
-			vein = 1.0 - smoothstep(0.0, 0.09, vein);
-			base = mix(lightTile, darkTile, checker);
-			base = mix(base, base * 0.65, vein * 0.35 * (1.0 - checker));
-			base = mix(base, base * 2.2 + 0.0006, vein * 0.18 * checker);
-			vec2 tf = fract(tq / tileSize);
-			float edge = min(min(tf.x, 1.0 - tf.x), min(tf.y, 1.0 - tf.y)) * tileSize;
-			float grout = 1.0 - smoothstep(0.0, 0.006, edge);
-			base *= 1.0 - 0.45 * grout;
-			gloss = (0.86 + 0.28 * hash13(vec3(tile, 17.0))) * (1.0 - 0.5 * grout);
-			aoK = mix(0.62, 1.0, smoothstep(0.0, 0.9, min(min(p.x, ${f(W)} - p.x), min(p.z, ${f(L)} - p.z))));
+			// flagstones: irregular grey slabs, worn and uneven, with grass and
+			// moss in the joints between them (res/studio/floor_*)
+			vec2 uv = p.xz / 2.0;
+			vec3 tc = texture2D(floorCol, uv).rgb; tc *= tc;
+			vec4 tn = texture2D(floorNrm, uv);
+			float lum = dot(tc, vec3(0.3, 0.59, 0.11));
+			float green = smoothstep(-0.01, 0.035, sqrt(tc.g) - 0.5 * (sqrt(tc.r) + sqrt(tc.b)));
+			// the stones greyed like his photograph, the joints kept green
+			base = mix(mix(vec3(lum), tc, 0.35) * vec3(1.18, 1.20, 1.16), tc * vec3(0.62, 1.12, 0.42), green);
+			base *= 0.84 + 0.28 * fbm3(vec3(p.xz * 0.3, 4.0));
+			// damp and darker near the walls and round the pool
+			float wallD = min(min(p.x, ${f(W)} - p.x), min(p.z, ${f(L)} - p.z));
+			base *= mix(0.72, 1.0, smoothstep(0.0, 1.2, wallD));
+			N = normalize(N + (vec3(1.0, 0.0, 0.0) * (tn.r * 2.0 - 1.0) + vec3(0.0, 0.0, -1.0) * (tn.g * 2.0 - 1.0)) * 1.2);
+			gloss = 0.12;
+			aoK = mix(0.5, 1.0, tn.b) * mix(0.62, 1.0, smoothstep(0.0, 0.9, wallD));
 			// the curb throws a soft shadow round the pool
 			vec2 dq = max(vec2(${f(POOL.x0 - POOL.curb)} - p.x, p.x - ${f(POOL.x1 + POOL.curb)}), vec2(${f(POOL.z0 - POOL.curb)} - p.z, p.z - ${f(POOL.z1 + POOL.curb)}));
 			float dpool = max(max(dq.x, dq.y), 0.0);
@@ -1980,14 +2230,9 @@ const FRAG = `
 
 		float alpha = 1.0;
 		if (is(${K.FLOOR}.0)) {
-			// as polished as the gallery's: a clear reflection even looking
-			// down, a mirror at grazing angles, more on the black tiles
+			// worn stone: no mirror, just a faint sheen of the room at grazing angles
 			float cosV = clamp(V.y, 0.0, 1.0);
-			float refl = 0.16 + 0.58 * pow(1.0 - cosV, 3.0);
-			refl *= mix(0.72, 1.0, checker);
-			refl *= gloss;
-			alpha = 1.0 - refl * mirrorOn;
-			alpha = mix(alpha, 1.0, clamp(sunVis * 0.4, 0.0, 0.45));
+			alpha = 1.0 - 0.1 * pow(1.0 - cosV, 4.0) * mirrorOn;
 		}
 		if (is(${K.WATER}.0)) {
 			// still, dark water: almost a mirror, the sky's light on it, a
@@ -2224,12 +2469,16 @@ module.exports = function (regl) {
 	const petalTex = loadTexture(regl, 'res/pond/petals.webp');
 	// the rough slab walls and the old stone of the niche and the pool
 	// (Poly Haven, CC0: see the readme)
+	// (and the flagstones of the floor, Poly Haven too)
 	const rockCol = loadTexture(regl, 'res/studio/rock_col.webp', { wrap: 'repeat' });
 	const rockNrm = loadTexture(regl, 'res/studio/rock_nrm.webp', { wrap: 'repeat' });
 	const oldCol = loadTexture(regl, 'res/studio/oldstone_col.webp', { wrap: 'repeat' });
 	const oldNrm = loadTexture(regl, 'res/studio/oldstone_nrm.webp', { wrap: 'repeat' });
+	const floorCol = loadTexture(regl, 'res/studio/floor_col.webp', { wrap: 'repeat' });
+	const floorNrm = loadTexture(regl, 'res/studio/floor_nrm.webp', { wrap: 'repeat' });
 	const ROOM_UNIFORMS = Object.assign({ padTex: () => padTex.tex, petalTex: () => petalTex.tex, reflTex: () => reflTex, reflSize: () => reflSize, reflOn: () => reflOn,
-		rockCol: () => rockCol.tex, rockNrm: () => rockNrm.tex, oldCol: () => oldCol.tex, oldNrm: () => oldNrm.tex }, POOL_UNIFORMS);
+		rockCol: () => rockCol.tex, rockNrm: () => rockNrm.tex, oldCol: () => oldCol.tex, oldNrm: () => oldNrm.tex,
+		floorCol: () => floorCol.tex, floorNrm: () => floorNrm.tex }, POOL_UNIFORMS);
 	const makeDraw = (g, count) => regl({
 		vert: V(VERT),
 		frag: FRAG,
@@ -2369,6 +2618,74 @@ module.exports = function (regl) {
 		cull: { enable: false }
 	});
 
+
+	// the greenery (see buildGreenery): ivy on the walls, and the ground's
+	// grass, weeds and daisies, as photographed cut-outs
+	const plantTex = loadTexture(regl, 'res/studio/plants.webp');
+	const green = buildGreenery();
+	const makeGreen = (gg) => regl({
+		vert: V(`
+		precision highp float;
+		uniform mat4 proj, view;
+		uniform float yScale;
+		attribute vec3 position, normal, info;
+		attribute vec2 uv;
+		varying vec3 v_pos, v_nrm, v_eye, v_info;
+		varying vec2 v_uv;
+		void main() {
+			v_pos = position; v_nrm = normal; v_uv = uv; v_info = info;
+			vec3 t = view[3].xyz;
+			v_eye = -vec3(dot(view[0].xyz, t), dot(view[1].xyz, t), dot(view[2].xyz, t));
+			v_eye.y *= yScale;
+			vec3 p = position; p.y *= yScale;
+			gl_Position = proj * view * vec4(p, 1.0);
+		}`),
+		frag: `
+		precision highp float;
+		uniform float night, time;
+		uniform sampler2D tex;
+		varying vec3 v_pos, v_nrm, v_eye, v_info;
+		varying vec2 v_uv;
+		${LIGHT}
+		void main() {
+			vec4 tx = texture2D(tex, v_uv);
+			if (tx.a < 0.5) discard;
+			vec3 V = normalize(v_eye - v_pos);
+			vec3 N = normalize(v_nrm);
+			if (dot(N, V) < 0.0) N = -N;
+			float type = v_info.y;
+			vec3 base = tx.rgb * tx.rgb;
+			float gloss = 0.3, through = 1.8;
+			if (type < 0.5) {
+				// ivy: the photographed leaves deepened to an old ivy's dark green
+				float l = dot(base, vec3(0.3, 0.59, 0.11));
+				base = mix(vec3(l), base, 1.3) * vec3(0.42, 0.60, 0.36);
+				gloss = 0.55; through = 1.2;
+			} else if (type < 1.5) {
+				base *= vec3(0.80, 0.92, 0.62);
+				// darker down in the grass, near the ground
+				base *= mix(0.35, 1.0, smoothstep(0.0, 0.7, v_info.z));
+			} else if (type < 2.5) {
+				gloss = 0.15; through = 0.8;
+			} else {
+				base *= vec3(0.62, 0.78, 0.5);
+			}
+			base *= v_info.x;
+			vec3 spec; float sv;
+			vec3 light = studioLight(v_pos, N, V, gloss, spec, sv);
+			float tr = max(dot(-N, STUDIO_SUN), 0.0) * sv;
+			vec3 col = base * light + base * vec3(0.9, 1.0, 0.5) * tr * through * (1.0 - night) + spec * 0.2 * gloss;
+			col = studioAir(col, v_pos, v_eye);
+			gl_FragColor = vec4(sqrt(max(col, 0.0)), 1.0);
+		}`,
+		attributes: { position: gg.pos, normal: gg.nrm, uv: gg.uv, info: gg.info },
+		elements: new Uint32Array(gg.idx),
+		uniforms: { tex: plantTex.tex },
+		cull: { enable: false }
+	});
+	const drawIvy = makeGreen(green.walls);
+	const drawWeeds = makeGreen(green.ground);
+	if (typeof location !== 'undefined' && /tourdebug/.test(location.search)) console.log('studio greenery: ivy verts', green.walls.pos.length / 3, 'ground verts', green.ground.pos.length / 3);
 
 	// the falling petals: one little card each, placed by the shader
 	const fl = (() => {
@@ -3059,6 +3376,8 @@ module.exports = function (regl) {
 		if (!(opts && opts.reflected)) { drawBed(); drawKoi(); drawCrumbs(); }
 		if (drawVenus) drawVenus();
 		drawLeaves();
+		drawIvy();
+		if (!(opts && opts.reflected)) drawWeeds();
 		drawFalling();
 		if (!(opts && opts.reflected)) drawGlass();
 	}
