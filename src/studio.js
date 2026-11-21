@@ -23,6 +23,8 @@
  * the same weathered stone runs back towards the door: dark still water
  * full of lily pads and pink water lilies.
  *
+ * Where the pool ends, before the red door, a ruined rotunda of old
+ * stone stands on its line, hung with sheer dark red netting (see ROT).
  * A work table with jars of brushes stands under the windows; pendant
  * lamps hang from the trusses (lit at night).
  *
@@ -88,7 +90,19 @@ const NICHE = { cx: W / 2, hw: 1.12, spring: 3.95, pier: 1.05, face: L - 1.45, b
 NICHE.x0 = NICHE.cx - NICHE.hw - NICHE.pier;
 NICHE.x1 = NICHE.cx + NICHE.hw + NICHE.pier;
 // the pool, from the niche's foot towards the door
-const POOL = { x0: W / 2 - 1.7, x1: W / 2 + 1.7, z0: L - NICHE.face + 0.44, z1: L - 7.2, curb: 0.5, top: 0.36 };
+const POOL = { x0: W / 2 - 1.7, x1: W / 2 + 1.7, z0: L - NICHE.face + 0.44, z1: L - 8.2, curb: 0.5, top: 0.36 };
+// where the pool ends, before the red door: a ruined rotunda of old stone
+// (after his reference), a round drum with four arched openings, a cornice
+// and a broken top, all hung with sheer dark red cloth falling in folds and
+// pooling on the floor. It stands on the pool's line: from the red door
+// its arches frame the niche's arch, with the nymph in it, down the pool.
+// Openings face the door (angle 0, +z), the niche (PI) and the two sides;
+// an angle is measured as atan(x - cx, z - cz).
+const ROT = { cx: W / 2, cz: 18.1, ri: 1.66, ro: 2.06, top: 6.0, hw: 0.84, spring: 3.4, cornice: 4.85, cloth: 2.35, gap: 1.05 };
+// the folds of the cloth round the drum, taken from his draped-cloth
+// simulation (Nylon_Canvas.glb: the cloth fallen over a sphere), sampled at
+// 64 steps round its hem, -1..1
+const CLOTH_FOLD = [0.647, 0.614, 0.279, -0.154, -0.322, -0.191, -0.012, 0.041, -0.087, -0.551, -0.876, -1.0, 0.368, 0.414, 0.325, 0.162, 0.216, 0.345, 0.495, 0.35, 0.369, -0.7, -0.522, -0.318, -0.128, -0.041, 0.581, 0.696, 0.442, 0.274, 0.394, 0.607, 0.713, -0.498, -0.313, 0.401, 0.802, 0.751, -0.174, -0.702, -0.917, -0.992, -0.883, 0.29, 0.475, 0.557, 0.55, 0.426, 0.135, -0.125, -0.259, -0.391, -0.671, -0.951, -0.964, -0.727, -0.471, -0.32, -0.244, -0.123, 0.166, 0.573, 0.775, 0.395];
 // the old pool's layout (where its pads, lilies and koi were placed, from
 // the door's end, 5.6, to the statue's, 16.6), mapped onto this one
 const PZ = (z) => POOL.z1 - (z - 5.6) / 11.0 * (POOL.z1 - POOL.z0);
@@ -164,7 +178,7 @@ function sunGLSL() {
 		return band * studioVineClump(u, seed) * dap * 0.85;
 	}
 
-	float studioSun(vec3 pw) {
+	float studioSun0(vec3 pw) {
 		vec3 p = pw - vec3(${f(O[0])}, ${f(O[1])}, ${f(O[2])});
 		vec3 S = STUDIO_SUN;
 		// the niche: inside its hollow, the sun gets in only through the arch;
@@ -240,7 +254,51 @@ function sunGLSL() {
 		${VINE.filter((v) => v[0] === 'rafter').map(([k, c, sd]) => `pat *= 1.0 - studioVineShade(h.z - ${f(c)}, h.x, h.z, ${f(sd)});`).join('\n\t\t')}
 		pat *= 1.0 - studioVineShade(h.x - ${f(W / 2)}, h.z, h.x, 0.9);
 		return vis * (1.0 - bar) * pat * 0.78;
-	}`;
+	}
+
+	// the rotunda: its ring of stone stops the sun except through the
+	// arches; its sheer cloth lets about half through
+	float rotHit(vec2 c, vec2 d, float a, float R, out float t1, out float t2) {
+		float b = dot(c, d), cc = dot(c, c) - R * R, disc = b * b - a * cc;
+		if (disc <= 0.0) { t1 = t2 = -1.0; return 0.0; }
+		float q = sqrt(disc);
+		t1 = (-b - q) / a; t2 = (-b + q) / a;
+		return 1.0;
+	}
+	float rotOpen(vec3 h, float R) {
+		float an = atan(h.x - ${f(ROT.cx)}, h.z - ${f(ROT.cz)});
+		float m = an - 1.5707963 * floor(an / 1.5707963 + 0.5);
+		float d = R * sin(m);
+		return (abs(d) < ${f(ROT.hw)} && h.y < ${f(ROT.spring)} + sqrt(max(${f(ROT.hw * ROT.hw)} - d * d, 0.0))) ? 1.0 : 0.0;
+	}
+	float rotShade(vec3 pw) {
+		vec3 p = pw - vec3(${f(O[0])}, ${f(O[1])}, ${f(O[2])});
+		vec3 S = STUDIO_SUN;
+		vec2 c = p.xz - vec2(${f(ROT.cx)}, ${f(ROT.cz)});
+		vec2 d = S.xz;
+		float a = dot(d, d);
+		float k = 1.0, t1, t2;
+		// the stone (as one thin ring at the middle of the wall)
+		if (rotHit(c, d, a, ${f((ROT.ri + ROT.ro) / 2)}, t1, t2) > 0.0) {
+			if (t1 > 0.03) { vec3 h = p + S * t1; if (h.y < ${f(ROT.top - 0.2)} && rotOpen(h, ${f((ROT.ri + ROT.ro) / 2)}) < 0.5) return 0.0; }
+			if (t2 > 0.03) { vec3 h = p + S * t2; if (h.y < ${f(ROT.top - 0.2)} && rotOpen(h, ${f((ROT.ri + ROT.ro) / 2)}) < 0.5) return 0.0; }
+		}
+		// the cloth, except where it parts on the pool's line
+		if (rotHit(c, d, a, ${f(ROT.cloth + 0.15)}, t1, t2) > 0.0) {
+			for (int i = 0; i < 2; i++) {
+				float t = i == 0 ? t1 : t2;
+				if (t > 0.08) {
+					vec3 h = p + S * t;
+					float an = atan(h.x - ${f(ROT.cx)}, h.z - ${f(ROT.cz)});
+					float lat = ${f(ROT.cloth + 0.15)} * abs(sin(an));
+					bool gap = lat < ${f(ROT.gap)} && h.y < ${f(ROT.top)};
+					if (h.y < ${f(ROT.top)} && !gap) k *= 0.5;
+				}
+			}
+		}
+		return k;
+	}
+	float studioSun(vec3 pw) { float s0 = studioSun0(pw); return s0 > 0.0 ? s0 * rotShade(pw) : 0.0; }`;
 }
 
 // ------------------------------------------------------------------
@@ -501,6 +559,214 @@ function buildDoor(g) {
 	g.beam([hx, hy + 0.03, kz], [hx, hy + 0.03, kz - 0.05], 0.011, K.BRASS);
 	knob(kz - 0.075, 0.034, 10);
 	g.box(hx - 0.008, hy - 0.1, hz - 0.0125, hx + 0.008, hy - 0.06, hz - 0.0085, K.KEYHOLE);
+}
+
+// ------------------------------------------------------------------
+// THE ROTUNDA (after his reference): a round drum of old stone with four
+// arched openings, a plinth and a cornice, its top broken unevenly but the
+// same on both sides, so it stays symmetrical about the pool's line
+// ------------------------------------------------------------------
+
+const ROT_OPEN = [0, PI / 2, PI, -PI / 2];
+// how far round a point at angle a is from the nearest opening's middle
+const rotNear = (a) => { const q = PI / 2; return a - Math.round(a / q) * q; };
+// the broken top: worn lower in places, mirrored left and right
+const rotTop = (a) => {
+	const m = Math.abs(a);
+	return ROT.top - 0.55 * Math.pow(Math.max(0, Math.sin(m * 3.0 + 0.6)), 6) - 0.25 * Math.pow(Math.max(0, Math.sin(m * 7.0 + 1.9)), 8) - 0.06 * Math.sin(m * 23.0);
+};
+
+function buildRotunda(g) {
+	const { cx, cz, ri, ro, hw, spring } = ROT;
+	const S = K.OLDSTONE;
+	const P = (a, r, y) => [cx + Math.sin(a) * r, y, cz + Math.cos(a) * r];
+	const arch = (d) => spring + Math.sqrt(Math.max(0, hw * hw - d * d));
+	// one face of the ring (outer, n = +1, or inner, n = -1), cut by the openings
+	const face = (R, n) => {
+		const brk = [];
+		const M = 160;
+		for (let i = 0; i <= M; i++) brk.push(-PI + 2 * PI * i / M);
+		const de = Math.asin(Math.min(0.999, hw / R));
+		for (const c of ROT_OPEN) for (const k of [-1, 1]) brk.push(((c + k * de + PI) % (2 * PI) + 2 * PI) % (2 * PI) - PI);
+		brk.sort((x, y) => x - y);
+		for (let i = 0; i < brk.length - 1; i++) {
+			const a0 = brk[i], a1 = brk[i + 1];
+			if (a1 - a0 < 1e-5) continue;
+			const mid = rotNear((a0 + a1) / 2);
+			const open = Math.abs(R * Math.sin(mid)) < hw && Math.abs(mid) < PI / 4;
+			const y0 = (a) => (open ? arch(R * Math.sin(rotNear(a))) : 0);
+			const na = [Math.sin(a0) * n, 0, Math.cos(a0) * n], nb = [Math.sin(a1) * n, 0, Math.cos(a1) * n];
+			const pa0 = P(a0, R, y0(a0)), pb0 = P(a1, R, y0(a1)), pb1 = P(a1, R, rotTop(a1)), pa1 = P(a0, R, rotTop(a0));
+			const ia = g.v(pa0, na, S, [R * a0, pa0[1]]), ib = g.v(pb0, nb, S, [R * a1, pb0[1]]);
+			const ic = g.v(pb1, nb, S, [R * a1, pb1[1]]), id = g.v(pa1, na, S, [R * a0, pa1[1]]);
+			if (n > 0) g.idx.push(ia, ib, ic, ia, ic, id); else g.idx.push(ia, ic, ib, ia, id, ic);
+			// the top of the wall
+			if (n > 0) {
+				const qa = P(a0, ri, rotTop(a0)), qb = P(a1, ri, rotTop(a1));
+				g.quad(pa1, pb1, qb, qa, [0, 1, 0], S, [[pa1[0], pa1[2]], [pb1[0], pb1[2]], [qb[0], qb[2]], [qa[0], qa[2]]]);
+			}
+		}
+	};
+	face(ro, 1);
+	face(ri, -1);
+	// the openings: straight jambs through the wall, and the arch's soffit
+	for (const c of ROT_OPEN) {
+		const u = [Math.sin(c), 0, Math.cos(c)], t = [Math.cos(c), 0, -Math.sin(c)];
+		const at = (d, R, y) => [cx + u[0] * Math.sqrt(R * R - d * d) + t[0] * d, y, cz + u[2] * Math.sqrt(R * R - d * d) + t[2] * d];
+		for (const k of [-1, 1]) {
+			const d = k * hw, nn = [-t[0] * k, 0, -t[2] * k];
+			g.quad(at(d, ri, 0), at(d, ro, 0), at(d, ro, spring), at(d, ri, spring), nn, S, [[0, 0], [1, 0], [1, 1], [0, 1]]);
+		}
+		const NS = 20;
+		for (let i = 0; i < NS; i++) {
+			const d0 = -hw + 2 * hw * i / NS, d1 = -hw + 2 * hw * (i + 1) / NS;
+			const dm = (d0 + d1) / 2, ym = arch(dm);
+			const nrm = [-(t[0] * dm), -(ym - spring), -(t[2] * dm)];
+			const l = Math.hypot(...nrm); const nn = nrm.map((x) => x / l);
+			g.quad(at(d0, ri, arch(d0)), at(d1, ri, arch(d1)), at(d1, ro, arch(d1)), at(d0, ro, arch(d0)), nn, S, [[d0, 0], [d1, 0], [d1, 1], [d0, 1]]);
+		}
+		// an archivolt round the arch, imposts and a keystone, on the outside
+		const R2 = ro + 0.05;
+		for (let i = 0; i < 24; i++) {
+			const p0 = PI * i / 24, p1 = PI * (i + 1) / 24, r = hw + 0.08;
+			const A = (p) => { const d = Math.cos(p) * r; return at(Math.max(-R2 + 0.01, Math.min(R2 - 0.01, d)), R2, spring + Math.sin(p) * r); };
+			g.beam(A(p0), A(p1), 0.06, S);
+		}
+		for (const k of [-1, 1]) {
+			const a = at(k * (hw + 0.1), ro + 0.06, spring - 0.15), b = at(k * (hw + 0.1), ro + 0.06, spring);
+			g.beam(a, b, 0.14, S);
+		}
+		g.beam(at(0, ro + 0.07, spring + hw - 0.05), at(0, ro + 0.07, spring + hw + 0.3), 0.13, S);
+	}
+	// the plinth and the cornice: rings proud of the drum
+	const ring = (r0, r1, y0, y1, gaps) => {
+		const M = 96;
+		for (let i = 0; i < M; i++) {
+			const a0 = -PI + 2 * PI * i / M, a1 = -PI + 2 * PI * (i + 1) / M;
+			const m = rotNear((a0 + a1) / 2);
+			if (gaps && Math.abs(r1 * Math.sin(m)) < hw + 0.05 && Math.abs(m) < PI / 4) continue;
+			const na = [Math.sin(a0), 0, Math.cos(a0)], nb = [Math.sin(a1), 0, Math.cos(a1)];
+			const ia = g.v(P(a0, r1, y0), na, S, [r1 * a0, y0]), ib = g.v(P(a1, r1, y0), nb, S, [r1 * a1, y0]);
+			const ic = g.v(P(a1, r1, y1), nb, S, [r1 * a1, y1]), id = g.v(P(a0, r1, y1), na, S, [r1 * a0, y1]);
+			g.idx.push(ia, ib, ic, ia, ic, id);
+			g.quad(P(a0, r1, y1), P(a1, r1, y1), P(a1, r0, y1), P(a0, r0, y1), [0, 1, 0], S, [[a0, 0], [a1, 0], [a1, 1], [a0, 1]]);
+			g.quad(P(a0, r0, y0), P(a1, r0, y0), P(a1, r1, y0), P(a0, r1, y0), [0, -1, 0], S, [[a0, 0], [a1, 0], [a1, 1], [a0, 1]]);
+		}
+	};
+	ring(ro - 0.02, ro + 0.12, 0, 0.38, true);
+	ring(ro - 0.02, ro + 0.1, ROT.cornice - 0.12, ROT.cornice, false);
+	ring(ro - 0.02, ro + 0.2, ROT.cornice, ROT.cornice + 0.2, false);
+	// pilasters between the openings
+	for (const c of [PI / 4, 3 * PI / 4, -PI / 4, -3 * PI / 4]) {
+		const w = 0.3 / ro;
+		for (const [r0, r1, y0, y1] of [[ro, ro + 0.07, 0.38, ROT.cornice - 0.12]]) {
+			const a0 = c - w, a1 = c + w;
+			const na = [Math.sin(c), 0, Math.cos(c)];
+			g.quad(P(a0, r1, y0), P(a1, r1, y0), P(a1, r1, y1), P(a0, r1, y1), na, S, [[a0 * r1, y0], [a1 * r1, y0], [a1 * r1, y1], [a0 * r1, y1]]);
+			for (const [a, k] of [[a0, -1], [a1, 1]]) {
+				const sn = [Math.cos(a) * k, 0, -Math.sin(a) * k];
+				g.quad(P(a, r0, y0), P(a, r1, y0), P(a, r1, y1), P(a, r0, y1), sn, S, [[0, y0], [1, y0], [1, y1], [0, y1]]);
+			}
+		}
+	}
+}
+
+// ------------------------------------------------------------------
+// THE CLOTH: sheer dark red netting hung from the rotunda's broken top,
+// gathered into small pleats where it is caught and falling into the
+// simulation's big folds, flaring out and lying in a pool on the floor.
+// It parts at the openings on the pool's line, so the way through is clear.
+// ------------------------------------------------------------------
+
+function buildCloth() {
+	const { cx, cz, ro } = ROT;
+	const pos = [], nrm = [], uv = [], idx = [];
+	const fold = (a) => {
+		// the simulated fold, four times round the drum, with a slow wander
+		const t = ((a / (2 * PI)) * 4 % 1 + 1) % 1 * 64;
+		const i = Math.floor(t), f = t - i;
+		return CLOTH_FOLD[i % 64] * (1 - f) + CLOTH_FOLD[(i + 1) % 64] * f;
+	};
+	const rnd = rng(9090);
+	// the two drapes: from beside the door's opening round to beside the niche's, each side
+	const gapA = Math.asin(Math.min(0.999, ROT.gap / ROT.cloth));
+	const sections = [[gapA, PI - gapA], [-PI + gapA, -gapA]];
+	const NV = 46, POOLN = 8;
+	for (const [a0, a1] of sections) {
+		const NA = Math.round((a1 - a0) * ROT.cloth / 0.035);
+		const base = pos.length / 3;
+		const grid = [];
+		const hemLen = []; for (let i = 0; i <= NA; i++) hemLen.push(0.25 + 0.3 * rnd());
+		for (let j = 0; j <= NV + POOLN; j++) {
+			const row = [];
+			for (let i = 0; i <= NA; i++) {
+				const a = a0 + (a1 - a0) * i / NA;
+				const top = rotTop(a) + 0.04;
+				const edge = Math.min(a - a0, a1 - a) * ROT.cloth;       // distance to the drape's edge
+				let r, y;
+				if (j <= NV) {
+					const v = j / NV;                // 0 at the top, 1 at the floor
+					y = top * (1 - v);
+					// caught over the rim, then falling and flaring
+					// falling clear of the drum and flaring wide towards the floor
+					const flare = 0.5 * Math.pow(v, 2.2) + 0.1 * Math.sqrt(v);
+					const big = (0.05 + 0.34 * Math.pow(v, 1.3)) * fold(a);
+					// many slimmer folds within the big ones, and fine gathers at the top
+					const mid = (0.02 + 0.07 * v) * Math.sin(a * ROT.cloth / 0.16 + 2.0 * fold(a * 1.7));
+					const pleat = 0.03 * (1 - v) * Math.sin(a * ROT.cloth / 0.055) + 0.015 * Math.sin(a * ROT.cloth / 0.031 + v * 3.0);
+					const midP = mid + pleat;
+					const edgeFold = 0.12 * Math.exp(-edge / 0.25) * Math.sin(edge * 18.0) * v;
+					r = ro + 0.05 + flare + big + midP + edgeFold;
+					if (j === 0) { r = ro - 0.15; y = top + 0.02; }
+				} else {
+					// lying on the floor, crumpled, reaching out unevenly
+					const u = (j - NV) / POOLN;
+					const rFloor = ro + 0.05 + 0.6 + 0.39 * fold(a);
+					r = rFloor + u * hemLen[i] * (0.7 + 0.3 * (1 + fold(a + 0.3)));
+					y = 0.012 + 0.05 * Math.max(0, Math.sin(u * 7.0 + a * 23.0)) * (1 - u) + 0.03 * (1 - u);
+				}
+				row.push([cx + Math.sin(a) * r, y, cz + Math.cos(a) * r]);
+			}
+			grid.push(row);
+		}
+		// normals from the grid, and the arc length and height for the weave
+		for (let j = 0; j < grid.length; j++) for (let i = 0; i <= NA; i++) {
+			const p = grid[j][i];
+			const pa = grid[j][Math.max(i - 1, 0)], pb = grid[j][Math.min(i + 1, NA)];
+			const qa = grid[Math.max(j - 1, 0)][i], qb = grid[Math.min(j + 1, grid.length - 1)][i];
+			const du = [pb[0] - pa[0], pb[1] - pa[1], pb[2] - pa[2]], dv = [qb[0] - qa[0], qb[1] - qa[1], qb[2] - qa[2]];
+			let n = [du[1] * dv[2] - du[2] * dv[1], du[2] * dv[0] - du[0] * dv[2], du[0] * dv[1] - du[1] * dv[0]];
+			const l = Math.hypot(...n) || 1; n = n.map((x) => x / l);
+			pos.push(p[0] + O[0], p[1] + O[1], p[2] + O[2]); nrm.push(...n);
+			uv.push((a0 + (a1 - a0) * i / NA) * ROT.cloth, j / (NV + POOLN));
+		}
+		const w = NA + 1;
+		for (let j = 0; j < grid.length - 1; j++) for (let i = 0; i < NA; i++) {
+			const a = base + j * w + i;
+			idx.push(a, a + 1, a + w + 1, a, a + w + 1, a + w);
+		}
+	}
+	// and a veil in each side opening, hung inside the arch
+	for (const c of [PI / 2, -PI / 2]) {
+		const base = pos.length / 3, NA = 40, NVv = 30;
+		const u = [Math.sin(c), 0, Math.cos(c)], t = [Math.cos(c), 0, -Math.sin(c)];
+		for (let j = 0; j <= NVv; j++) for (let i = 0; i <= NA; i++) {
+			const d = -ROT.hw + 2 * ROT.hw * i / NA, v = j / NVv;
+			const yTop = ROT.spring + Math.sqrt(Math.max(0, ROT.hw * ROT.hw - d * d)) - 0.02;
+			const y = yTop * (1 - v) + 0.01;
+			const along = (ROT.ri + ROT.ro) / 2 + 0.06 * Math.sin(d * 34.0) * (0.3 + v) + 0.12 * v * v;
+			const p = [cx + u[0] * along + t[0] * d, y, cz + u[2] * along + t[2] * d];
+			pos.push(p[0] + O[0], p[1] + O[1], p[2] + O[2]);
+			const nn = [u[0] + t[0] * Math.cos(d * 34.0) * 0.6, 0.1, u[2] + t[2] * Math.cos(d * 34.0) * 0.6];
+			const l = Math.hypot(...nn); nrm.push(nn[0] / l, nn[1] / l, nn[2] / l);
+			uv.push(d, v);
+		}
+		for (let j = 0; j < NVv; j++) for (let i = 0; i < NA; i++) {
+			const a = base + j * (NA + 1) + i;
+			idx.push(a, a + 1, a + NA + 2, a, a + NA + 2, a + NA + 1);
+		}
+	}
+	return { pos, nrm, uv, idx };
 }
 
 // add geometry d to g, turned half round about the room's centre (so a
@@ -1172,6 +1438,9 @@ function buildRoom() {
 		appendTurned(g, d);
 	}
 
+	// --- the rotunda where the pool ends
+	buildRotunda(g);
+
 	// --- the pool: a curb of old weathered stone round dark water
 	{
 		const { x0, x1, z0, z1, curb, top } = POOL;
@@ -1760,7 +2029,8 @@ function buildGreenery() {
 	// where nothing grows: in the pool, on the niche's base, in the doorway
 	const pX0 = POOL.x0 - POOL.curb - 0.08, pX1 = POOL.x1 + POOL.curb + 0.08, pZ0 = POOL.z0 - POOL.curb - 0.08, pZ1 = POOL.z1 + POOL.curb + 0.08;
 	const nX0 = W - NICHE.x1 - 0.16, nX1 = W - NICHE.x0 + 0.16, nZ1 = L - NICHE.face + 0.36;
-	const blocked = (x, z) => (x > pX0 && x < pX1 && z > pZ0 && z < pZ1) || (x > nX0 && x < nX1 && z < nZ1) || (Math.abs(x - W / 2) < 1.15 && z > L - 0.5) || x < 0.06 || x > W - 0.06 || z < 0.06 || z > L - 0.06;
+	const rotD = (x, z) => Math.hypot(x - ROT.cx, z - ROT.cz);
+	const blocked = (x, z) => (rotD(x, z) > ROT.ri - 0.1 && rotD(x, z) < ROT.ro + 1.6) || (x > pX0 && x < pX1 && z > pZ0 && z < pZ1) || (x > nX0 && x < nX1 && z < nZ1) || (Math.abs(x - W / 2) < 1.15 && z > L - 0.5) || x < 0.06 || x > W - 0.06 || z < 0.06 || z > L - 0.06;
 	const nearEdge = (x, z) => {
 		const dw = Math.min(x, W - x, z, L - z);
 		const dp = Math.max(pX0 - x, x - pX1, pZ0 - z, z - pZ1);
@@ -2793,6 +3063,63 @@ module.exports = function (regl) {
 		cull: { enable: false }
 	});
 	const drawIvy = makeGreen(green.walls);
+
+	// the rotunda's sheer red cloth: netting, so you see through it face on
+	// and it thickens to deep red where it turns away and where folds overlap;
+	// the sun shining through it from behind sets it glowing
+	const cloth = buildCloth();
+	const drawCloth = regl({
+		vert: V(`
+		precision highp float;
+		uniform mat4 proj, view;
+		uniform float yScale;
+		attribute vec3 position, normal;
+		attribute vec2 uv;
+		varying vec3 v_pos, v_nrm, v_eye;
+		varying vec2 v_uv;
+		void main() {
+			v_pos = position; v_nrm = normal; v_uv = uv;
+			vec3 t = view[3].xyz;
+			v_eye = -vec3(dot(view[0].xyz, t), dot(view[1].xyz, t), dot(view[2].xyz, t));
+			v_eye.y *= yScale;
+			vec3 p = position; p.y *= yScale;
+			gl_Position = proj * view * vec4(p, 1.0);
+		}`),
+		frag: `
+		precision highp float;
+		uniform float night, time;
+		varying vec3 v_pos, v_nrm, v_eye;
+		varying vec2 v_uv;
+		${LIGHT}
+		void main() {
+			vec3 V = normalize(v_eye - v_pos);
+			vec3 N = normalize(v_nrm);
+			float facing = dot(N, V);
+			if (facing < 0.0) N = -N;
+			float cosV = abs(facing);
+			// the net: fine threads, and the threads' own unevenness in streaks down the fall
+			vec2 w = v_uv * vec2(260.0, 900.0);
+			float threads = max(smoothstep(0.78, 0.98, abs(sin(w.x))), smoothstep(0.78, 0.98, abs(sin(w.y))));
+			float streak = 0.5 + 0.5 * sin(v_uv.x * 41.0 + sin(v_uv.y * 9.0 + v_uv.x * 3.0) * 2.0);
+			float sheer = 0.3 + 0.14 * streak + 0.08 * threads;
+			// edge on, the net closes up into solid colour
+			float a = clamp(sheer + (1.0 - sheer) * pow(1.0 - cosV, 2.6) * 0.9, 0.0, 0.9);
+			vec3 base = vec3(0.14, 0.006, 0.03) * (0.8 + 0.4 * streak);
+			vec3 spec; float sv;
+			vec3 light = studioLight(v_pos, N, V, 0.35, spec, sv);
+			float tr = max(dot(-N, STUDIO_SUN), 0.0) * sv * (1.0 - night * 0.6);
+			float sheen = pow(1.0 - cosV, 3.0);
+			// (a little of the room's own dim light caught in the net, so it reads even in the shade)
+			vec3 col = base * (light + vec3(0.35, 0.3, 0.28)) * (1.0 + 1.6 * sheen) + vec3(0.3, 0.012, 0.025) * tr * 0.45 + spec * 0.03;
+			col = studioAir(col, v_pos, v_eye);
+			gl_FragColor = vec4(sqrt(max(col, 0.0)) * a, a);
+		}`,
+		attributes: { position: cloth.pos, normal: cloth.nrm, uv: cloth.uv },
+		elements: new Uint32Array(cloth.idx),
+		cull: { enable: false },
+		depth: { enable: true, mask: false },
+		blend: { enable: true, func: { srcRGB: 'one', srcAlpha: 'one', dstRGB: 'one minus src alpha', dstAlpha: 'one minus src alpha' } }
+	});
 	// the roses: his scanned bloom, one copy at each place the climbers flower
 	const roseTex = loadTexture(regl, 'res/studio/rose_col.webp');
 	let drawRoses = null;
@@ -3644,6 +3971,7 @@ module.exports = function (regl) {
 		if (drawRoses) drawRoses();
 		if (!(opts && opts.reflected)) drawWeeds();
 		drawFalling();
+		drawCloth();
 		if (!(opts && opts.reflected)) { drawGlass(); drawMotes(); }
 	}
 	return draw;
@@ -3665,6 +3993,8 @@ function feeding() { return !!(ACTIVE && ACTIVE.feed.on); }
 // A preview of the room (?studio in the address): the camera drifts
 // slowly through a few shots, with a dip to black between them.
 const PREVIEW = [
+	// from the red door: the rotunda's arches frame the niche, down the pool
+	{ from: [8.0, 1.65, 21.75], to: [8.0, 1.7, 21.2], at: [8.0, 2.3, 1.0], fov: 52 },
 	// in through the red door: the pool runs away to the niche and the nymph
 	{ from: [8.0, 1.65, 21.1], to: [8.0, 1.7, 19.1], at: [8.0, 2.4, 1.0], fov: 58 },
 	{ from: [3.6, 1.65, 20.5], to: [4.6, 1.75, 18.7], at: [8.8, 2.7, 1.5], fov: 58 },
