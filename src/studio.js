@@ -1496,8 +1496,10 @@ function buildGlass() {
 // and round the pool, after his garden references. Every leaf, blade and
 // flower is a photographed cut-out (res/studio/plants.webp, packed from
 // ambientCG's LeafSet017 ivy, LeafSet029, LeafSet024, Foliage001 and
-// FlowerSet001, CC0). Climbing roses, dark red, ramble over the walls
-// without windows: each bloom is built of cupped petals in rings.
+// FlowerSet001, CC0). Climbing roses ramble over the walls without windows,
+// their blooms his scanned rose (res/studio/rose.bin, "Pink Rose" by
+// mtaesiri, CC BY 4.0) turned dark red; the vines carry real grape leaves
+// from his vine scan, curled in 3D.
 // ------------------------------------------------------------------
 
 // where each cut-out sits in plants.webp ([u0, v0, u1, v1], v down)
@@ -1505,11 +1507,17 @@ const PLANT_UV = {ivy: [[0.00293, 0.0127, 0.12207, 0.23633], [0.13037, 0.00586, 
 const JOINTS = [[0.248, 0.8613], [0.3438, 0.9785], [0.4492, 0.584], [0.5957, 0.3281], [0.5371, 0.918], [0.1699, 0.4062], [0.752, 0.6699], [0.5879, 0.2207], [0.3789, 0.8477], [0.2637, 0.2266], [0.6758, 0.7422], [0.6016, 0.0273], [0.5762, 0.502], [0.0469, 0.5078], [0.1406, 0.7773], [0.791, 0.7539], [0.6113, 0.5605], [0.9121, 0.6777], [0.6523, 0.1523], [0.2871, 0.3301], [0.2109, 0.832], [0.4297, 0.625], [0.168, 0.4434], [0.1348, 0.1211], [0.9668, 0.0859], [0.3164, 0.873], [0.1777, 0.7539], [0.0215, 0.3281], [0.6719, 0.334], [0.9844, 0.6172], [0.6523, 0.3828], [0.1152, 0.2988], [0.0176, 0.1328], [0.207, 0.0996], [0.6152, 0.9844], [0.0234, 0.0117], [0.0723, 0.6328], [0.2695, 0.7695], [0.2539, 0.9395], [0.502, 0.9941], [0.1504, 0.9961], [0.957, 0.8145], [0.5117, 0.123], [0.4062, 0.4941], [0.0547, 0.1387], [0.4375, 0.2949], [0.373, 0.2109], [0.1699, 0.3086], [0.5176, 0.6445], [0.4863, 0.3027], [0.877, 0.6602], [0.5977, 0.8887], [0.5488, 0.0098], [0.5156, 0.5332], [0.6973, 0.1094], [0.4707, 0.2051], [0.498, 0.7559], [0.0312, 0.7363], [0.2051, 0.4629], [0.541, 0.8379], [0.8398, 0.8965], [0.1426, 0.1855], [0.3711, 0.1172], [0.1328, 0.9082], [0.75, 0.9629], [0.2812, 0.0449], [0.6367, 0.4277], [0.2051, 0.9824], [0.7012, 0.9766], [0.0059, 0.9102], [0.7168, 0.3379], [0.1602, 0.584], [0.8594, 0.1973], [0.3516, 0.7227], [0.0918, 0.9727], [0.416, 0.3359], [0.6465, 0.9355], [0.3418, 0.627], [0.7578, 0.332], [0.0293, 0.6973], [0.9004, 0.957], [0.7012, 0.7617], [0.1855, 0.8652], [0.6914, 0.8184], [0.5684, 0.543], [0.6523, 0.8672], [0.5742, 0.7441], [0.2949, 0.4121], [0.2363, 0.6387], [0.25, 0.1953], [0.0352, 0.5918], [0.248, 0.293], [0.0762, 0.4863], [0.9785, 0.4922], [0.9004, 0.7305], [0.9277, 0.5527], [0.9395, 0.125], [0.3691, 0.8789], [0.4805, 0.0469], [0.5703, 0.4551], [0.4199, 0.2246], [0.0371, 0.625], [0.3281, 0.4941], [0.1152, 0.6094], [0.2793, 0.834], [0.5039, 0.166], [0.4609, 0.5312], [0.0645, 0.7715], [0.6035, 0.7227], [0.4746, 0.6348], [0.6777, 0.5684], [0.2773, 0.4512], [0.8008, 0.1191], [0.3945, 0.9297], [0.2109, 0.6855], [0.5977, 0.1875], [0.5195, 0.0742], [0.1309, 0.4609], [0.9531, 0.4277], [0.4785, 0.9648], [0.543, 0.3262], [0.9121, 0.041], [0.5059, 0.7188], [0.0098, 0.2969], [0.8438, 0.3789], [0.1504, 0.2637], [0.7969, 0.873], [0.8613, 0.9863], [0.834, 0.7461], [0.377, 0.6211], [0.791, 0.7227], [0.6758, 0.8457], [0.7832, 0.8066], [0.834, 0.5293], [0.1973, 0.6562], [0.8281, 0.9609], [0.5332, 0.7773], [0.9062, 0.8008], [0.3262, 0.0234], [0.8984, 0.7676]];
 // JOINTS: points in the joints between the flagstones (in one 2 m tile of
 // the floor's texture, 0..1), found from its height map and colour
-const PT = { IVY: 0, BLADE: 1, DAISY: 2, WEED: 3, ROSE: 4, RLEAF: 5 };
+const PT = { IVY: 0, BLADE: 1, DAISY: 2, WEED: 3, ROSE: 4, RLEAF: 5, GRAPE: 6 };
+// the vine's leaves, cut from his grape vine scan ("Grape vines" by
+// tribeimmersive, CC BY-NC-SA 4.0): eight real leaves photographed flat into
+// res/studio/vleaves.webp (4 x 2), each with the curl of the scanned leaf
+// as a 3 x 3 grid of heights (in leaf widths, out of its face; row 0 its top)
+const VLEAF_H = [[[0.006, 0.013, -0.051], [-0.04, -0.022, 0.004], [-0.029, 0.026, -0.015]], [[-0.094, 0.019, 0.023], [0.014, -0.004, -0.003], [0.06, 0.026, -0.027]], [[-0.034, -0.031, 0.002], [-0.019, 0.07, -0.028], [-0.07, 0.018, -0.039]], [[0.102, -0.049, -0.011], [0.057, -0.046, 0.157], [0.042, -0.031, 0.089]], [[0.026, 0.006, 0.019], [-0.038, -0.037, -0.073], [-0.042, -0.019, 0.021]], [[0.088, -0.048, 0.008], [0.143, -0.012, 0.005], [-0.044, 0.033, 0.028]], [[0.039, -0.084, -0.04], [-0.054, -0.031, 0.031], [0.076, 0.028, 0.014]], [[0.082, -0.037, -0.05], [-0.078, 0.011, 0.004], [-0.076, -0.047, 0.042]]];
 const ATLAS_ASPECT = 2.0;
 
 function buildGreenery() {
 	const walls = { pos: [], nrm: [], uv: [], info: [], idx: [] };
+	const roses = [];
 	const ground = { pos: [], nrm: [], uv: [], info: [], idx: [] };
 	let g = walls;
 	const rnd = rng(2718);
@@ -1556,11 +1564,39 @@ function buildGreenery() {
 		const w = size * aspect(r);
 		card(madd(at, ay, -size * 0.18), madd([0, 0, 0], ax, w / 2), madd([0, 0, 0], ay, size), r, shade, PT.IVY, ln);
 	};
+	// one real vine leaf: a 3 x 3 grid bent to the scanned leaf's curl
+	const grapeLeaf = (at, n, up, size, shade) => {
+		const i = Math.floor(rnd() * VLEAF_H.length), hgt = VLEAF_H[i];
+		const side = cross(up, n);
+		const ln = norm(madd(madd(n, up, rnd() * 0.8 - 0.3), side, (rnd() - 0.5) * 0.9));
+		let ay = norm(madd(up, ln, -dot(up, ln)));
+		const th = rnd() * 2 * PI, c = Math.cos(th), sn = Math.sin(th);
+		ay = norm(madd(madd([0, 0, 0], ay, c), cross(ln, ay), sn));
+		const ax = cross(ay, ln);
+		const u0 = (i % 4) / 4, v0 = Math.floor(i / 4) / 2, curl = 1.4;
+		const P = [], b0 = g.pos.length / 3;
+		for (let r = 0; r < 3; r++) for (let q = 0; q < 3; q++) {
+			const a = q / 2 - 0.5, b = 0.5 - r / 2;
+			P.push(madd(madd(madd(at, ax, a * size), ay, b * size), ln, hgt[r][q] * size * curl));
+		}
+		for (let r = 0; r < 3; r++) for (let q = 0; q < 3; q++) {
+			// its normal from the neighbouring points of the grid
+			const qa = Math.max(q - 1, 0), qb = Math.min(q + 1, 2), ra = Math.max(r - 1, 0), rb = Math.min(r + 1, 2);
+			const du = madd(P[r * 3 + qb], P[r * 3 + qa], -1), dv = madd(P[ra * 3 + q], P[rb * 3 + q], -1);
+			let nn = norm(cross(du, dv));
+			if (dot(nn, ln) < 0) nn = nn.map((x) => -x);
+			add(P[r * 3 + q], nn, [u0 + q / 2 * 0.25, v0 + r / 2 * 0.5], shade, PT.GRAPE, 1);
+		}
+		for (let r = 0; r < 2; r++) for (let q = 0; q < 2; q++) {
+			const a = b0 + r * 3 + q;
+			g.idx.push(a, a + 1, a + 4, a, a + 4, a + 3);
+		}
+	};
 	// a patch of ivy on a wall face: o its foot (on the face), u along it, n
 	// out into the room. Stems climb (or, draping, hang) and wander, branching
 	// now and then, thick with leaves; their reach falls off towards the
 	// patch's edges, so it reads as one growth rather than a box of leaves
-	const ivyPatch = (o, u, n, s0, width, height, density, drape, stopAt) => {
+	const ivyPatch = (o, u, n, s0, width, height, density, drape, stopAt, grape = 0.3) => {
 		const stems = Math.max(3, Math.round(width * 2.4 * density));
 		const stack = [];
 		for (let k = 0; k < stems; k++) {
@@ -1588,38 +1624,16 @@ function buildGreenery() {
 					if (avoid && avoid(ls, ly)) continue;
 					const at = madd(madd(madd(o, u, ls), UP, ly), n, out);
 					const size = (0.14 + 0.1 * rnd()) * (drape ? 1.05 - 0.3 * t : 1.2 - 0.4 * t);
-					ivyLeaf(at, n, UP, size, 0.45 + 0.55 * (out / 0.125) * (0.6 + 0.4 * rnd()));
+					const shade = 0.45 + 0.55 * (out / 0.125) * (0.6 + 0.4 * rnd());
+					// some of the leaves are the vine's own, broad and curled
+					if (rnd() < grape) { if (rnd() < 0.55) grapeLeaf(at, n, UP, size * 1.7, shade); }
+					else ivyLeaf(at, n, UP, size, shade);
 				}
 				if (gen < 2 && rnd() < 0.035) stack.push([s, y, ang + (rnd() < 0.5 ? -0.7 : 0.7), reach * (0.35 + 0.4 * rnd()) * (1 - t * 0.5), gen + 1]);
 			}
 		}
 	};
 	// ---- climbing roses ------------------------------------------------
-	// one dark red bloom at `at`, facing out along f: a tight bud of petals
-	// at its heart, opening rings round it, the outer petals curling back
-	const roseBloom = (at, f, size, open) => {
-		const r = PLANT_UV.petal[0];
-		const up = Math.abs(f[1]) > 0.9 ? [1, 0, 0] : [0, 1, 0];
-		const e1 = norm(cross(up, f)), e2 = cross(f, e1);
-		const rings = [[3, 0.42, 0.2], [5, 0.56, 0.6 * open + 0.2], [7, 0.7, 1.15 * open + 0.3]];
-		const a0 = rnd() * 2 * PI;
-		rings.forEach(([cnt, len, tilt], ri) => {
-			for (let k = 0; k < cnt; k++) {
-				const a = a0 + (k + ri * 0.5) * 2 * PI / cnt + (rnd() - 0.5) * 0.3;
-				const rd = madd(madd([0, 0, 0], e1, Math.cos(a)), e2, Math.sin(a));
-				// the petal rises from the heart, leaning out by its tilt
-				const tl = Math.min(1.45, tilt * (0.85 + 0.3 * rnd()));
-				const dir = norm(madd(madd([0, 0, 0], f, Math.cos(tl)), rd, Math.sin(tl)));
-				const L = size * len * (0.85 + 0.3 * rnd());
-				const side = norm(cross(dir, rd));
-				const w = L * 0.95 * (ri === 0 ? 0.7 : 1);
-				const base = madd(madd(at, rd, size * 0.06 * ri), f, -size * 0.05 * ri);
-				const nrm = norm(madd(madd([0, 0, 0], rd, -Math.cos(tl)), f, Math.sin(tl)));
-				// cupped in, the outer ones curling their lips back
-				card(base, madd([0, 0, 0], side, w / 2), madd([0, 0, 0], dir, L), r, 0.75 + 0.25 * rnd() - 0.12 * ri, PT.ROSE, norm(madd(nrm, f, 0.6)), rd, ri < 2 ? 0 : L * 0.3 * open);
-			}
-		});
-	};
 	const roseLeaf = (at, n, up, size, shade) => {
 		const r = pick(PLANT_UV.rleaf);
 		const ln = norm(madd(madd(n, up, rnd() * 0.8 - 0.1), cross(up, n), (rnd() - 0.5) * 0.9));
@@ -1634,9 +1648,10 @@ function buildGreenery() {
 	const rosePatch = (o, u, n, s0, width, height, blooms) => {
 		const canes = Math.max(3, Math.round(width * 2.2));
 		const at = (s, y, out) => madd(madd(madd(o, u, s), UP, y), n, out);
-		const roseLeaf0 = roseLeaf, roseBloom0 = roseBloom;
+		const roseLeaf0 = roseLeaf, roseBloom0 = null;
 		const roseLeaf1 = (p, ...a) => { if (!(avoid && avoid(dot(madd(p, o, -1), u), p[1]))) roseLeaf0(p, ...a); };
-		const roseBloom1 = (p, ...a) => { if (!(avoid && avoid(dot(madd(p, o, -1), u), p[1]))) roseBloom0(p, ...a); };
+		const roseBloom1 = (p, f, size) => { if (!(avoid && avoid(dot(madd(p, o, -1), u), p[1]))) roses.push({ at: p, f, size, spin: rnd() * 2 * PI }); };
+		void roseBloom0;
 		for (let k = 0; k < canes; k++) {
 			let s = s0 + (rnd() - 0.5) * width * 0.35, y = 0.05;
 			let ang = (rnd() - 0.5) * 1.4;
@@ -1653,11 +1668,11 @@ function buildGreenery() {
 					const out = 0.02 + rnd() * 0.12;
 					roseLeaf1(at(s + (rnd() - 0.5) * 0.16, y + (rnd() - 0.5) * 0.12, out), n, UP, 0.07 + rnd() * 0.05, 0.5 + 0.5 * rnd());
 				}
-				if (t > 0.18 && rnd() < blooms * (0.08 + 0.15 * t)) {
-					const nb = 1 + Math.floor(rnd() * 4);
+				if (t > 0.2 && rnd() < blooms * (0.018 + 0.038 * t)) {
+					const nb = 1 + Math.floor(rnd() * 3);
 					for (let b = 0; b < nb; b++) {
 						const f = norm(madd(madd(n, UP, (rnd() - 0.4) * 0.8), cross(UP, n), (rnd() - 0.5) * 0.9));
-						roseBloom1(at(s + (rnd() - 0.5) * 0.18, y + (rnd() - 0.5) * 0.16, 0.08 + rnd() * 0.1), f, 0.11 + rnd() * 0.07, 0.45 + 0.55 * rnd());
+						roseBloom1(at(s + (rnd() - 0.5) * 0.22, y + (rnd() - 0.5) * 0.2, 0.16 + rnd() * 0.1), f, 0.19 + rnd() * 0.09);
 					}
 					// a few leaves round the cluster
 					for (let l = 0; l < 3; l++) roseLeaf1(at(s + (rnd() - 0.5) * 0.25, y + (rnd() - 0.5) * 0.2, 0.05 + rnd() * 0.08), n, UP, 0.07 + rnd() * 0.04, 0.6 + 0.4 * rnd());
@@ -1720,9 +1735,9 @@ function buildGreenery() {
 	for (const [k, c] of VINE.filter((v) => v[0] === 'wall')) {
 		void k;
 		const edge = c < 1 || c > L - 1;
-		ivyPatch([0, 0, 0], [0, 0, 1], [1, 0, 0], c, edge ? 1.0 : 1.7, H - 0.6, edge ? 0.9 : 1.1);
+		ivyPatch([0, 0, 0], [0, 0, 1], [1, 0, 0], c, edge ? 1.0 : 1.7, H - 0.6, edge ? 0.9 : 1.1, 0, null, 0.85);
 	}
-	for (const c of WIN.c) ivyPatch([0, 0, 0], [0, 0, 1], [1, 0, 0], c, WIN.hw * 2.3, 1.6, 0.8, H - 0.6, (s) => winTop(s - c) !== null ? winTop(s - c) + 0.15 : H - 2.2);
+	for (const c of WIN.c) ivyPatch([0, 0, 0], [0, 0, 1], [1, 0, 0], c, WIN.hw * 2.3, 1.6, 0.8, H - 0.6, (s) => winTop(s - c) !== null ? winTop(s - c) + 0.15 : H - 2.2, 0.85);
 	avoid = null;
 
 	// ---- the ground: grass, weeds and daisies ---------------------------
@@ -1818,7 +1833,7 @@ function buildGreenery() {
 		else { z = POOL.z1 + 0.08 + rnd() * 0.38; x = POOL.x0 + rnd() * (POOL.x1 - POOL.x0); }
 		tuft(x, POOL.top, z, 0.04 + 0.06 * rnd(), 2 + Math.floor(rnd() * 3));
 	}
-	return { walls, ground };
+	return { walls, ground, roses };
 }
 
 // ------------------------------------------------------------------
@@ -2723,6 +2738,7 @@ module.exports = function (regl) {
 	// the greenery (see buildGreenery): ivy on the walls, and the ground's
 	// grass, weeds and daisies, as photographed cut-outs
 	const plantTex = loadTexture(regl, 'res/studio/plants.webp');
+	const vleafTex = loadTexture(regl, 'res/studio/vleaves.webp');
 	const green = buildGreenery();
 	const makeGreen = (gg) => regl({
 		vert: V(`
@@ -2744,12 +2760,12 @@ module.exports = function (regl) {
 		frag: `
 		precision highp float;
 		uniform float night, time;
-		uniform sampler2D tex;
+		uniform sampler2D tex, tex2;
 		varying vec3 v_pos, v_nrm, v_eye, v_info;
 		varying vec2 v_uv;
 		${LIGHT}
 		void main() {
-			vec4 tx = texture2D(tex, v_uv);
+			vec4 tx = v_info.y > 5.5 ? texture2D(tex2, v_uv) : texture2D(tex, v_uv);
 			if (tx.a < 0.5) discard;
 			vec3 V = normalize(v_eye - v_pos);
 			vec3 N = normalize(v_nrm);
@@ -2774,6 +2790,10 @@ module.exports = function (regl) {
 			} else if (type < 4.5) {
 				// rose petals: dark red velvet, the sun glowing red through them
 				gloss = 0.22; through = 1.6; trC = vec3(1.0, 0.35, 0.35);
+			} else if (type > 5.5) {
+				// the vine's leaves, as photographed, a little deepened for the shade of the room
+				base *= vec3(0.78, 0.86, 0.68);
+				gloss = 0.4; through = 1.3;
 			} else {
 				// the rose's own leaves: a deeper, bluer green than the ivy
 				base *= vec3(0.55, 0.72, 0.5);
@@ -2789,10 +2809,81 @@ module.exports = function (regl) {
 		}`,
 		attributes: { position: gg.pos, normal: gg.nrm, uv: gg.uv, info: gg.info },
 		elements: new Uint32Array(gg.idx),
-		uniforms: { tex: plantTex.tex },
+		uniforms: { tex: plantTex.tex, tex2: vleafTex.tex },
 		cull: { enable: false }
 	});
 	const drawIvy = makeGreen(green.walls);
+	// the roses: his scanned bloom, one copy at each place the climbers flower
+	const roseTex = loadTexture(regl, 'res/studio/rose_col.webp');
+	let drawRoses = null;
+	fetch('res/studio/rose.bin')
+		.then((r) => { if (!r.ok) throw new Error('Could not load res/studio/rose.bin'); return r.arrayBuffer(); })
+		.then((buf) => {
+			const n = new DataView(buf).getUint32(4, true), a = new Float32Array(buf, 8, n * 8);
+			const pos = new Float32Array(green.roses.length * n * 3), nrm = new Float32Array(pos.length), uv = new Float32Array(green.roses.length * n * 2);
+			let k = 0;
+			for (const R of green.roses) {
+				const f = R.f, up = Math.abs(f[1]) > 0.9 ? [1, 0, 0] : [0, 1, 0];
+				const c0 = [up[1] * f[2] - up[2] * f[1], up[2] * f[0] - up[0] * f[2], up[0] * f[1] - up[1] * f[0]];
+				const l0 = Math.hypot(...c0); const e1a = c0.map((x) => x / l0);
+				const e2a = [f[1] * e1a[2] - f[2] * e1a[1], f[2] * e1a[0] - f[0] * e1a[2], f[0] * e1a[1] - f[1] * e1a[0]];
+				const cs = Math.cos(R.spin), sn = Math.sin(R.spin);
+				const e1 = e1a.map((x, i) => x * cs + e2a[i] * sn), e2 = e2a.map((x, i) => x * cs - e1a[i] * sn);
+				for (let i = 0; i < n; i++) {
+					const x = a[i * 8], y = a[i * 8 + 1], z = a[i * 8 + 2], nx = a[i * 8 + 3], ny = a[i * 8 + 4], nz = a[i * 8 + 5];
+					for (let j = 0; j < 3; j++) {
+						pos[k * 3 + j] = R.at[j] + O[j] + (e1[j] * x + e2[j] * y + f[j] * z) * R.size;
+						nrm[k * 3 + j] = e1[j] * nx + e2[j] * ny + f[j] * nz;
+					}
+					uv[k * 2] = a[i * 8 + 6]; uv[k * 2 + 1] = a[i * 8 + 7];
+					k++;
+				}
+			}
+			drawRoses = regl({
+				vert: V(`
+				precision highp float;
+				uniform mat4 proj, view;
+				uniform float yScale;
+				attribute vec3 position, normal;
+				attribute vec2 uv;
+				varying vec3 v_pos, v_nrm, v_eye;
+				varying vec2 v_uv;
+				void main() {
+					v_pos = position; v_nrm = normal; v_uv = uv;
+					vec3 t = view[3].xyz;
+					v_eye = -vec3(dot(view[0].xyz, t), dot(view[1].xyz, t), dot(view[2].xyz, t));
+					v_eye.y *= yScale;
+					vec3 p = position; p.y *= yScale;
+					gl_Position = proj * view * vec4(p, 1.0);
+				}`),
+				frag: `
+				precision highp float;
+				uniform float night, time;
+				uniform sampler2D tex;
+				varying vec3 v_pos, v_nrm, v_eye;
+				varying vec2 v_uv;
+				${LIGHT}
+				void main() {
+					vec3 V = normalize(v_eye - v_pos);
+					vec3 N = normalize(v_nrm);
+					if (dot(N, V) < 0.0) N = -N;
+					vec3 base = texture2D(tex, v_uv).rgb; base *= base;
+					vec3 spec; float sv;
+					vec3 light = studioLight(v_pos, N, V, 0.25, spec, sv);
+					// velvet: a soft sheen at the petals' edges, and the sun glowing red through them
+					float rim = pow(1.0 - max(dot(N, V), 0.0), 2.0);
+					float tr = max(dot(-N, STUDIO_SUN), 0.0) * sv * (1.0 - night);
+					vec3 col = base * light * (1.0 + 0.35 * rim) + base * vec3(1.0, 0.3, 0.3) * tr * 1.5 + spec * 0.05;
+					col = studioAir(col, v_pos, v_eye);
+					gl_FragColor = vec4(sqrt(max(col, 0.0)), 1.0);
+				}`,
+				attributes: { position: pos, normal: nrm, uv },
+				count: k,
+				uniforms: { tex: roseTex.tex },
+				cull: { enable: false }
+			});
+		})
+		.catch((e) => console.error(e));
 	const drawWeeds = makeGreen(green.ground);
 	if (typeof location !== 'undefined' && /tourdebug/.test(location.search)) console.log('studio greenery: ivy verts', green.walls.pos.length / 3, 'ground verts', green.ground.pos.length / 3);
 
@@ -3486,6 +3577,7 @@ module.exports = function (regl) {
 		if (drawVenus) drawVenus();
 		drawLeaves();
 		drawIvy();
+		if (drawRoses) drawRoses();
 		if (!(opts && opts.reflected)) drawWeeds();
 		drawFalling();
 		if (!(opts && opts.reflected)) drawGlass();
