@@ -3,8 +3,8 @@
 /*
  * THE STUDIO
  * ----------
- * The painter's studio: a big, tall room under a glass roof of leaded,
- * patterned panes on black steel trusses. All four walls are rough,
+ * The painter's studio: a big, tall room under a roof of old, grimy
+ * plain glass on black steel trusses. All four walls are rough,
  * uneven slabs of pale coral stone (res/studio/rock_*), one of them with
  * tall arched steel windows; bougainvillea climbs between the windows into
  * the vine on the roof, ivy covers the other walls and the niche, and the
@@ -152,25 +152,6 @@ function sunGLSL() {
 		return bar;
 	}
 
-	// the leaded pattern in each pane of the roof: q is the pane's own
-	// coordinates (centre 0, half size ${f(ROOF.purlin / 2)} x ${f(ROOF.rafter / 2)}),
-	// b the softness. Returns how much light gets through.
-	float studioRoofPattern(vec2 q, float b) {
-		vec2 hs = vec2(${f(ROOF.purlin / 2)}, ${f(ROOF.rafter / 2)});
-		vec2 a = abs(q);
-		float w = 0.022;
-		float d = abs(length(q * vec2(1.0, 0.62)) - 0.36);               // the ring
-		d = min(d, abs(dot(a, hs.yx) - hs.x * hs.y) / length(hs));       // the diamond
-		d = min(d, abs(length(q) - 0.11));                               // the rondel
-		d = min(d, abs(length(a - hs) - 0.30));                          // quarter rings
-		d = min(d, abs(length(a - vec2(0.0, hs.y)) - 0.16));             // and at the ends
-		float lead = 1.0 - smoothstep(w - b, w + b, d);
-		// textured, faintly frosted glass in the rondel and the ring's petals
-		float frost = smoothstep(0.11 + b, 0.11 - b, length(q)) * 0.35
-			+ smoothstep(0.36 + b, 0.36 - b, length(q * vec2(1.0, 0.62))) * smoothstep(0.1, 0.16, length(q)) * 0.12;
-		return (1.0 - lead) * (1.0 - frost);
-	}
-
 	float studioVineClump(float u, float seed) {
 		return step(-0.25, 0.5 * sin(u * 1.9 + seed) + 0.5 * sin(u * 0.77 + seed * 1.3));
 	}
@@ -249,16 +230,13 @@ function sunGLSL() {
 		float b = 0.008 + 0.0075 * t;
 		float rz = abs(h.z - ${f(ROOF.rafter)} * floor(h.z / ${f(ROOF.rafter)} + 0.5));
 		float bar = 1.0 - smoothstep(${f(ROOF.rafterW * 0.5)} - b, ${f(ROOF.rafterW * 0.5)} + b, rz);
-		float ux = h.x < ${f(W / 2)} ? h.x : ${f(W)} - h.x;
-		float rx = abs(ux - ${f(ROOF.purlin)} * floor(ux / ${f(ROOF.purlin)} + 0.5));
-		bar = max(bar, 1.0 - smoothstep(${f(ROOF.purlinW * 0.5)} - b, ${f(ROOF.purlinW * 0.5)} + b, rx));
 		// the ridge beam
 		bar = max(bar, 1.0 - smoothstep(0.14 - b, 0.14 + b, abs(h.x - ${f(W / 2)})));
-		// the leaded pattern in the panes (its shadow is crisper than
-		// the sun's disc would allow, for the drawing to read)
-		vec2 pq = vec2(ux - ${f(ROOF.purlin)} * floor(ux / ${f(ROOF.purlin)}) - ${f(ROOF.purlin / 2)}, h.z - ${f(ROOF.rafter)} * floor(h.z / ${f(ROOF.rafter)}) - ${f(ROOF.rafter / 2)});
-		float pat = studioRoofPattern(pq, 0.004 + 0.0035 * t);
-		// and along the rafters and the ridge
+		// the old glass is grimy: it lets less through than the windows,
+		// unevenly, so the roof's light falls in soft dim drifts and the
+		// windows' patterned beams are the bright, dramatic ones
+		float pat = 0.42 + 0.3 * smoothstep(-0.6, 0.6, sin(h.x * 0.9 + 1.3) * sin(h.z * 0.7 + 0.4) + 0.4 * sin(h.x * 2.1 - h.z * 1.7));
+		// and the vine along the rafters and the ridge
 		${VINE.filter((v) => v[0] === 'rafter').map(([k, c, sd]) => `pat *= 1.0 - studioVineShade(h.z - ${f(c)}, h.x, h.z, ${f(sd)});`).join('\n\t\t')}
 		pat *= 1.0 - studioVineShade(h.x - ${f(W / 2)}, h.z, h.x, 0.9);
 		return vis * (1.0 - bar) * pat * 0.78;
@@ -1254,16 +1232,14 @@ function buildSteel(g) {
 		}
 	}
 
-	// the roof: rafters, purlins, the ridge
+	// the roof: rafters and the ridge, long plain panes between them (no
+	// purlins and no leading: the only patterned light is the windows')
 	const slope = (x) => (x < W / 2 ? H + KR * x : H + KR * (W - x));
 	for (let i = 0; i <= 12; i++) {
 		const z = i * ROOF.rafter;
 		for (const [xa, xb] of [[-0.3, W / 2], [W / 2, W + 0.3]]) {
 			g.beam([xa, slope(Math.max(0, Math.min(W, xa))) - 0.1, z], [xb, slope(xb) - 0.1, z], 0.06, K.STEEL);
 		}
-	}
-	for (let u = ROOF.purlin; u < W / 2 - 0.2; u += ROOF.purlin) {
-		for (const x of [u, W - u]) g.beam([x, slope(x) - 0.06, -0.2], [x, slope(x) - 0.06, L + 0.2], 0.035, K.STEEL);
 	}
 	g.beam([W / 2, RIDGE - 0.14, -0.2], [W / 2, RIDGE - 0.14, L + 0.2], 0.12, K.STEEL);
 	// eaves beams
@@ -1891,7 +1867,7 @@ const LIGHT = `
 		vec3 p = pw - vec3(${f(O[0])}, ${f(O[1])}, ${f(O[2])});
 		float vis = studioSun(pw + N * 0.03);
 		sunVis = vis;
-		vec3 sunC = mix(vec3(1.0, 0.88, 0.70) * 3.9, vec3(0.50, 0.64, 1.0) * 1.35, night);
+		vec3 sunC = mix(vec3(1.0, 0.84, 0.62) * 4.6, vec3(0.50, 0.64, 1.0) * 1.6, night);
 		float lam = max(dot(N, STUDIO_SUN), 0.0);
 		vec3 col = sunC * vis * lam;
 		vec3 Hh = normalize(STUDIO_SUN + V);
@@ -1903,13 +1879,15 @@ const LIGHT = `
 		// corners and the foot of the walls get less of the sky
 		float dw = min(min(p.x, ${f(W)} - p.x), min(p.z, ${f(L)} - p.z));
 		float occ = mix(0.55, 1.0, smoothstep(0.0, 2.2, dw)) * mix(0.72, 1.0, smoothstep(0.0, 2.5, p.y));
-		vec3 skyC = mix(vec3(0.70, 0.65, 0.58), vec3(0.028, 0.042, 0.08), night);
-		col += skyC * (0.22 + 0.62 * upF) * occ * (0.85 + 0.3 * hgt) * 0.36;
+		// (kept low and cool: the shade is deep and a little green-grey, so
+		// the room feels old and still and the sunbeams carry the drama)
+		vec3 skyC = mix(vec3(0.50, 0.55, 0.54), vec3(0.020, 0.032, 0.065), night);
+		col += skyC * (0.18 + 0.55 * upF) * occ * (0.85 + 0.3 * hgt) * 0.22;
 		// the bright left windows, seen from walls and things facing them
-		col += mix(vec3(1.0, 0.86, 0.66), vec3(0.06, 0.08, 0.14), night) * max(-N.x, 0.0) * 0.16 * occ;
+		col += mix(vec3(1.0, 0.86, 0.66), vec3(0.06, 0.08, 0.14), night) * max(-N.x, 0.0) * 0.12 * occ;
 		// light thrown back up off the sunlit floor: warm, from below
 		float pools = mix(1.0, 0.15, night);
-		col += vec3(0.95, 0.68, 0.42) * pools * (0.12 + 0.26 * max(-N.y, 0.0)) * (1.0 - smoothstep(0.5, 6.0, p.y)) * smoothstep(0.0, 1.2, dw);
+		col += vec3(0.95, 0.68, 0.42) * pools * (0.07 + 0.18 * max(-N.y, 0.0)) * (1.0 - smoothstep(0.5, 6.0, p.y)) * smoothstep(0.0, 1.2, dw);
 
 		// the lamps (by night)
 		if (night > 0.01) {
@@ -1931,9 +1909,11 @@ const LIGHT = `
 	// the dusty, sun-warmed air between the eye and a surface
 	vec3 studioAir(vec3 col, vec3 pw, vec3 eye) {
 		float d = length(pw - eye);
-		float h = 1.0 - exp(-d * 0.035);
-		vec3 airC = mix(vec3(0.36, 0.30, 0.24), vec3(0.02, 0.03, 0.05), night);
-		return mix(col, airC, h * 0.25);
+		float h = 1.0 - exp(-d * 0.06);
+		// thicker low down, where the damp hangs over the floor and the pool
+		float low = 1.0 - smoothstep(0.0, 3.0, (pw.y + eye.y) * 0.5);
+		vec3 airC = mix(vec3(0.17, 0.17, 0.16), vec3(0.012, 0.018, 0.035), night);
+		return mix(col, airC, clamp(h * (0.42 + 0.25 * low), 0.0, 0.8));
 	}
 `;
 
@@ -3078,7 +3058,7 @@ module.exports = function (regl) {
 		}
 		// the sun's share of the light under the water at pw
 		vec3 underSun(vec3 pw, vec3 N, float sv, out vec3 sunPart) {
-			vec3 sunC = mix(vec3(1.0, 0.88, 0.70) * 3.9, vec3(0.50, 0.64, 1.0) * 1.35, night);
+			vec3 sunC = mix(vec3(1.0, 0.84, 0.62) * 4.6, vec3(0.50, 0.64, 1.0) * 1.6, night);
 			sunPart = sunC * sv * max(dot(N, W_SUN), 0.0);
 			float ca = caustic(pw.xz - W_SUN.xz / W_SUN.y * pw.y, stime);
 			return sunPart * (1.0 - 0.85 * padShade(pw)) * (0.35 + 1.25 * ca);
@@ -3485,19 +3465,11 @@ module.exports = function (regl) {
 			vec3 c = mix(vec3(0.85, 0.80, 0.72), vec3(0.12, 0.13, 0.17), night) * (dust * 0.5 + streak);
 			float a = clamp(0.05 + dust * 0.16 + streak * 0.2 + F * 0.4, 0.0, 0.6);
 			vec3 col = mix(c, studioSky(reflect(-V, N)), F / max(a, 0.01) * 0.4);
-			// the roof's leaded pattern: dark cames, frosted rondels lit
-			// from behind by the sky
+			// the roof: old plain glass, grimed and streaked, dimming the sky
 			if (v_kind > 0.5) {
-				float ux = p.x < ${f(W / 2)} ? p.x : ${f(W)} - p.x;
-				vec2 pq = vec2(ux - ${f(ROOF.purlin)} * floor(ux / ${f(ROOF.purlin)}) - ${f(ROOF.purlin / 2)}, p.z - ${f(ROOF.rafter)} * floor(p.z / ${f(ROOF.rafter)}) - ${f(ROOF.rafter / 2)});
-				float pat = studioRoofPattern(pq, 0.004);
-				float lead = 1.0 - smoothstep(0.2, 0.6, pat);
-				float frost = clamp(1.0 - pat, 0.0, 1.0) * (1.0 - lead);
-				vec3 frostC = mix(vec3(0.95, 0.93, 0.88), vec3(0.10, 0.13, 0.20), night);
-				col = mix(col, frostC, frost * 0.9);
-				a = max(a, frost * 0.45);
-				col = mix(col, vec3(0.03, 0.03, 0.035), lead);
-				a = mix(a, 1.0, lead);
+				float grime = smoothstep(0.25, 0.75, vnoise3(vec3(p.x * 0.35, p.z * 0.28, 2.0)));
+				col = mix(col, mix(vec3(0.26, 0.27, 0.24), vec3(0.03, 0.035, 0.05), night), 0.6 + 0.3 * grime);
+				a = max(a, 0.48 + 0.25 * (1.0 - grime));
 			}
 			gl_FragColor = vec4(sqrt(max(col, 0.0)), a);
 		}`,
@@ -3569,6 +3541,98 @@ module.exports = function (regl) {
 		cull: { enable: false }
 	});
 
+	// ---- dust and sparkles in the air --------------------------------
+	// Motes hang and turn slowly all through the room. They are lost in
+	// the shade and light up only where a beam crosses them, so every
+	// shaft from the windows is full of drifting gold (silver by moonlight).
+	// A few in every hundred are flecks that catch the light like glass:
+	// now and then they flash, a small four-pointed star, and fade.
+	const isPhone = typeof navigator !== 'undefined' && /Mobi|Android|iPhone|iPad/.test(navigator.userAgent);
+	const MOTES = isPhone ? 2600 : 6500;
+	const moteSeed = [];
+	{
+		// most of them where the windows' beams cross the room (traced back
+		// towards the sun: does the line leave through a window?), the rest
+		// anywhere, so the drift carries some in and out of the light
+		const rnd = rng(4242);
+		const inBeam = (x, y, z) => {
+			const t = -x / SUN[0], yh = y + SUN[1] * t, zh = z + SUN[2] * t;
+			return WIN.c.some((c) => { const top = winTop(zh - c); return top !== null && yh > WIN.sill && yh < top; });
+		};
+		let tries = 0;
+		while (moteSeed.length < MOTES && tries++ < MOTES * 60) {
+			const p = [0.2 + rnd() * (W - 0.4), 0.1 + rnd() * (H + 1.0), 0.2 + rnd() * (L - 0.4)];
+			if (moteSeed.length < MOTES * 0.8 && !inBeam(...p)) continue;
+			moteSeed.push([...p, rnd()]);
+		}
+	}
+	const drawMotes = regl({
+		vert: `
+		precision highp float;
+		uniform mat4 proj, view;
+		uniform float time, night, pixelScale;
+		attribute vec4 seed;
+		varying float v_light, v_seed, v_spark;
+		${sunGLSL()}
+		void main() {
+			float s = seed.w * 6.2831;
+			vec3 p = seed.xyz;
+			// slow drifting and turning, a faint settling, never in step
+			p += vec3(sin(time * 0.10 + s * 3.0) * 0.32 + sin(time * 0.043 + s * 7.0) * 0.2,
+			          sin(time * 0.07 + s * 5.0) * 0.25 - 0.015 * time * (0.4 + seed.w),
+			          cos(time * 0.085 + s * 2.0) * 0.32 + cos(time * 0.037 + s * 9.0) * 0.2);
+			p.y = mod(p.y - 0.1, ${f(H + 1.0)}) + 0.1;
+			p += vec3(${f(O[0])}, ${f(O[1])}, ${f(O[2])});
+			float light = studioSun(p);
+			// a faint few in the shade too, so the dark air is not empty
+			float dim = 0.05 * (1.0 - night * 0.5);
+			v_seed = seed.w;
+			v_spark = step(0.955, fract(seed.w * 37.0));
+			vec4 vp = view * vec4(p, 1.0);
+			float dist = max(-vp.z, 0.05);
+			gl_Position = proj * vp;
+			float lit = max(light, dim * step(0.7, fract(seed.w * 11.0)));
+			if (lit <= 0.01 || vp.z > -0.15) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); gl_PointSize = 0.0; v_light = 0.0; return; }
+			float sharp = clamp(pixelScale * (0.9 + 1.3 * seed.w) / dist, 1.3, 5.0);
+			// near the lens they swim out of focus into soft discs
+			float blur = 1.0 - smoothstep(0.4, 2.2, dist);
+			float size = sharp + blur * ${isPhone ? '12.0' : '20.0'} * (0.6 + 0.4 * seed.w);
+			if (v_spark > 0.5) size = max(size, pixelScale * 9.0 / dist + 5.0);
+			gl_PointSize = size;
+			v_light = lit * (v_spark > 0.5 ? 1.0 : pow(sharp / size, 1.2) * (1.0 + 2.0 * blur));
+		}`,
+		frag: `
+		precision highp float;
+		uniform float time, night;
+		varying float v_light, v_seed, v_spark;
+		void main() {
+			vec2 q = gl_PointCoord - 0.5;
+			float r = length(q) * 2.0;
+			vec3 c = mix(vec3(1.0, 0.90, 0.72), vec3(0.75, 0.84, 1.0), night);
+			if (v_spark > 0.5) {
+				// a glint: it flashes now and then as the fleck turns
+				float ph = fract(time * (0.08 + 0.12 * v_seed) + v_seed * 13.0);
+				float flash = smoothstep(0.0, 0.04, ph) * (1.0 - smoothstep(0.04, 0.22, ph));
+				float core = exp(-r * r * 30.0);
+				float star = exp(-abs(q.x) * 70.0) * exp(-abs(q.y) * 5.0) + exp(-abs(q.y) * 70.0) * exp(-abs(q.x) * 5.0);
+				float a = (core * 1.6 + star * 0.9) * flash + core * 0.15;
+				gl_FragColor = vec4(c * vec3(1.0, 0.97, 0.92) * a * v_light * 2.2, 1.0);
+				return;
+			}
+			float point = exp(-r * r * 3.2) * (1.0 - smoothstep(0.85, 1.0, r));
+			float t1 = sin(time * (0.9 + v_seed * 2.3) + v_seed * 40.0), t2 = sin(time * (0.37 + v_seed * 1.1) + v_seed * 17.0);
+			float tw = 0.35 + 0.65 * smoothstep(-0.6, 1.0, t1 * t2 + 0.35 * t1);
+			gl_FragColor = vec4(c * point * v_light * tw * 1.1, 1.0);
+		}`,
+		attributes: { seed: moteSeed },
+		count: MOTES,
+		primitive: 'points',
+		uniforms: { pixelScale: (ctx) => ctx.viewportHeight * 0.0055 },
+		depth: { enable: true, mask: false },
+		blend: { enable: true, func: { srcRGB: 'one', dstRGB: 'one', srcAlpha: 'zero', dstAlpha: 'one' } },
+		cull: { enable: false }
+	});
+
 	function draw(opts) {
 		if (!(opts && opts.reflected)) { keepReflection(); tick(); }
 		drawSky();
@@ -3580,7 +3644,7 @@ module.exports = function (regl) {
 		if (drawRoses) drawRoses();
 		if (!(opts && opts.reflected)) drawWeeds();
 		drawFalling();
-		if (!(opts && opts.reflected)) drawGlass();
+		if (!(opts && opts.reflected)) { drawGlass(); drawMotes(); }
 	}
 	return draw;
 };

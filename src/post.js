@@ -347,7 +347,8 @@ module.exports = (regl, quality) => {
 		// in the studio, only its own sunbeams
 		if (cull.zone === 'studio') {
 			volStrength[0] = volStrength[1] = volStrength[2] = volStrength[3] = 0;
-			volStrength5 = 0.03 * k * (1 + 1.3 * n);
+			// (thick, dramatic beams: the studio's air is full of dust)
+			volStrength5 = 0.065 * k * (1 + 1.0 * n);
 		} else volStrength5 = 0;
 		return volStrength[0] + volStrength[1] + volStrength[2] + volStrength[3] + volStrength5 > 0.0005;
 	}
@@ -529,7 +530,7 @@ module.exports = (regl, quality) => {
 		res: () => [scene.width, scene.height],
 		time: regl.context('time'),
 		exposure: () => LOOK.exposure * shot.exposure,
-		vignette: () => Math.min(1, LOOK.vignette + shot.vignette + 0.22 * env.night),
+		vignette: () => Math.min(1, LOOK.vignette + shot.vignette + 0.22 * env.night + (cull.zone === 'studio' ? 0.2 : 0)),
 		night: () => env.night,
 		grain: () => LOOK.grain,
 		bloomK: () => LOOK.bloom,
