@@ -27,7 +27,7 @@ Pushing to `master` builds the site and publishes it to Cloudflare Pages and Git
 - `src/painting.js` – the paintings (canvas weave, varnish, light pool) and their gilded frames.
 - `src/mesh.js` – the architecture's materials and light (marble, plaster, the floor).
 - `src/tour.js` – the cinematic tour; `src/fps.js` – free walking.
-- `src/studio.js` – the painter's studio (a leaded glass roof hung with bougainvillea, arched windows on one side, the gallery's chequered floor, a white marble lily pool with the marble nymph, res/nymph.bin, and the red Gothic door). Not joined to the gallery yet: open the site with `?studio` (add `&night` for night) to look round it; a tap turns day to night.
+- `src/studio.js` – the painter's studio (a leaded glass roof hung with bougainvillea, arched windows on one side and rough stone slab walls on the other three, the gallery's chequered floor; in through the red Gothic door, an old stone niche facing it with the nymph, res/nymph.bin, inside, and a weathered stone lily pool running from the niche back towards the door). Not joined to the gallery yet: open the site with `?studio` (add `&night` for night) to look round it; a tap turns day to night.
 - `src/listview.js` – all paintings as a plain list (`#list`, and the fallback without 3D).
 - `source/` – source files that are not published (e.g. the Blender wall model).
 
@@ -45,6 +45,7 @@ The two statues are real 3D scans, slimmed down for the web and stored in `res/v
 - Koi model: "Koi Fish" by SDPM Esare (https://sketchfab.com/3d-models/koi-fish-3e1b80c3653f43349252aab3b4fb1d86), licensed under CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/). Straightened along its spine and repacked as `res/koi.bin` and `res/koi.webp`; recoloured in the shader for the yamabuki and orange koi.
 - Lily pad and petal textures: "Water lily" by ivanzubak on TurboSquid (free), in `res/pond/`.
 - Gravel: Gravel030 from ambientCG (CC0), in `res/pond/gravel.jpg`.
+- Stone: "Coral Stone Wall" by Dimitrios Savva (the rough slab walls) and "Large Sandstone Blocks 01" by Rob Tuytel (the niche and the pool), both from Poly Haven (https://polyhaven.com, CC0), in `res/studio/` (colour, and the normal map with the hollows packed in its blue).
 
 ## The street outside
 

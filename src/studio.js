@@ -3,23 +3,24 @@
 /*
  * THE STUDIO
  * ----------
- * The painter's studio: a big, tall room of old warm plaster under a
- * glass roof of leaded, patterned panes on black steel trusses, with tall
- * arched steel windows down both long walls. Bright morning sun pours in through the left-hand
- * windows and the roof, and every bar of the glazing shows in the light
- * on the floor, the walls and the dusty air.
+ * The painter's studio: a big, tall room under a glass roof of leaded,
+ * patterned panes on black steel trusses. One long wall is old warm
+ * plaster with tall arched steel windows; the other three are rough,
+ * uneven slabs of pale coral stone (res/studio/rock_*). Bright morning
+ * sun pours in through the windows and the roof, and every bar of the
+ * glazing shows in the light on the floor, the walls and the dusty air.
  *
- * In the middle, the highlight: a long reflecting pool in pale
- * travertine, dark still water full of lily pads and pink water lilies,
- * and at its far end, in the water on a plinth, a marble nymph seated
- * and preparing for her bath (res/nymph.bin, from his own scan file). Behind her, on the end wall, a
- * classical aedicule half lost under hanging ivy.
+ * You come in through the red Gothic door in the near wall. Facing it,
+ * against the far wall, an old stone aedicule (res/studio/oldstone_*):
+ * rusticated piers, a deep round-arched niche with a half dome, an
+ * entablature and a low pediment. In the niche stands the nymph, seated
+ * and preparing for her bath (res/nymph.bin, from his own scan file),
+ * aged like the stone round her. From the niche's foot a long pool of
+ * the same weathered stone runs back towards the door: dark still water
+ * full of lily pads and pink water lilies.
  *
- * Down the right-hand side, his work in progress: three canvases on
- * easels, tilted back like boards, catching the light. Plants in black
- * glazed pots stand at the corners of the pool; a work table with jars
- * of brushes stands under the left windows; pendant lamps hang from the
- * trusses (lit at night).
+ * A work table with jars of brushes stands under the windows; pendant
+ * lamps hang from the trusses (lit at night).
  *
  * Under the water: a gravel bed and the pool's marble walls, eight koi
  * (a real model, res/koi.bin, bent live along each fish's own swimming
@@ -72,10 +73,20 @@ const ROOF = { rafter: L / 12, rafterW: 0.10, purlin: 1.0, purlinW: 0.07 };
 // the trusses under it (tie beams at the eaves)
 const TRUSS_Z = [5.5, 11.0, 16.5];
 
-// the pool
-const POOL = { x0: W / 2 - 1.9, x1: W / 2 + 1.9, z0: 5.6, z1: 16.6, curb: 0.5, top: 0.36 };
-// the statue in it, on a plinth near the far end
-const VENUS = { x: W / 2, z: 14.9, plinth: 0.86, height: 2.05, yaw: PI + 0.35, file: 'res/nymph.bin' };
+// the niche in the far wall (after his reference): an old stone aedicule
+// standing proud of the rough slab wall, rusticated piers either side of a
+// deep round-arched hollow, an entablature and a low pediment over it.
+// The statue stands in the hollow and the pool runs out from its foot,
+// straight towards the red door, the way in.
+const NICHE = { cx: W / 2, hw: 1.12, spring: 3.95, pier: 1.05, face: L - 1.45, back: L - 0.2, floor: 0.66, top: 6.55 };
+NICHE.x0 = NICHE.cx - NICHE.hw - NICHE.pier;
+NICHE.x1 = NICHE.cx + NICHE.hw + NICHE.pier;
+// the pool, from the niche's foot towards the door
+const POOL = { x0: W / 2 - 1.7, x1: W / 2 + 1.7, z0: 7.2, z1: NICHE.face - 0.44, curb: 0.5, top: 0.36 };
+// the old pool's layout (where its pads, lilies and koi were placed), mapped onto this one
+const PZ = (z) => POOL.z0 + (z - 5.6) / 11.0 * (POOL.z1 - POOL.z0);
+// the statue, standing in the niche on a low block, taller than before
+const VENUS = { x: W / 2, z: L - 1.0, plinth: NICHE.floor + 0.26, height: 2.75, yaw: PI + 0.35, file: 'res/nymph.bin' };
 
 // the sun: the direction towards it. Bright morning sun, fairly low, from
 // the east wall (x = 0) and a little from behind the entrance, so it
@@ -166,6 +177,28 @@ function sunGLSL() {
 	float studioSun(vec3 pw) {
 		vec3 p = pw - vec3(${f(O[0])}, ${f(O[1])}, ${f(O[2])});
 		vec3 S = STUDIO_SUN;
+		// the niche: inside its hollow, the sun gets in only through the arch;
+		// elsewhere its block of stone stands in the way of some of the light
+		{
+			float dxn = p.x - ${f(NICHE.cx)};
+			if (abs(dxn) < ${f(NICHE.hw)} && p.z > ${f(NICHE.face)} && p.y > ${f(NICHE.floor - 0.05)} && p.y < ${f(NICHE.spring)} + sqrt(max(${f(NICHE.hw * NICHE.hw)} - dxn * dxn, 0.0))) {
+				if (S.z >= 0.0) return 0.0;
+				vec3 hf = p + S * ((${f(NICHE.face)} - p.z) / S.z);
+				float hx = hf.x - ${f(NICHE.cx)};
+				float edge = ${f(NICHE.hw)} - abs(hx);
+				float topY = ${f(NICHE.spring)} + sqrt(max(${f(NICHE.hw * NICHE.hw)} - hx * hx, 0.0));
+				float soft = 0.02 + 0.03 * (${f(NICHE.face)} - p.z) / S.z;
+				float inA = smoothstep(-soft, soft, edge) * smoothstep(-soft, soft, topY - hf.y);
+				if (inA <= 0.0) return 0.0;
+			} else {
+				vec3 bmin = vec3(${f(NICHE.x0 - 0.2)}, 0.0, ${f(NICHE.face - 0.3)}), bmax = vec3(${f(NICHE.x1 + 0.2)}, ${f(6.95)}, ${f(L)});
+				vec3 inv = 1.0 / S;
+				vec3 t0 = (bmin - p) * inv, t1 = (bmax - p) * inv;
+				vec3 tn = min(t0, t1), tf = max(t0, t1);
+				float a = max(max(tn.x, tn.y), tn.z), bb = min(min(tf.x, tf.y), tf.z);
+				if (bb > max(a, 0.0) && a > 0.0) return 0.0;
+			}
+		}
 		// where the ray towards the sun leaves through the left wall
 		float tw = (0.0 - p.x) / S.x;
 		// and where it rises past the eaves
@@ -240,7 +273,8 @@ const K = {
 	FLOOR: 0, PLASTER: 1, STONE: 2, STEEL: 3, WATER: 4, PAD: 5, PETAL: 6, STAMEN: 7,
 	MARBLE: 8, WOOD: 9, GESSO: 10, PAINT: 11, POT: 12, SHADE: 13, BULB: 14, NICHE: 15,
 	JAR: 16, SOIL: 17, BRUSH: 18, TRAVERTINE: 19, CLOTH: 20,
-	WMARBLE: 21, REDDOOR: 22, REDPANEL: 23, DARKWOOD: 24, BRASS: 25, BRACT: 26, KEYHOLE: 27
+	WMARBLE: 21, REDDOOR: 22, REDPANEL: 23, DARKWOOD: 24, BRASS: 25, BRACT: 26, KEYHOLE: 27,
+	ROCK: 28, OLDSTONE: 29, HOLLOW: 30
 };
 
 function Geo() {
@@ -475,6 +509,185 @@ function buildDoor(g) {
 	g.box(hx - 0.008, hy - 0.1, hz - 0.0125, hx + 0.008, hy - 0.06, hz - 0.0085, K.KEYHOLE);
 }
 
+// add geometry d to g, turned half round about the room's centre (so a
+// thing built against the far wall stands against the near one, facing in)
+function appendTurned(g, d) {
+	const base = g.pos.length / 3;
+	for (let i = 0; i < d.pos.length; i += 3) {
+		const x = d.pos[i] - O[0], z = d.pos[i + 2] - O[2];
+		g.pos.push(W - x + O[0], d.pos[i + 1], L - z + O[2]);
+		g.nrm.push(-d.nrm[i], d.nrm[i + 1], -d.nrm[i + 2]);
+	}
+	g.kind.push(...d.kind); g.uv.push(...d.uv); g.anchor.push(...d.anchor);
+	for (const k of d.idx) g.idx.push(k + base);
+}
+
+// ------------------------------------------------------------------
+// THE NICHE (after his reference): an old stone aedicule standing proud
+// of the far wall. On a plain base, two piers of rusticated blocks,
+// alternately long and short like quoins, carry a moulded entablature with
+// a carved cartouche in the frieze and a low pediment. Between them, a
+// deep round-arched hollow with a half-dome, where the statue stands on
+// a low block. Below it the base steps down into the pool's far end.
+// ------------------------------------------------------------------
+
+function buildNiche(g) {
+	const { cx, hw, spring, pier, face: F, back, floor, x0, x1 } = NICHE;
+	const S = K.OLDSTONE, Hk = K.HOLLOW;
+	const C = back - hw;                 // the centre of the half-round back
+	const eb = 5.35;                     // the entablature's foot
+	const at = (x) => spring + Math.sqrt(Math.max(0, hw * hw - (x - cx) * (x - cx)));
+
+	// the base, and the steps down to the pool
+	g.box(x0 - 0.1, 0, F - 0.28, x1 + 0.1, floor - 0.06, L, S, { bottom: true });
+	g.box(x0 - 0.14, floor - 0.06, F - 0.34, x1 + 0.14, floor, L, S);
+	g.box(cx - 0.95, POOL.top, F - 0.62, cx + 0.95, POOL.top + 0.15, F - 0.28, S, { bottom: true });
+
+	// the piers' cores, and their blocks: courses of long and short stones
+	// a little proud of the face, with sunken joints between
+	for (const [a, b] of [[x0, cx - hw], [cx + hw, x1]]) {
+		g.box(a, floor, F + 0.03, b, eb, L, Hk, { bottom: true });
+		const outer = a < cx ? a : b, inner = a < cx ? b : a, sgn = a < cx ? 1 : -1;
+		const n = 11, ch = (eb - 0.38 - floor) / n;
+		for (let i = 0; i < n; i++) {
+			const y0 = floor + i * ch + 0.018, y1 = floor + (i + 1) * ch - 0.018;
+			const long = i % 2 === 0;
+			// the face block: long ones reach the opening, short ones stop short
+			const ia = outer + sgn * 0.01, ib = long ? inner - sgn * 0.01 : outer + sgn * (pier * 0.66);
+			g.box(Math.min(ia, ib), y0, F - 0.06, Math.max(ia, ib), y1, F + 0.03, S, { z1: true });
+			if (!long) {
+				const ja = outer + sgn * (pier * 0.66 + 0.025), jb = inner - sgn * 0.01;
+				g.box(Math.min(ja, jb), y0, F - 0.02, Math.max(ja, jb), y1, F + 0.03, S, { z1: true });
+			}
+			// and round the outer side of the pier
+			const sx = outer - sgn * 0.035;
+			g.box(Math.min(sx, outer + sgn * 0.02), y0, F - 0.035, Math.max(sx, outer + sgn * 0.02), y1, long ? F + 0.9 : F + 0.55, S);
+		}
+		// a capital: a moulded neck and a wide abacus
+		g.box(a - 0.05, eb - 0.38, F - 0.07, b + 0.05, eb - 0.3, L, S);
+		g.box(a - 0.02, eb - 0.3, F - 0.03, b + 0.02, eb - 0.12, L, S);
+		g.box(a - 0.09, eb - 0.12, F - 0.11, b + 0.09, eb, L, S);
+	}
+
+	// the opening's face between the piers: the spandrels over the arch
+	const dx = 0.03;
+	for (let x = cx - hw; x < cx + hw - 1e-6; x += dx) {
+		const xa = x, xb = Math.min(cx + hw, x + dx);
+		g.quad([xb, at(xb), F + 0.02], [xa, at(xa), F + 0.02], [xa, eb, F + 0.02], [xb, eb, F + 0.02], [0, 0, -1], S, [[xb, at(xb)], [xa, at(xa)], [xa, eb], [xb, eb]]);
+	}
+	// an archivolt round the arch, and a keystone
+	{
+		const M = 36, r = hw + 0.07;
+		for (let i = 0; i < M; i++) {
+			const p0 = PI * i / M, p1 = PI * (i + 1) / M;
+			g.beam([cx + Math.cos(p0) * r, spring + Math.sin(p0) * r, F - 0.02], [cx + Math.cos(p1) * r, spring + Math.sin(p1) * r, F - 0.02], 0.065, S, [0, 0, 1]);
+		}
+		// imposts at the springing
+		for (const sx of [-1, 1]) g.box(cx + sx * hw - 0.16, spring - 0.14, F - 0.06, cx + sx * hw + 0.16, spring, F + 0.4, S);
+		const kt = spring + hw;
+		g.quad([cx - 0.17, kt + 0.32, F - 0.08], [cx + 0.17, kt + 0.32, F - 0.08], [cx + 0.11, kt - 0.06, F - 0.08], [cx - 0.11, kt - 0.06, F - 0.08], [0, 0, -1], S, [[0, 1], [1, 1], [1, 0], [0, 0]]);
+		for (const sx of [-1, 1]) g.quad([cx + sx * 0.11, kt - 0.06, F - 0.08], [cx + sx * 0.17, kt + 0.32, F - 0.08], [cx + sx * 0.17, kt + 0.32, F + 0.02], [cx + sx * 0.11, kt - 0.06, F + 0.02], [sx, -0.15, 0], S, [[0, 0], [1, 0], [1, 1], [0, 1]]);
+		g.quad([cx - 0.11, kt - 0.06, F - 0.08], [cx + 0.11, kt - 0.06, F - 0.08], [cx + 0.11, kt - 0.06, F + 0.02], [cx - 0.11, kt - 0.06, F + 0.02], [0, -1, 0], S, [[0, 0], [1, 0], [1, 1], [0, 1]]);
+	}
+
+	// the hollow: straight jambs, then a half-round back under a half dome
+	for (const sx of [-1, 1]) {
+		const x = cx + sx * hw;
+		g.quad([x, floor, F], [x, floor, C], [x, spring, C], [x, spring, F], [-sx, 0, 0], Hk, [[F, floor], [C, floor], [C, spring], [F, spring]]);
+	}
+	{
+		const M = 40, R = 14;
+		// the barrel of the arch from the face to the start of the dome
+		for (let i = 0; i < M; i++) {
+			const t0 = PI * i / M, t1 = PI * (i + 1) / M;
+			const P = (t, z) => [cx + Math.cos(t) * hw, spring + Math.sin(t) * hw, z];
+			const nm = [-Math.cos((t0 + t1) / 2), -Math.sin((t0 + t1) / 2), 0];
+			g.quad(P(t0, F), P(t1, F), P(t1, C), P(t0, C), nm, Hk, [[hw * t0 + 0.0, F], [hw * t1, F], [hw * t1, C], [hw * t0, C]]);
+		}
+		// the half-round back wall
+		for (let i = 0; i < M; i++) {
+			const a0 = PI * i / M, a1 = PI * (i + 1) / M;
+			const P = (a, y) => [cx + Math.cos(a) * hw, y, C + Math.sin(a) * hw];
+			const N = (a) => [-Math.cos(a), 0, -Math.sin(a)];
+			const ia = g.v(P(a0, floor), N(a0), Hk, [hw * a0, floor]), ib = g.v(P(a1, floor), N(a1), Hk, [hw * a1, floor]);
+			const ic = g.v(P(a1, spring), N(a1), Hk, [hw * a1, spring]), id = g.v(P(a0, spring), N(a0), Hk, [hw * a0, spring]);
+			g.idx.push(ia, ib, ic, ia, ic, id);
+		}
+		// the half dome over it
+		const rows = [];
+		for (let j = 0; j <= R; j++) {
+			const b = (PI / 2) * j / R;
+			const row = [];
+			for (let i = 0; i <= M; i++) {
+				const a = PI * i / M;
+				const n = [Math.cos(a) * Math.cos(b), Math.sin(b), Math.sin(a) * Math.cos(b)];
+				row.push(g.v([cx + hw * n[0], spring + hw * n[1], C + hw * n[2]], n.map((v) => -v), Hk, [hw * a, spring + hw * b]));
+			}
+			rows.push(row);
+		}
+		for (let j = 0; j < R; j++) for (let i = 0; i < M; i++) {
+			const a = rows[j][i], b = rows[j][i + 1], c = rows[j + 1][i + 1], d = rows[j + 1][i];
+			g.idx.push(a, b, c, a, c, d);
+		}
+		// the hollow's floor
+		g.box(cx - hw, floor - 0.02, F - 0.02, cx + hw, floor, back, Hk, { bottom: true, x0: true, x1: true, z1: true });
+	}
+	// the low block the statue stands on
+	g.box(VENUS.x - 0.6, floor, VENUS.z - 0.55, VENUS.x + 0.6, VENUS.plinth - 0.05, VENUS.z + 0.5, S, { bottom: true });
+	g.box(VENUS.x - 0.64, VENUS.plinth - 0.05, VENUS.z - 0.59, VENUS.x + 0.64, VENUS.plinth, VENUS.z + 0.54, S);
+
+	// the entablature: architrave, frieze with a cartouche, cornice
+	g.box(x0 - 0.06, eb, F - 0.08, x1 + 0.06, eb + 0.32, L, S);
+	g.box(x0 - 0.02, eb + 0.32, F - 0.02, x1 + 0.02, eb + 0.78, L, S);
+	g.box(x0 - 0.12, eb + 0.78, F - 0.16, x1 + 0.12, eb + 0.86, L, S);
+	g.box(x0 - 0.2, eb + 0.86, F - 0.26, x1 + 0.2, eb + 1.02, L, S);
+	// the cartouche: a raised oval shield with a rolled rim and scrolls
+	{
+		const cy = eb + 0.55, rx = 0.34, ry = 0.2, M = 28;
+		const rows = [];
+		for (let j = 0; j <= 4; j++) {
+			const t = j / 4, row = [];
+			for (let i = 0; i <= M; i++) {
+				const a = 2 * PI * i / M;
+				const dz = 0.09 * Math.sqrt(Math.max(0, 1 - t * t)) + 0.01;
+				row.push(g.v([cx + Math.cos(a) * rx * t, cy + Math.sin(a) * ry * t, F - 0.02 - dz], [Math.cos(a) * t * 0.6, Math.sin(a) * t * 0.6, -1], S, [Math.cos(a) * t, Math.sin(a) * t]));
+			}
+			rows.push(row);
+		}
+		for (let j = 0; j < 4; j++) for (let i = 0; i < M; i++) {
+			const a = rows[j][i], b = rows[j][i + 1], c = rows[j + 1][i + 1], d = rows[j + 1][i];
+			g.idx.push(a, d, c, a, c, b);
+		}
+		for (let i = 0; i < M; i++) {
+			const a0 = 2 * PI * i / M, a1 = 2 * PI * (i + 1) / M;
+			g.beam([cx + Math.cos(a0) * (rx + 0.03), cy + Math.sin(a0) * (ry + 0.03), F - 0.04], [cx + Math.cos(a1) * (rx + 0.03), cy + Math.sin(a1) * (ry + 0.03), F - 0.04], 0.025, S, [0, 0, 1]);
+		}
+		for (const sx of [-1, 1]) {
+			for (let i = 0; i < 14; i++) {
+				const a0 = 1.8 * PI * i / 14, a1 = 1.8 * PI * (i + 1) / 14, r0 = 0.1 * (1 - i / 16), r1 = 0.1 * (1 - (i + 1) / 16);
+				const ox = cx + sx * (rx + 0.16), oy = cy;
+				g.beam([ox + sx * Math.cos(a0) * r0, oy + Math.sin(a0) * r0, F - 0.04], [ox + sx * Math.cos(a1) * r1, oy + Math.sin(a1) * r1, F - 0.04], 0.018, S, [0, 0, 1]);
+			}
+		}
+	}
+	// the low pediment
+	{
+		const y0 = eb + 1.02, rise = 0.62, hx = (x1 - x0) / 2 + 0.2, zf = F - 0.2;
+		const top = (x) => y0 + rise * (1 - Math.abs(x - cx) / hx);
+		for (let x = cx - hx; x < cx + hx - 1e-6; x += 0.1) {
+			const xa = x, xb = Math.min(cx + hx, x + 0.1);
+			g.quad([xb, y0, zf], [xa, y0, zf], [xa, top(xa), zf], [xb, top(xb), zf], [0, 0, -1], S, [[xb, y0], [xa, y0], [xa, top(xa)], [xb, top(xb)]]);
+		}
+		const sl = Math.hypot(hx, rise);
+		for (const sx of [-1, 1]) {
+			const n = [sx * rise / sl, hx / sl, 0];
+			const ex = cx + sx * (hx + 0.06);
+			g.quad([cx, y0 + rise + 0.06, zf - 0.06], [ex, y0 - 0.02, zf - 0.06], [ex, y0 - 0.02, L], [cx, y0 + rise + 0.06, L], n, S, [[0, zf], [sl, zf], [sl, L], [0, L]]);
+			g.quad([cx, y0 + rise + 0.06, zf - 0.06], [cx, y0 + rise - 0.06, zf - 0.06], [ex, y0 - 0.12, zf - 0.06], [ex, y0 - 0.02, zf - 0.06], [0, 0, -1], S, [[0, 1], [0, 0], [sl, 0], [sl, 1]]);
+		}
+	}
+}
+
 // the vine's own stems along the beams (twisting, dark), in the room's geometry
 function buildVineStems(g) {
 	const rnd = rng(77);
@@ -646,19 +859,19 @@ function fallState(pt, t) {
 // leaves rings. The same maths runs here (for the rings) and in the
 // shader (for the fish), so the two always agree.
 const KOI = [
-	{ at: [W / 2 - 0.8, 7.6], dir: 0.9, len: 0.92, kind: 0, sip: 21, first: 9 },
-	{ at: [W / 2 + 0.9, 11.6], dir: 3.6, len: 0.74, kind: 1, sip: 29, first: 17 },
-	{ at: [W / 2 - 0.3, 12.8], dir: 5.2, len: 0.86, kind: 2, sip: 25, first: 4 },
-	{ at: [W / 2 + 1.0, 7.0], dir: 2.2, len: 0.70, kind: 1, sip: 33, first: 23 },
-	{ at: [W / 2 - 1.1, 10.4], dir: 4.4, len: 0.82, kind: 0, sip: 27, first: 13 },
-	{ at: [W / 2 + 0.4, 9.0], dir: 1.4, len: 0.94, kind: 2, sip: 31, first: 28 },
-	{ at: [W / 2 - 0.9, 13.0], dir: 5.9, len: 0.66, kind: 1, sip: 23, first: 6 },
-	{ at: [W / 2 + 1.1, 12.6], dir: 3.0, len: 0.80, kind: 0, sip: 35, first: 31 }
+	{ at: [W / 2 - 0.8, PZ(7.6)], dir: 0.9, len: 0.92, kind: 0, sip: 21, first: 9 },
+	{ at: [W / 2 + 0.9, PZ(11.6)], dir: 3.6, len: 0.74, kind: 1, sip: 29, first: 17 },
+	{ at: [W / 2 - 0.3, PZ(12.8)], dir: 5.2, len: 0.86, kind: 2, sip: 25, first: 4 },
+	{ at: [W / 2 + 1.0, PZ(7.0)], dir: 2.2, len: 0.70, kind: 1, sip: 33, first: 23 },
+	{ at: [W / 2 - 1.1, PZ(10.4)], dir: 4.4, len: 0.82, kind: 0, sip: 27, first: 13 },
+	{ at: [W / 2 + 0.4, PZ(9.0)], dir: 1.4, len: 0.94, kind: 2, sip: 31, first: 28 },
+	{ at: [W / 2 - 0.9, PZ(13.0)], dir: 5.9, len: 0.66, kind: 1, sip: 23, first: 6 },
+	{ at: [W / 2 + 1.1, PZ(12.6)], dir: 3.0, len: 0.80, kind: 0, sip: 35, first: 31 }
 ];
-// where they may swim: inside the pool, short of the statue's plinth
-const KOI_BOX = [POOL.x0 + 0.5, POOL.z0 + 0.5, POOL.x1 - 0.5, VENUS.z - 1.05];
+// where they may swim: inside the pool, a little off its walls
+const KOI_BOX = [POOL.x0 + 0.5, POOL.z0 + 0.5, POOL.x1 - 0.5, POOL.z1 - 0.55];
 // where a crumb may be cast (it drifts in from the edges to here)
-const FEED_BOX = [POOL.x0 + 0.25, POOL.z0 + 0.25, POOL.x1 - 0.25, VENUS.z - 0.8];
+const FEED_BOX = [POOL.x0 + 0.25, POOL.z0 + 0.25, POOL.x1 - 0.25, POOL.z1 - 0.3];
 const CRUMB_N = 12;
 // the bed of the pool, below the surface (where it looks to be, seen through the water)
 const BED_Y = -0.36;
@@ -823,7 +1036,7 @@ function koiSim() {
 			F.x += Math.cos(F.th) * F.v * dt;
 			F.z += Math.sin(F.th) * F.v * dt;
 			F.x = Math.max(POOL.x0 + 0.15, Math.min(POOL.x1 - 0.15, F.x));
-			F.z = Math.max(POOL.z0 + 0.15, Math.min(VENUS.z - 0.62, F.z));
+			F.z = Math.max(POOL.z0 + 0.15, Math.min(POOL.z1 - 0.15, F.z));
 			const dy = (yt - F.y) * Math.min(dt * (hungry ? 2.0 : 0.8), 1);
 			F.y += dy;
 			F.pitch += (Math.max(-0.4, Math.min(0.4, dy / dt / Math.max(F.v, 0.06))) - F.pitch) * Math.min(dt * 2.5, 1);
@@ -876,7 +1089,7 @@ function buildRoom() {
 			const ys = hole ? [[0, hole[0]], [hole[1], H]] : [[0, H]];
 			for (const [y0, y1] of ys) {
 				if (y1 <= y0) continue;
-				if (side) g.quad([xi, y0, zb], [xi, y0, za], [xi, y1, za], [xi, y1, zb], n, K.PLASTER, [[zb, y0], [za, y0], [za, y1], [zb, y1]]);
+				if (side) g.quad([xi, y0, zb], [xi, y0, za], [xi, y1, za], [xi, y1, zb], n, K.ROCK, [[zb, y0], [za, y0], [za, y1], [zb, y1]]);
 				else g.quad([xi, y0, za], [xi, y0, zb], [xi, y1, zb], [xi, y1, za], n, K.PLASTER, [[za, y0], [zb, y0], [zb, y1], [za, y1]]);
 			}
 		}
@@ -904,9 +1117,10 @@ function buildRoom() {
 			g.box(sx0, WIN.sill - 0.09, c - WIN.hw - 0.12, sx1, WIN.sill, c + WIN.hw + 0.12, K.STONE);
 		}
 		// pilasters between the windows, a plinth along the foot of the wall
+		// (the window wall only: the others are rough stone slabs)
 		const xs = side ? W : 0, sg = side ? -1 : 1;
 		const pil = [0.6, ...WIN.c.slice(1).map((c, i) => (c + WIN.c[i]) / 2), L - 0.6];
-		for (const z of pil) {
+		if (!side) for (const z of pil) {
 			const a = Math.min(xs, xs + sg * 0.14), b = Math.max(xs, xs + sg * 0.14);
 			g.box(a, 0, z - 0.34, b, H - 0.7, z + 0.34, K.STONE, { bottom: true });
 			const a2 = Math.min(xs, xs + sg * 0.24), b2 = Math.max(xs, xs + sg * 0.24);
@@ -914,12 +1128,13 @@ function buildRoom() {
 			g.box(a2, H - 0.95, z - 0.46, b2, H - 0.7, z + 0.46, K.STONE);
 		}
 		const a = Math.min(xs, xs + sg * 0.05), b = Math.max(xs, xs + sg * 0.05);
-		g.box(a, 0, 0, b, 0.22, L, K.STONE, { bottom: true });
+		if (!side) g.box(a, 0, 0, b, 0.22, L, K.STONE, { bottom: true });
 		// a cornice under the eaves
+		const ck = side ? K.OLDSTONE : K.STONE;
 		const a3 = Math.min(xs, xs + sg * 0.32), b3 = Math.max(xs, xs + sg * 0.32);
-		g.box(a3, H - 0.55, 0, b3, H - 0.3, L, K.STONE);
+		g.box(a3, H - 0.55, 0, b3, H - 0.3, L, ck);
 		const a4 = Math.min(xs, xs + sg * 0.42), b4 = Math.max(xs, xs + sg * 0.42);
-		g.box(a4, H - 0.3, 0, b4, H - 0.12, L, K.STONE);
+		g.box(a4, H - 0.3, 0, b4, H - 0.12, L, ck);
 	}
 
 	// --- the end walls and the gables up to the roof
@@ -929,46 +1144,37 @@ function buildRoom() {
 			const x0 = (i / N) * W, x1 = ((i + 1) / N) * W;
 			const top = (x) => (x < W / 2 ? H + KR * x : H + KR * (W - x));
 			const pts = nz > 0 ? [[x1, 0], [x0, 0], [x0, top(x0)], [x1, top(x1)]] : [[x0, 0], [x1, 0], [x1, top(x1)], [x0, top(x0)]];
-			g.quad(...pts.map(([x, y]) => [x, y, z]), [0, 0, nz], K.PLASTER, pts.map(([x, y]) => [x, y]));
+			g.quad(...pts.map(([x, y]) => [x, y, z]), [0, 0, nz], K.ROCK, pts.map(([x, y]) => [x, y]));
 		}
-		// plinth and cornice
-		const za = nz > 0 ? 0 : L - 0.05, zb = nz > 0 ? 0.05 : L;
-		g.box(0, 0, za, W, 0.22, zb, K.STONE, { bottom: true });
+		// a cornice under the eaves
 		const zc = nz > 0 ? 0 : L - 0.32, zd = nz > 0 ? 0.32 : L;
-		g.box(0, H - 0.55, zc, W, H - 0.3, zd, K.STONE);
+		g.box(0, H - 0.55, zc, W, H - 0.3, zd, K.OLDSTONE);
 	}
 
-	// --- the near wall's door (the way in, for now a tall closed door)
+	// --- the red door: the way in, in the near wall, facing the niche
 	{
-		const z = 0.02, dx0 = W / 2 - 1.1, dx1 = W / 2 + 1.1, top = 3.9;
-		g.box(dx0 - 0.3, 0, 0, dx0, top + 0.3, 0.12, K.STONE);
-		g.box(dx1, 0, 0, dx1 + 0.3, top + 0.3, 0.12, K.STONE);
-		g.box(dx0 - 0.3, top, 0, dx1 + 0.3, top + 0.4, 0.14, K.STONE);
-		for (const [a, b] of [[dx0, W / 2 - 0.01], [W / 2 + 0.01, dx1]]) {
-			g.box(a, 0, z, b, top, z + 0.06, K.WOOD);
-			// panels
-			g.box(a + 0.12, 0.3, z + 0.06, b - 0.12, 1.7, z + 0.09, K.WOOD);
-			g.box(a + 0.12, 2.0, z + 0.06, b - 0.12, top - 0.2, z + 0.09, K.WOOD);
-		}
+		const d = Geo();
+		buildDoor(d);
+		appendTurned(g, d);
 	}
 
-	// --- the red door in the far wall, behind the statue
-	buildDoor(g);
+	// --- the niche at the far end, where the pool begins
+	buildNiche(g);
 
-	// --- the pool: a curb of white polished marble round dark water
+	// --- the pool: a curb of old weathered stone round dark water
 	{
 		const { x0, x1, z0, z1, curb, top } = POOL;
 		const lip = 0.06, cap = 0.08;
 		// the curb's body
-		g.box(x0 - curb, 0, z0 - curb, x0, top - cap, z1 + curb, K.WMARBLE, { bottom: true });
-		g.box(x1, 0, z0 - curb, x1 + curb, top - cap, z1 + curb, K.WMARBLE, { bottom: true });
-		g.box(x0, 0, z0 - curb, x1, top - cap, z0, K.WMARBLE, { bottom: true });
-		g.box(x0, 0, z1, x1, top - cap, z1 + curb, K.WMARBLE, { bottom: true });
+		g.box(x0 - curb, 0, z0 - curb, x0, top - cap, z1 + curb, K.OLDSTONE, { bottom: true });
+		g.box(x1, 0, z0 - curb, x1 + curb, top - cap, z1 + curb, K.OLDSTONE, { bottom: true });
+		g.box(x0, 0, z0 - curb, x1, top - cap, z0, K.OLDSTONE, { bottom: true });
+		g.box(x0, 0, z1, x1, top - cap, z1 + curb, K.OLDSTONE, { bottom: true });
 		// the coping, overhanging a little on both sides
-		g.box(x0 - curb - lip, top - cap, z0 - curb - lip, x0 + lip * 0.5, top, z1 + curb + lip, K.WMARBLE);
-		g.box(x1 - lip * 0.5, top - cap, z0 - curb - lip, x1 + curb + lip, top, z1 + curb + lip, K.WMARBLE);
-		g.box(x0 + lip * 0.5, top - cap, z0 - curb - lip, x1 - lip * 0.5, top, z0 + lip * 0.5, K.WMARBLE);
-		g.box(x0 + lip * 0.5, top - cap, z1 - lip * 0.5, x1 - lip * 0.5, top, z1 + curb + lip, K.WMARBLE);
+		g.box(x0 - curb - lip, top - cap, z0 - curb - lip, x0 + lip * 0.5, top, z1 + curb + lip, K.OLDSTONE);
+		g.box(x1 - lip * 0.5, top - cap, z0 - curb - lip, x1 + curb + lip, top, z1 + curb + lip, K.OLDSTONE);
+		g.box(x0 + lip * 0.5, top - cap, z0 - curb - lip, x1 - lip * 0.5, top, z0 + lip * 0.5, K.OLDSTONE);
+		g.box(x0 + lip * 0.5, top - cap, z1 - lip * 0.5, x1 - lip * 0.5, top, z1 + curb + lip, K.OLDSTONE);
 		// the water, on the floor's plane (so it mirrors the room)
 		const S = 0.5;
 		for (let x = x0; x < x1 - 1e-6; x += S) {
@@ -977,11 +1183,6 @@ function buildRoom() {
 				g.quad([xa, 0, za], [xa, 0, zb], [xb, 0, zb], [xb, 0, za], [0, 1, 0], K.WATER, [[xa, za], [xa, zb], [xb, zb], [xb, za]]);
 			}
 		}
-		// the plinth in the water for the statue
-		const { x, z, plinth } = VENUS;
-		g.box(x - 0.42, 0, z - 0.42, x + 0.42, plinth - 0.12, z + 0.42, K.WMARBLE, { bottom: true });
-		g.box(x - 0.5, plinth - 0.12, z - 0.5, x + 0.5, plinth, z + 0.5, K.WMARBLE);
-		g.box(x - 0.48, 0, z - 0.48, x + 0.48, 0.12, z + 0.48, K.WMARBLE, { bottom: true });
 	}
 
 	return g;
@@ -1057,8 +1258,8 @@ function buildPond(g) {
 	const rnd = rng(311);
 	// lily pads: notched discs, in loose clusters, floating on the water
 	const pads = [];
-	const clusters = [[POOL.x0 + 0.9, 6.6, 0.9, 10], [POOL.x1 - 0.8, 8.4, 0.85, 9], [POOL.x0 + 0.8, 10.6, 0.8, 8],
-		[POOL.x1 - 0.9, 12.4, 0.9, 10], [POOL.x0 + 1.0, 13.9, 0.65, 6], [W / 2 + 0.2, 9.6, 0.5, 4], [POOL.x1 - 0.7, 15.9, 0.55, 5]];
+	const clusters = [[POOL.x0 + 0.9, PZ(6.6), 0.9, 11], [POOL.x1 - 0.8, PZ(8.4), 0.85, 10], [POOL.x0 + 0.8, PZ(10.6), 0.8, 9],
+		[POOL.x1 - 0.9, PZ(12.4), 0.9, 11], [POOL.x0 + 1.0, PZ(13.9), 0.65, 7], [W / 2 + 0.2, PZ(9.6), 0.5, 4], [POOL.x1 - 0.7, PZ(15.9), 0.6, 6]];
 	for (const [cx, cz, rad, n] of clusters) {
 		for (let k = 0; k < n; k++) {
 			for (let tries = 0; tries < 40; tries++) {
@@ -1096,7 +1297,7 @@ function buildPond(g) {
 	}
 	g.float = null;
 	// water lilies: cupped pink petals in three rings, a golden heart
-	const flowers = [[POOL.x0 + 0.75, 6.9, 1.0], [POOL.x1 - 0.65, 8.1, 0.85], [POOL.x1 - 0.95, 12.6, 1.1], [POOL.x0 + 0.95, 10.3, 0.8], [POOL.x1 - 0.55, 15.6, 0.9], [POOL.x0 + 1.15, 13.7, 0.75]];
+	const flowers = [[POOL.x0 + 0.75, PZ(6.9), 1.0], [POOL.x1 - 0.65, PZ(8.1), 0.85], [POOL.x1 - 0.95, PZ(12.6), 1.1], [POOL.x0 + 0.95, PZ(10.3), 0.8], [POOL.x1 - 0.55, PZ(15.6), 0.9], [POOL.x0 + 1.05, PZ(13.7), 0.75]];
 	for (const [x, z, open] of flowers) {
 		g.float = [x, z, x * 3.7 + z * 1.3];
 		const sz = 0.17;
@@ -1393,7 +1594,7 @@ function loadTexture(regl, url, opts) {
 // under the pads. Heights are kept in 8-bit pictures, two bytes each (so
 // it works on every graphics chip), and read back here with our own
 // smoothing between cells.
-const SIM_NX = 128, SIM_NZ = 372;
+const SIM_NX = 128, SIM_NZ = Math.round((POOL.z1 - POOL.z0) / (11.0 / 372));
 const SIM_DX = (POOL.x1 - POOL.x0) / SIM_NX, SIM_DZ = (POOL.z1 - POOL.z0) / SIM_NZ;
 const SIM_HMAX = 0.02;
 const SIM_CODEC = `
@@ -1471,6 +1672,7 @@ const FRAG = `
 	precision highp float;
 	uniform float night, time, yScale, mirrorOn;
 	uniform sampler2D padTex, petalTex, reflTex;
+	uniform sampler2D rockCol, rockNrm, oldCol, oldNrm;
 	uniform vec2 reflSize;
 	uniform float reflOn;
 	uniform mat4 view;
@@ -1481,6 +1683,26 @@ const FRAG = `
 	${LIGHT}
 
 	bool is(float k) { return abs(v_kind - k) < 0.5; }
+
+	// a photographed stone laid flat on a face, along the face's main axis:
+	// its texture coordinates and the directions of the picture's right and up
+	void planar(vec3 p, vec3 N, float scale, out vec2 uv, out vec3 T, out vec3 B) {
+		vec3 a = abs(N);
+		if (a.y > a.x && a.y > a.z) { uv = p.xz; T = vec3(1.0, 0.0, 0.0); B = vec3(0.0, 0.0, -1.0); }
+		else if (a.x > a.z) { uv = vec2(p.z, -p.y); T = vec3(0.0, 0.0, 1.0); B = vec3(0.0, 1.0, 0.0); }
+		else { uv = vec2(p.x, -p.y); T = vec3(1.0, 0.0, 0.0); B = vec3(0.0, 1.0, 0.0); }
+		uv /= scale;
+	}
+	// the stone's relief from its normal map (rg), and its hollows (b)
+	vec3 bumped(vec3 N, vec3 T, vec3 B, vec4 tn, float k) {
+		vec2 d = tn.rg * 2.0 - 1.0;
+		return normalize(N + (T * d.x + B * d.y) * k);
+	}
+	// the old stone's colour: greyed, cooled, a little green, as in his photograph
+	vec3 oldTone(vec3 tc) {
+		float lum = dot(tc, vec3(0.3, 0.59, 0.11));
+		return mix(vec3(lum), tc, 0.42) * vec3(1.06, 1.10, 1.06);
+	}
 
 	void main() {
 		vec3 pw = v_pos;
@@ -1507,7 +1729,48 @@ const FRAG = `
 		float aoK = 1.0;
 		float sss = 0.0;
 
-		if (is(${K.PLASTER}.0) || is(${K.NICHE}.0)) {
+		if (is(${K.ROCK}.0)) {
+			// rough walling: uneven slabs of pale coral stone bedded in lime,
+			// greyed by age, damp and darker at the foot, streaked where rain
+			// once ran down
+			vec2 uv; vec3 T, B;
+			planar(p, N, 2.0, uv, T, B);
+			vec3 tc = texture2D(rockCol, uv).rgb; tc *= tc;
+			vec4 tn = texture2D(rockNrm, uv);
+			float lum = dot(tc, vec3(0.3, 0.59, 0.11));
+			base = mix(vec3(lum), tc, 0.5) * vec3(1.62, 1.64, 1.56);
+			base *= 0.86 + 0.24 * fbm3(p * vec3(0.22, 0.16, 0.22) + 5.0);
+			float streak = fbm3(vec3((p.x + p.z) * 1.6, p.y * 0.1, 3.0));
+			base = mix(base, base * vec3(0.72, 0.75, 0.70), smoothstep(0.52, 0.78, streak) * 0.8);
+			base *= mix(0.66, 1.0, smoothstep(0.0, 1.3, p.y + 0.4 * streak));
+			base *= mix(1.0, 0.84, smoothstep(${f(H - 2.2)}, ${f(H)}, p.y));
+			N = bumped(N, T, B, tn, 1.4);
+			aoK = mix(0.42, 1.0, tn.b);
+			gloss = 0.05;
+		} else if (is(${K.OLDSTONE}.0) || is(${K.HOLLOW}.0)) {
+			// old weathered limestone, dressed in blocks: grey and lichened,
+			// darker and greener low down and where the water has been
+			vec2 uv; vec3 T, B;
+			planar(p, N, 1.7, uv, T, B);
+			vec3 tc = texture2D(oldCol, uv).rgb; tc *= tc;
+			vec4 tn = texture2D(oldNrm, uv);
+			base = oldTone(tc) * 1.18;
+			base *= 0.86 + 0.26 * fbm3(p * 0.5 + 9.0);
+			float streak = fbm3(vec3((p.x + p.z) * 3.0, p.y * 0.25, 7.0));
+			base = mix(base, base * vec3(0.55, 0.58, 0.52), smoothstep(0.55, 0.8, streak) * 0.75);
+			// moss and wet near the water and the floor
+			float low = 1.0 - smoothstep(0.0, ${f(POOL.top + 0.35)}, p.y);
+			float moss = low * smoothstep(0.35, 0.65, fbm3(p * 4.0 + 2.0));
+			base = mix(base, vec3(0.10, 0.12, 0.065), moss * 0.6);
+			base *= mix(0.72, 1.0, smoothstep(0.0, 0.22, p.y));
+			if (is(${K.HOLLOW}.0)) {
+				// the hollow: older, damper, never washed by the sun
+				base *= vec3(0.70, 0.73, 0.68) * (0.85 + 0.15 * smoothstep(${f(NICHE.floor)}, ${f(NICHE.spring)}, p.y));
+			}
+			N = bumped(N, T, B, tn, 1.1);
+			aoK = mix(0.5, 1.0, tn.b);
+			gloss = 0.08;
+		} else if (is(${K.PLASTER}.0) || is(${K.NICHE}.0)) {
 			// old lime plaster: warm, patchy, with a soft trowelled bloom
 			float big = fbm3(p * vec3(0.35, 0.45, 0.35));
 			float mid = fbm3(p * 1.6 + 3.0);
@@ -1616,14 +1879,22 @@ const FRAG = `
 			base = vec3(0.95, 0.66, 0.12);
 			gloss = 0.2;
 		} else if (is(${K.MARBLE}.0)) {
-			// warm white marble with faint grey veins
-			float v = fbm3(p * 2.2);
-			float vein = 1.0 - smoothstep(0.0, 0.035, abs(sin((p.y * 3.0 + p.x * 2.0 + v * 6.0))) - 0.0) ;
-			base = mix(vec3(0.86, 0.83, 0.77), vec3(0.93, 0.91, 0.86), v) * (1.0 - 0.06 * vein);
-			// a little grime in the folds, darker at the foot
-			base *= mix(0.84, 1.0, smoothstep(${f(VENUS.plinth)}, ${f(VENUS.plinth + 0.5)}, p.y));
-			sss = 0.18;
-			gloss = 0.32;
+			// the nymph, aged like the niche: weathered pale stone gone grey,
+			// rain streaks down her, grime in the folds and under her, lichen at the foot
+			vec3 w = pow(abs(N), vec3(4.0)); w /= (w.x + w.y + w.z);
+			vec3 tc = texture2D(oldCol, p.zy * 0.9).rgb * w.x + texture2D(oldCol, p.xz * 0.9).rgb * w.y + texture2D(oldCol, p.xy * 0.9).rgb * w.z;
+			tc *= tc;
+			base = mix(vec3(0.27, 0.26, 0.225), oldTone(tc) * 1.05, 0.65);
+			float rain = fbm3(vec3(p.x * 7.0, p.y * 0.7, p.z * 7.0));
+			base *= mix(1.0, 0.5, smoothstep(0.5, 0.8, rain));
+			// grey-green lichen in blotches
+			float lich = smoothstep(0.58, 0.72, fbm3(p * 9.0 + 4.0));
+			base = mix(base, vec3(0.14, 0.15, 0.11), lich * 0.55);
+			base *= mix(0.62, 1.0, smoothstep(-0.7, 0.35, N.y));
+			float foot = 1.0 - smoothstep(${f(VENUS.plinth)}, ${f(VENUS.plinth + 0.7)}, p.y);
+			base = mix(base, base * vec3(0.55, 0.62, 0.48), foot * smoothstep(0.4, 0.7, fbm3(p * 6.0)));
+			sss = 0.06;
+			gloss = 0.14;
 		} else if (is(${K.WOOD}.0)) {
 			float g = vnoise3(vec3(p.x * 2.0, p.y * 30.0, p.z * 2.0));
 			base = mix(vec3(0.26, 0.15, 0.08), vec3(0.42, 0.27, 0.15), g) * (0.85 + 0.2 * vnoise3(p * 5.0));
@@ -1942,7 +2213,14 @@ module.exports = function (regl) {
 
 	const padTex = loadTexture(regl, 'res/pond/lilypad.webp');
 	const petalTex = loadTexture(regl, 'res/pond/petals.webp');
-	const ROOM_UNIFORMS = Object.assign({ padTex: () => padTex.tex, petalTex: () => petalTex.tex, reflTex: () => reflTex, reflSize: () => reflSize, reflOn: () => reflOn }, POOL_UNIFORMS);
+	// the rough slab walls and the old stone of the niche and the pool
+	// (Poly Haven, CC0: see the readme)
+	const rockCol = loadTexture(regl, 'res/studio/rock_col.webp', { wrap: 'repeat' });
+	const rockNrm = loadTexture(regl, 'res/studio/rock_nrm.webp', { wrap: 'repeat' });
+	const oldCol = loadTexture(regl, 'res/studio/oldstone_col.webp', { wrap: 'repeat' });
+	const oldNrm = loadTexture(regl, 'res/studio/oldstone_nrm.webp', { wrap: 'repeat' });
+	const ROOM_UNIFORMS = Object.assign({ padTex: () => padTex.tex, petalTex: () => petalTex.tex, reflTex: () => reflTex, reflSize: () => reflSize, reflOn: () => reflOn,
+		rockCol: () => rockCol.tex, rockNrm: () => rockNrm.tex, oldCol: () => oldCol.tex, oldNrm: () => oldNrm.tex }, POOL_UNIFORMS);
 	const makeDraw = (g, count) => regl({
 		vert: V(VERT),
 		frag: FRAG,
@@ -2337,11 +2615,6 @@ module.exports = function (regl) {
 		grid([x1, 0, z0], [0, 0, z1 - z0], [0, y, 0], 22, 2, [-1, 0, 0], 1);
 		grid([x0, 0, z0], [x1 - x0, 0, 0], [0, y, 0], 8, 2, [0, 0, 1], 1);
 		grid([x0, 0, z1], [x1 - x0, 0, 0], [0, y, 0], 8, 2, [0, 0, -1], 1);
-		const px0 = VENUS.x - 0.42, px1 = VENUS.x + 0.42, pz0 = VENUS.z - 0.42, pz1 = VENUS.z + 0.42;
-		grid([px0, 0, pz0], [0, 0, pz1 - pz0], [0, y, 0], 2, 2, [-1, 0, 0], 1);
-		grid([px1, 0, pz0], [0, 0, pz1 - pz0], [0, y, 0], 2, 2, [1, 0, 0], 1);
-		grid([px0, 0, pz0], [px1 - px0, 0, 0], [0, y, 0], 2, 2, [0, 0, -1], 1);
-		grid([px0, 0, pz1], [px1 - px0, 0, 0], [0, y, 0], 2, 2, [0, 0, 1], 1);
 		return { pos, nrm, kd, idx };
 	})();
 	const gravelTex = loadTexture(regl, 'res/pond/gravel.jpg', { wrap: 'repeat' });
@@ -2791,8 +3064,6 @@ function poolHit(eye, dir) {
 	const k = -eye[1] / dir[1];
 	const x = eye[0] + dir[0] * k - O[0], z = eye[2] + dir[2] * k - O[2];
 	if (x < POOL.x0 || x > POOL.x1 || z < POOL.z0 || z > POOL.z1) return null;
-	// not on the statue's plinth
-	if (Math.abs(x - VENUS.x) < 0.45 && Math.abs(z - VENUS.z) < 0.45) return null;
 	return [x + O[0], z + O[2]];
 }
 function feedAt(wx, wz) { if (ACTIVE) ACTIVE.drop(wx - O[0], wz - O[2]); }
@@ -2801,13 +3072,16 @@ function feeding() { return !!(ACTIVE && ACTIVE.feed.on); }
 // A preview of the room (?studio in the address): the camera drifts
 // slowly through a few shots, with a dip to black between them.
 const PREVIEW = [
-	{ from: [12.6, 1.65, 0.9], to: [11.4, 1.75, 2.6], at: [6.2, 2.6, 15.5], fov: 60 },
-	{ from: [8.0, 1.45, 1.4], to: [8.0, 1.25, 4.4], at: [8.0, 1.7, 16.0], fov: 50 },
-	{ from: [7.2, 1.6, 3.8], to: [8.3, 1.55, 5.2], at: [13.0, 1.4, 10.4], fov: 52 },
+	// in through the red door: the pool runs away to the niche and the nymph
+	{ from: [8.0, 1.65, 0.9], to: [8.0, 1.7, 2.9], at: [8.0, 2.4, 21.0], fov: 58 },
+	{ from: [12.4, 1.65, 1.5], to: [11.4, 1.75, 3.3], at: [7.2, 2.7, 20.5], fov: 58 },
+	{ from: [8.0, 1.45, 10.8], to: [8.0, 1.55, 13.6], at: [8.0, 2.5, 21.5], fov: 46 },
 	// over the pond, looking down into it (the koi can be fed here)
-	{ from: [7.1, 3.9, 6.4], to: [8.6, 3.7, 7.6], at: [8.0, -0.2, 10.6], fov: 50, pond: true },
-	{ from: [6.2, 1.45, 10.4], to: [7.0, 1.75, 11.6], at: [8.0, 2.3, 15.2], fov: 44 },
-	{ from: [2.6, 1.5, 2.6], to: [3.6, 1.6, 4.4], at: [7.0, 6.8, 12.0], fov: 62 }
+	{ from: [7.1, 3.9, 10.6], to: [8.6, 3.7, 11.8], at: [8.0, -0.2, 14.8], fov: 50, pond: true },
+	{ from: [10.9, 1.5, 16.2], to: [10.3, 1.7, 17.4], at: [8.0, 2.6, 21.2], fov: 44 },
+	// from beside the niche, back down the pool to the red door
+	{ from: [5.4, 1.6, 19.6], to: [6.3, 1.7, 18.4], at: [8.0, 2.4, 0.0], fov: 60 },
+	{ from: [13.4, 1.5, 3.0], to: [12.4, 1.6, 4.6], at: [8.0, 6.8, 14.0], fov: 62 }
 ];
 const SHOT_LEN = 11;
 function previewCam(time) {
