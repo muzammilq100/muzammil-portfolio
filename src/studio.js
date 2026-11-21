@@ -1495,15 +1495,17 @@ function buildGlass() {
 // daisies growing in the joints of the floor, along the foot of the walls
 // and round the pool, after his garden references. Every leaf, blade and
 // flower is a photographed cut-out (res/studio/plants.webp, packed from
-// ambientCG's LeafSet017 ivy, LeafSet029, Foliage001 and FlowerSet001, CC0).
+// ambientCG's LeafSet017 ivy, LeafSet029, LeafSet024, Foliage001 and
+// FlowerSet001, CC0). Climbing roses, dark red, ramble over the walls
+// without windows: each bloom is built of cupped petals in rings.
 // ------------------------------------------------------------------
 
 // where each cut-out sits in plants.webp ([u0, v0, u1, v1], v down)
-const PLANT_UV = {ivy: [[0.00293, 0.0127, 0.12207, 0.23633], [0.13037, 0.00586, 0.24463, 0.24414], [0.25293, 0.0166, 0.37207, 0.23242], [0.37793, 0.02344, 0.49707, 0.22656], [0.50293, 0.01367, 0.62207, 0.23535], [0.62793, 0.03418, 0.74707, 0.21582]], blade: [[0.01855, 0.50391, 0.02832, 0.99512], [0.05762, 0.50391, 0.08301, 0.99512], [0.10889, 0.50391, 0.12549, 0.99609], [0.1582, 0.50391, 0.16943, 0.99512], [0.19922, 0.50391, 0.22266, 0.99512], [0.25, 0.50391, 0.26562, 0.99609], [0.29932, 0.50391, 0.31006, 0.99609], [0.33008, 0.50781, 0.37305, 0.99121], [0.38721, 0.50391, 0.40918, 0.99609]], daisy: [[0.75684, 0.00586, 0.86768, 0.24414], [0.87793, 0.00781, 0.99707, 0.24121], [0.00342, 0.25586, 0.12158, 0.49414], [0.12842, 0.25586, 0.24609, 0.49414], [0.25293, 0.25684, 0.37207, 0.49219], [0.37891, 0.25586, 0.49609, 0.49316]], weed: [[0.50293, 0.25781, 0.62207, 0.49121], [0.62793, 0.26562, 0.74707, 0.48438], [0.75293, 0.26855, 0.87207, 0.48047], [0.88281, 0.25586, 0.99219, 0.49414], [0.44043, 0.50977, 0.55957, 0.73926], [0.5752, 0.50586, 0.67432, 0.74414], [0.69043, 0.50586, 0.80908, 0.74414], [0.81738, 0.50586, 0.93213, 0.74414], [0.44043, 0.75781, 0.55957, 0.99219]]};
+const PLANT_UV = {ivy: [[0.00293, 0.0127, 0.12207, 0.23633], [0.13037, 0.00586, 0.24463, 0.24414], [0.25293, 0.0166, 0.37207, 0.23242], [0.37793, 0.02344, 0.49707, 0.22656], [0.50293, 0.01367, 0.62207, 0.23535], [0.62793, 0.03418, 0.74707, 0.21582]], blade: [[0.01855, 0.50391, 0.02832, 0.99512], [0.05762, 0.50391, 0.08301, 0.99512], [0.10889, 0.50391, 0.12549, 0.99609], [0.1582, 0.50391, 0.16943, 0.99512], [0.19922, 0.50391, 0.22266, 0.99512], [0.25, 0.50391, 0.26562, 0.99609], [0.29932, 0.50391, 0.31006, 0.99609], [0.33008, 0.50781, 0.37305, 0.99121], [0.38721, 0.50391, 0.40918, 0.99609]], daisy: [[0.75684, 0.00586, 0.86768, 0.24414], [0.87793, 0.00781, 0.99707, 0.24121], [0.00342, 0.25586, 0.12158, 0.49414], [0.12842, 0.25586, 0.24609, 0.49414], [0.25293, 0.25684, 0.37207, 0.49219], [0.37891, 0.25586, 0.49609, 0.49316]], weed: [[0.50293, 0.25781, 0.62207, 0.49121], [0.62793, 0.26562, 0.74707, 0.48438], [0.75293, 0.26855, 0.87207, 0.48047], [0.88281, 0.25586, 0.99219, 0.49414], [0.44043, 0.50977, 0.55957, 0.73926], [0.5752, 0.50586, 0.67432, 0.74414], [0.69043, 0.50586, 0.80908, 0.74414], [0.81738, 0.50586, 0.93213, 0.74414], [0.44043, 0.75781, 0.55957, 0.99219]], rleaf: [[0.69824, 0.75586, 0.78076, 0.99414], [0.79834, 0.75586, 0.88867, 0.99414], [0.9043, 0.75586, 0.99072, 0.99414], [0.94043, 0.54395, 0.99707, 0.70605]], petal: [[0.56445, 0.75391, 0.68555, 0.99609]]};
 const JOINTS = [[0.248, 0.8613], [0.3438, 0.9785], [0.4492, 0.584], [0.5957, 0.3281], [0.5371, 0.918], [0.1699, 0.4062], [0.752, 0.6699], [0.5879, 0.2207], [0.3789, 0.8477], [0.2637, 0.2266], [0.6758, 0.7422], [0.6016, 0.0273], [0.5762, 0.502], [0.0469, 0.5078], [0.1406, 0.7773], [0.791, 0.7539], [0.6113, 0.5605], [0.9121, 0.6777], [0.6523, 0.1523], [0.2871, 0.3301], [0.2109, 0.832], [0.4297, 0.625], [0.168, 0.4434], [0.1348, 0.1211], [0.9668, 0.0859], [0.3164, 0.873], [0.1777, 0.7539], [0.0215, 0.3281], [0.6719, 0.334], [0.9844, 0.6172], [0.6523, 0.3828], [0.1152, 0.2988], [0.0176, 0.1328], [0.207, 0.0996], [0.6152, 0.9844], [0.0234, 0.0117], [0.0723, 0.6328], [0.2695, 0.7695], [0.2539, 0.9395], [0.502, 0.9941], [0.1504, 0.9961], [0.957, 0.8145], [0.5117, 0.123], [0.4062, 0.4941], [0.0547, 0.1387], [0.4375, 0.2949], [0.373, 0.2109], [0.1699, 0.3086], [0.5176, 0.6445], [0.4863, 0.3027], [0.877, 0.6602], [0.5977, 0.8887], [0.5488, 0.0098], [0.5156, 0.5332], [0.6973, 0.1094], [0.4707, 0.2051], [0.498, 0.7559], [0.0312, 0.7363], [0.2051, 0.4629], [0.541, 0.8379], [0.8398, 0.8965], [0.1426, 0.1855], [0.3711, 0.1172], [0.1328, 0.9082], [0.75, 0.9629], [0.2812, 0.0449], [0.6367, 0.4277], [0.2051, 0.9824], [0.7012, 0.9766], [0.0059, 0.9102], [0.7168, 0.3379], [0.1602, 0.584], [0.8594, 0.1973], [0.3516, 0.7227], [0.0918, 0.9727], [0.416, 0.3359], [0.6465, 0.9355], [0.3418, 0.627], [0.7578, 0.332], [0.0293, 0.6973], [0.9004, 0.957], [0.7012, 0.7617], [0.1855, 0.8652], [0.6914, 0.8184], [0.5684, 0.543], [0.6523, 0.8672], [0.5742, 0.7441], [0.2949, 0.4121], [0.2363, 0.6387], [0.25, 0.1953], [0.0352, 0.5918], [0.248, 0.293], [0.0762, 0.4863], [0.9785, 0.4922], [0.9004, 0.7305], [0.9277, 0.5527], [0.9395, 0.125], [0.3691, 0.8789], [0.4805, 0.0469], [0.5703, 0.4551], [0.4199, 0.2246], [0.0371, 0.625], [0.3281, 0.4941], [0.1152, 0.6094], [0.2793, 0.834], [0.5039, 0.166], [0.4609, 0.5312], [0.0645, 0.7715], [0.6035, 0.7227], [0.4746, 0.6348], [0.6777, 0.5684], [0.2773, 0.4512], [0.8008, 0.1191], [0.3945, 0.9297], [0.2109, 0.6855], [0.5977, 0.1875], [0.5195, 0.0742], [0.1309, 0.4609], [0.9531, 0.4277], [0.4785, 0.9648], [0.543, 0.3262], [0.9121, 0.041], [0.5059, 0.7188], [0.0098, 0.2969], [0.8438, 0.3789], [0.1504, 0.2637], [0.7969, 0.873], [0.8613, 0.9863], [0.834, 0.7461], [0.377, 0.6211], [0.791, 0.7227], [0.6758, 0.8457], [0.7832, 0.8066], [0.834, 0.5293], [0.1973, 0.6562], [0.8281, 0.9609], [0.5332, 0.7773], [0.9062, 0.8008], [0.3262, 0.0234], [0.8984, 0.7676]];
 // JOINTS: points in the joints between the flagstones (in one 2 m tile of
 // the floor's texture, 0..1), found from its height map and colour
-const PT = { IVY: 0, BLADE: 1, DAISY: 2, WEED: 3 };
+const PT = { IVY: 0, BLADE: 1, DAISY: 2, WEED: 3, ROSE: 4, RLEAF: 5 };
 const ATLAS_ASPECT = 2.0;
 
 function buildGreenery() {
@@ -1536,6 +1538,9 @@ function buildGreenery() {
 		for (let i = 0; i < S; i++) { const a = b0 + i * 2; g.idx.push(a, a + 1, a + 3, a, a + 3, a + 2); }
 	};
 
+	// where on the wall being dressed nothing may grow (a door, the glass)
+	let avoid = null;
+
 	// ---- ivy -------------------------------------------------------------
 	const IVY = [...PLANT_UV.ivy, ...PLANT_UV.ivy, ...PLANT_UV.weed.slice(0, 7)];
 	const UP = [0, 1, 0];
@@ -1556,7 +1561,7 @@ function buildGreenery() {
 	// now and then, thick with leaves; their reach falls off towards the
 	// patch's edges, so it reads as one growth rather than a box of leaves
 	const ivyPatch = (o, u, n, s0, width, height, density, drape, stopAt) => {
-		const stems = Math.max(3, Math.round(width * 3.4 * density));
+		const stems = Math.max(3, Math.round(width * 2.4 * density));
 		const stack = [];
 		for (let k = 0; k < stems; k++) {
 			const s = s0 + (rnd() - 0.5) * width;
@@ -1579,23 +1584,101 @@ function buildGreenery() {
 				const leaves = rnd() < 0.9 * density ? (rnd() < 0.5 ? 2 : 1) : 0;
 				for (let l = 0; l < leaves; l++) {
 					const out = 0.015 + rnd() * 0.11;
-					const at = madd(madd(madd(o, u, s + (rnd() - 0.5) * 0.2), UP, y + (rnd() - 0.5) * 0.12), n, out);
-					const size = (0.12 + 0.09 * rnd()) * (drape ? 1.05 - 0.3 * t : 1.2 - 0.4 * t);
+					const ls = s + (rnd() - 0.5) * 0.2, ly = y + (rnd() - 0.5) * 0.12;
+					if (avoid && avoid(ls, ly)) continue;
+					const at = madd(madd(madd(o, u, ls), UP, ly), n, out);
+					const size = (0.14 + 0.1 * rnd()) * (drape ? 1.05 - 0.3 * t : 1.2 - 0.4 * t);
 					ivyLeaf(at, n, UP, size, 0.45 + 0.55 * (out / 0.125) * (0.6 + 0.4 * rnd()));
 				}
 				if (gen < 2 && rnd() < 0.035) stack.push([s, y, ang + (rnd() < 0.5 ? -0.7 : 0.7), reach * (0.35 + 0.4 * rnd()) * (1 - t * 0.5), gen + 1]);
 			}
 		}
 	};
+	// ---- climbing roses ------------------------------------------------
+	// one dark red bloom at `at`, facing out along f: a tight bud of petals
+	// at its heart, opening rings round it, the outer petals curling back
+	const roseBloom = (at, f, size, open) => {
+		const r = PLANT_UV.petal[0];
+		const up = Math.abs(f[1]) > 0.9 ? [1, 0, 0] : [0, 1, 0];
+		const e1 = norm(cross(up, f)), e2 = cross(f, e1);
+		const rings = [[3, 0.42, 0.2], [5, 0.56, 0.6 * open + 0.2], [7, 0.7, 1.15 * open + 0.3]];
+		const a0 = rnd() * 2 * PI;
+		rings.forEach(([cnt, len, tilt], ri) => {
+			for (let k = 0; k < cnt; k++) {
+				const a = a0 + (k + ri * 0.5) * 2 * PI / cnt + (rnd() - 0.5) * 0.3;
+				const rd = madd(madd([0, 0, 0], e1, Math.cos(a)), e2, Math.sin(a));
+				// the petal rises from the heart, leaning out by its tilt
+				const tl = Math.min(1.45, tilt * (0.85 + 0.3 * rnd()));
+				const dir = norm(madd(madd([0, 0, 0], f, Math.cos(tl)), rd, Math.sin(tl)));
+				const L = size * len * (0.85 + 0.3 * rnd());
+				const side = norm(cross(dir, rd));
+				const w = L * 0.95 * (ri === 0 ? 0.7 : 1);
+				const base = madd(madd(at, rd, size * 0.06 * ri), f, -size * 0.05 * ri);
+				const nrm = norm(madd(madd([0, 0, 0], rd, -Math.cos(tl)), f, Math.sin(tl)));
+				// cupped in, the outer ones curling their lips back
+				card(base, madd([0, 0, 0], side, w / 2), madd([0, 0, 0], dir, L), r, 0.75 + 0.25 * rnd() - 0.12 * ri, PT.ROSE, norm(madd(nrm, f, 0.6)), rd, ri < 2 ? 0 : L * 0.3 * open);
+			}
+		});
+	};
+	const roseLeaf = (at, n, up, size, shade) => {
+		const r = pick(PLANT_UV.rleaf);
+		const ln = norm(madd(madd(n, up, rnd() * 0.8 - 0.1), cross(up, n), (rnd() - 0.5) * 0.9));
+		let ay = norm(madd(up, ln, -dot(up, ln)));
+		const th = (rnd() - 0.5) * 3.0, c = Math.cos(th), sn = Math.sin(th);
+		ay = norm(madd(madd([0, 0, 0], ay, c), cross(ln, ay), sn));
+		const ax = cross(ay, ln);
+		card(madd(at, ay, -size * 0.1), madd([0, 0, 0], ax, size * aspect(r) / 2), madd([0, 0, 0], ay, size), r, shade, PT.RLEAF, ln);
+	};
+	// a rambling rose on a wall: long canes fanning up and arching over,
+	// thick with leaves in fives, the blooms in clusters, most of them high
+	const rosePatch = (o, u, n, s0, width, height, blooms) => {
+		const canes = Math.max(3, Math.round(width * 2.2));
+		const at = (s, y, out) => madd(madd(madd(o, u, s), UP, y), n, out);
+		const roseLeaf0 = roseLeaf, roseBloom0 = roseBloom;
+		const roseLeaf1 = (p, ...a) => { if (!(avoid && avoid(dot(madd(p, o, -1), u), p[1]))) roseLeaf0(p, ...a); };
+		const roseBloom1 = (p, ...a) => { if (!(avoid && avoid(dot(madd(p, o, -1), u), p[1]))) roseBloom0(p, ...a); };
+		for (let k = 0; k < canes; k++) {
+			let s = s0 + (rnd() - 0.5) * width * 0.35, y = 0.05;
+			let ang = (rnd() - 0.5) * 1.4;
+			const reach = height * (0.6 + 0.4 * rnd());
+			const fan = (s - s0) / (width / 2 + 1e-3);
+			for (let step = 0; step < 200 && y < reach; step++) {
+				// fanning outwards and arching as they rise
+				ang += (rnd() - 0.5) * 0.3 + fan * 0.012 + (y > reach * 0.6 ? Math.sign(ang || 1) * 0.02 : 0);
+				ang = Math.max(-1.25, Math.min(1.25, ang));
+				s += Math.sin(ang) * 0.08; y += Math.cos(ang) * 0.08;
+				if (Math.abs(s - s0) > width * 0.6) break;
+				const t = y / reach;
+				for (let l = 0; l < (rnd() < 0.8 ? 2 : 1); l++) {
+					const out = 0.02 + rnd() * 0.12;
+					roseLeaf1(at(s + (rnd() - 0.5) * 0.16, y + (rnd() - 0.5) * 0.12, out), n, UP, 0.07 + rnd() * 0.05, 0.5 + 0.5 * rnd());
+				}
+				if (t > 0.18 && rnd() < blooms * (0.08 + 0.15 * t)) {
+					const nb = 1 + Math.floor(rnd() * 4);
+					for (let b = 0; b < nb; b++) {
+						const f = norm(madd(madd(n, UP, (rnd() - 0.4) * 0.8), cross(UP, n), (rnd() - 0.5) * 0.9));
+						roseBloom1(at(s + (rnd() - 0.5) * 0.18, y + (rnd() - 0.5) * 0.16, 0.08 + rnd() * 0.1), f, 0.11 + rnd() * 0.07, 0.45 + 0.55 * rnd());
+					}
+					// a few leaves round the cluster
+					for (let l = 0; l < 3; l++) roseLeaf1(at(s + (rnd() - 0.5) * 0.25, y + (rnd() - 0.5) * 0.2, 0.05 + rnd() * 0.08), n, UP, 0.07 + rnd() * 0.04, 0.6 + 0.4 * rnd());
+				}
+			}
+		}
+	};
+	const rose = (w, ...a) => rosePatch(w.o, w.u, w.n, ...a);
 	const NW = { o: [0, 0, 0], u: [1, 0, 0], n: [0, 0, 1] };          // the niche wall
 	const DW = { o: [0, 0, L], u: [1, 0, 0], n: [0, 0, -1] };         // the red door's wall
 	const GW = { o: [W, 0, 0], u: [0, 0, 1], n: [-1, 0, 0] };         // the wall shared with the gallery
 	const patch = (w, ...a) => ivyPatch(w.o, w.u, w.n, ...a);
 	// round the niche: thick on its left as in his photograph, lighter on its right
-	patch(NW, 4.25, 2.6, 6.6, 1.25);
-	patch(NW, 11.9, 3.0, 5.2, 1.0);
-	patch(NW, 1.0, 1.8, 3.2, 0.9);
-	patch(NW, 15.0, 1.8, 3.8, 0.9);
+	patch(NW, 4.1, 3.0, 7.0, 1.5);
+	patch(NW, 12.0, 3.4, 5.8, 1.3);
+	patch(NW, 1.0, 2.2, 4.2, 1.2);
+	patch(NW, 15.0, 2.0, 5.0, 1.2);
+	// and the roses scrambling through it, either side of the niche
+	rose(NW, 3.6, 3.2, 5.6, 1.1);
+	rose(NW, 12.6, 3.0, 4.8, 1.0);
+	rose(NW, 0.9, 1.6, 3.2, 0.8);
 	// spilling over the niche's cornice and down across the arch and the left pier
 	{
 		const zc = NICHE.face - 0.26, front = { o: [0, 0, L - zc + 0.03], u: [1, 0, 0], n: [0, 0, 1] };
@@ -1611,18 +1694,36 @@ function buildGreenery() {
 		}
 	}
 	// round the red door, and over its arch (never across it)
-	patch(DW, 5.4, 2.8, 5.6, 1.1);
-	patch(DW, 11.0, 3.2, 6.4, 1.1);
-	patch(DW, 1.2, 2.0, 3.0, 0.8);
-	patch(DW, 14.9, 2.0, 4.4, 0.9);
-	ivyPatch(DW.o, DW.u, DW.n, W / 2 + 0.3, 3.6, 1.6, 1.1, 5.2, (s) => (Math.abs(s - W / 2) < 1.25 ? 4.15 : 2.6));
+	avoid = (s, y) => Math.abs(s - W / 2) < DOOR.w / 2 + DOOR.frame + 0.12 && y < DOOR.top + DOOR.frame + 0.12;
+	patch(DW, 5.3, 3.2, 6.2, 1.4);
+	patch(DW, 11.0, 3.6, 7.0, 1.4);
+	patch(DW, 1.2, 2.4, 4.4, 1.2);
+	patch(DW, 14.9, 2.2, 5.4, 1.2);
+	ivyPatch(DW.o, DW.u, DW.n, W / 2 + 0.3, 3.8, 1.8, 1.3, 5.4, (s) => (Math.abs(s - W / 2) < 1.25 ? 4.15 : 2.4));
+	rose(DW, 5.6, 3.4, 5.2, 1.2);
+	rose(DW, 10.6, 3.6, 5.8, 1.2);
+	rose(DW, 14.6, 2.0, 4.0, 0.9);
+	avoid = null;
 	// along the gallery wall
-	patch(GW, 2.6, 3.6, 6.6, 1.1);
-	patch(GW, 9.2, 4.0, 4.6, 0.9);
-	patch(GW, 15.6, 4.6, 7.0, 1.2);
-	patch(GW, 20.9, 1.6, 3.0, 0.9);
-	// and low tufts of it at the feet of the bougainvillea on the window wall
-	for (const [k, c] of VINE.filter((v) => v[0] === 'wall')) { void k; ivyPatch([0, 0, 0], [0, 0, 1], [1, 0, 0], c, 1.2, 1.1, 0.8); }
+	patch(GW, 2.6, 4.0, 7.0, 1.4);
+	patch(GW, 9.2, 4.6, 5.4, 1.2);
+	patch(GW, 15.6, 5.0, 7.4, 1.5);
+	patch(GW, 20.9, 2.0, 4.0, 1.2);
+	rose(GW, 3.2, 3.6, 5.4, 1.1);
+	rose(GW, 8.6, 3.0, 4.2, 1.0);
+	rose(GW, 13.4, 3.2, 5.8, 1.1);
+	rose(GW, 18.6, 3.4, 5.0, 1.2);
+	// (off the glass)
+	avoid = (s, y) => WIN.c.some((c) => { const t = winTop(s - c); return t !== null && Math.abs(s - c) < WIN.hw + 0.06 && y > WIN.sill - 0.05 && y < t + 0.06; });
+	// green vines up the window wall, twined through the bougainvillea
+	// between the windows, and fringing the top of the windows' arches
+	for (const [k, c] of VINE.filter((v) => v[0] === 'wall')) {
+		void k;
+		const edge = c < 1 || c > L - 1;
+		ivyPatch([0, 0, 0], [0, 0, 1], [1, 0, 0], c, edge ? 1.0 : 1.7, H - 0.6, edge ? 0.9 : 1.1);
+	}
+	for (const c of WIN.c) ivyPatch([0, 0, 0], [0, 0, 1], [1, 0, 0], c, WIN.hw * 2.3, 1.6, 0.8, H - 0.6, (s) => winTop(s - c) !== null ? winTop(s - c) + 0.15 : H - 2.2);
+	avoid = null;
 
 	// ---- the ground: grass, weeds and daisies ---------------------------
 	g = ground;
@@ -2656,6 +2757,7 @@ module.exports = function (regl) {
 			float type = v_info.y;
 			vec3 base = tx.rgb * tx.rgb;
 			float gloss = 0.3, through = 1.8;
+			vec3 trC = vec3(0.9, 1.0, 0.5);
 			if (type < 0.5) {
 				// ivy: the photographed leaves deepened to an old ivy's dark green
 				float l = dot(base, vec3(0.3, 0.59, 0.11));
@@ -2667,14 +2769,21 @@ module.exports = function (regl) {
 				base *= mix(0.35, 1.0, smoothstep(0.0, 0.7, v_info.z));
 			} else if (type < 2.5) {
 				gloss = 0.15; through = 0.8;
-			} else {
+			} else if (type < 3.5) {
 				base *= vec3(0.62, 0.78, 0.5);
+			} else if (type < 4.5) {
+				// rose petals: dark red velvet, the sun glowing red through them
+				gloss = 0.22; through = 1.6; trC = vec3(1.0, 0.35, 0.35);
+			} else {
+				// the rose's own leaves: a deeper, bluer green than the ivy
+				base *= vec3(0.55, 0.72, 0.5);
+				gloss = 0.45; through = 1.0;
 			}
 			base *= v_info.x;
 			vec3 spec; float sv;
 			vec3 light = studioLight(v_pos, N, V, gloss, spec, sv);
 			float tr = max(dot(-N, STUDIO_SUN), 0.0) * sv;
-			vec3 col = base * light + base * vec3(0.9, 1.0, 0.5) * tr * through * (1.0 - night) + spec * 0.2 * gloss;
+			vec3 col = base * light + base * trC * tr * through * (1.0 - night) + spec * 0.2 * gloss;
 			col = studioAir(col, v_pos, v_eye);
 			gl_FragColor = vec4(sqrt(max(col, 0.0)), 1.0);
 		}`,
