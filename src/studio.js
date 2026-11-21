@@ -10,8 +10,9 @@
  * sun pours in through the windows and the roof, and every bar of the
  * glazing shows in the light on the floor, the walls and the dusty air.
  *
- * You come in through the red Gothic door in the near wall. Facing it,
- * against the far wall, an old stone aedicule (res/studio/oldstone_*):
+ * The red Gothic door in the far wall leads through to the piano room;
+ * coming in by it, the windows are on your left. Facing it, against the
+ * near wall, an old stone aedicule (res/studio/oldstone_*):
  * rusticated piers, a deep round-arched niche with a half dome, an
  * entablature and a low pediment. In the niche stands the nymph, seated
  * and preparing for her bath (res/nymph.bin, from his own scan file),
@@ -73,27 +74,32 @@ const ROOF = { rafter: L / 12, rafterW: 0.10, purlin: 1.0, purlinW: 0.07 };
 // the trusses under it (tie beams at the eaves)
 const TRUSS_Z = [5.5, 11.0, 16.5];
 
-// the niche in the far wall (after his reference): an old stone aedicule
-// standing proud of the rough slab wall, rusticated piers either side of a
-// deep round-arched hollow, an entablature and a low pediment over it.
-// The statue stands in the hollow and the pool runs out from its foot,
-// straight towards the red door, the way in.
+// the niche (after his reference): an old stone aedicule standing proud of
+// the near wall (z = 0), rusticated piers either side of a deep round-arched
+// hollow, an entablature and a low pediment over it. The statue stands in
+// the hollow and the pool runs out from its foot, straight towards the red
+// door in the far wall (the way through to the piano room). NICHE is given,
+// and buildNiche works, as if it stood against the far wall (z = L); it is
+// then turned half round onto the near one (see appendTurned).
 const NICHE = { cx: W / 2, hw: 1.12, spring: 3.95, pier: 1.05, face: L - 1.45, back: L - 0.2, floor: 0.66, top: 6.55 };
 NICHE.x0 = NICHE.cx - NICHE.hw - NICHE.pier;
 NICHE.x1 = NICHE.cx + NICHE.hw + NICHE.pier;
 // the pool, from the niche's foot towards the door
-const POOL = { x0: W / 2 - 1.7, x1: W / 2 + 1.7, z0: 7.2, z1: NICHE.face - 0.44, curb: 0.5, top: 0.36 };
-// the old pool's layout (where its pads, lilies and koi were placed), mapped onto this one
-const PZ = (z) => POOL.z0 + (z - 5.6) / 11.0 * (POOL.z1 - POOL.z0);
+const POOL = { x0: W / 2 - 1.7, x1: W / 2 + 1.7, z0: L - NICHE.face + 0.44, z1: L - 7.2, curb: 0.5, top: 0.36 };
+// the old pool's layout (where its pads, lilies and koi were placed, from
+// the door's end, 5.6, to the statue's, 16.6), mapped onto this one
+const PZ = (z) => POOL.z1 - (z - 5.6) / 11.0 * (POOL.z1 - POOL.z0);
 // the statue, standing in the niche on a low block, taller than before
-const VENUS = { x: W / 2, z: L - 1.0, plinth: NICHE.floor + 0.26, height: 2.75, yaw: PI + 0.35, file: 'res/nymph.bin' };
+// (VENUS.z is where she stands in the room; NZ is the same, seen from the far wall)
+const VENUS = { x: W / 2, z: 1.0, plinth: NICHE.floor + 0.26, height: 2.75, yaw: 0.35, file: 'res/nymph.bin' };
+const NZ = L - VENUS.z;
 
 // the sun: the direction towards it. Bright morning sun, fairly low, from
-// the east wall (x = 0) and a little from behind the entrance, so it
-// pours in through those windows and the roof and falls across the floor
-// towards the far end, onto the nymph and the red door. At night the moon comes in the same way.
+// the window wall (x = 0) and a little from behind the red door's end, so
+// it pours in through those windows and the roof and falls across the floor
+// towards the niche and the nymph. At night the moon comes in the same way.
 const SUN = (() => {
-	const v = [-0.68, 0.60, -0.36];
+	const v = [-0.68, 0.60, 0.36];
 	const l = Math.hypot(v[0], v[1], v[2]);
 	return v.map((x) => x / l);
 })();
@@ -180,20 +186,23 @@ function sunGLSL() {
 		// the niche: inside its hollow, the sun gets in only through the arch;
 		// elsewhere its block of stone stands in the way of some of the light
 		{
-			float dxn = p.x - ${f(NICHE.cx)};
-			if (abs(dxn) < ${f(NICHE.hw)} && p.z > ${f(NICHE.face)} && p.y > ${f(NICHE.floor - 0.05)} && p.y < ${f(NICHE.spring)} + sqrt(max(${f(NICHE.hw * NICHE.hw)} - dxn * dxn, 0.0))) {
-				if (S.z >= 0.0) return 0.0;
-				vec3 hf = p + S * ((${f(NICHE.face)} - p.z) / S.z);
+			// (worked as if the niche stood against the far wall: z turned round)
+			vec3 q = vec3(${f(W)} - p.x, p.y, ${f(L)} - p.z);
+			vec3 Sq = vec3(-S.x, S.y, -S.z);
+			float dxn = q.x - ${f(NICHE.cx)};
+			if (abs(dxn) < ${f(NICHE.hw)} && q.z > ${f(NICHE.face)} && q.y > ${f(NICHE.floor - 0.05)} && q.y < ${f(NICHE.spring)} + sqrt(max(${f(NICHE.hw * NICHE.hw)} - dxn * dxn, 0.0))) {
+				if (Sq.z >= 0.0) return 0.0;
+				vec3 hf = q + Sq * ((${f(NICHE.face)} - q.z) / Sq.z);
 				float hx = hf.x - ${f(NICHE.cx)};
 				float edge = ${f(NICHE.hw)} - abs(hx);
 				float topY = ${f(NICHE.spring)} + sqrt(max(${f(NICHE.hw * NICHE.hw)} - hx * hx, 0.0));
-				float soft = 0.02 + 0.03 * (${f(NICHE.face)} - p.z) / S.z;
+				float soft = 0.02 + 0.03 * (${f(NICHE.face)} - q.z) / Sq.z;
 				float inA = smoothstep(-soft, soft, edge) * smoothstep(-soft, soft, topY - hf.y);
 				if (inA <= 0.0) return 0.0;
 			} else {
 				vec3 bmin = vec3(${f(NICHE.x0 - 0.2)}, 0.0, ${f(NICHE.face - 0.3)}), bmax = vec3(${f(NICHE.x1 + 0.2)}, ${f(6.95)}, ${f(L)});
-				vec3 inv = 1.0 / S;
-				vec3 t0 = (bmin - p) * inv, t1 = (bmax - p) * inv;
+				vec3 inv = 1.0 / Sq;
+				vec3 t0 = (bmin - q) * inv, t1 = (bmax - q) * inv;
 				vec3 tn = min(t0, t1), tf = max(t0, t1);
 				float a = max(max(tn.x, tn.y), tn.z), bb = min(min(tf.x, tf.y), tf.z);
 				if (bb > max(a, 0.0) && a > 0.0) return 0.0;
@@ -633,8 +642,8 @@ function buildNiche(g) {
 		g.box(cx - hw, floor - 0.02, F - 0.02, cx + hw, floor, back, Hk, { bottom: true, x0: true, x1: true, z1: true });
 	}
 	// the low block the statue stands on
-	g.box(VENUS.x - 0.6, floor, VENUS.z - 0.55, VENUS.x + 0.6, VENUS.plinth - 0.05, VENUS.z + 0.5, S, { bottom: true });
-	g.box(VENUS.x - 0.64, VENUS.plinth - 0.05, VENUS.z - 0.59, VENUS.x + 0.64, VENUS.plinth, VENUS.z + 0.54, S);
+	g.box(VENUS.x - 0.6, floor, NZ - 0.5, VENUS.x + 0.6, VENUS.plinth - 0.05, NZ + 0.55, S, { bottom: true });
+	g.box(VENUS.x - 0.64, VENUS.plinth - 0.05, NZ - 0.54, VENUS.x + 0.64, VENUS.plinth, NZ + 0.59, S);
 
 	// the entablature: architrave, frieze with a cartouche, cornice
 	g.box(x0 - 0.06, eb, F - 0.08, x1 + 0.06, eb + 0.32, L, S);
@@ -1151,15 +1160,15 @@ function buildRoom() {
 		g.box(0, H - 0.55, zc, W, H - 0.3, zd, K.OLDSTONE);
 	}
 
-	// --- the red door: the way in, in the near wall, facing the niche
+	// --- the red door in the far wall, the way through to the piano room
+	buildDoor(g);
+
+	// --- the niche against the near wall, where the pool begins
 	{
 		const d = Geo();
-		buildDoor(d);
+		buildNiche(d);
 		appendTurned(g, d);
 	}
-
-	// --- the niche at the far end, where the pool begins
-	buildNiche(g);
 
 	// --- the pool: a curb of old weathered stone round dark water
 	{
@@ -1419,7 +1428,7 @@ function buildLeaves() {
 	// the bougainvillea's leaves, along the roof's beams
 	bougainvillea(g, leaf, rnd);
 	// and a little trailing over the corners of the pool's coping
-	for (const [x, z, sx] of [[POOL.x0 - 0.3, POOL.z0 - 0.3, -1], [POOL.x1 + 0.3, POOL.z1 + 0.3, 1], [POOL.x0 - 0.3, POOL.z1 + 0.2, -1]]) {
+	for (const [x, z, sx] of [[POOL.x0 - 0.3, POOL.z1 + 0.3, -1], [POOL.x1 + 0.3, POOL.z0 - 0.3, 1], [POOL.x0 - 0.3, POOL.z0 - 0.2, -1]]) {
 		for (let i = 0; i < 26; i++) {
 			const a = rnd() * 2 * PI;
 			const px = x + (rnd() - 0.3) * 0.5 * -sx, pz = z + (rnd() - 0.5) * 0.8;
@@ -3073,15 +3082,15 @@ function feeding() { return !!(ACTIVE && ACTIVE.feed.on); }
 // slowly through a few shots, with a dip to black between them.
 const PREVIEW = [
 	// in through the red door: the pool runs away to the niche and the nymph
-	{ from: [8.0, 1.65, 0.9], to: [8.0, 1.7, 2.9], at: [8.0, 2.4, 21.0], fov: 58 },
-	{ from: [12.4, 1.65, 1.5], to: [11.4, 1.75, 3.3], at: [7.2, 2.7, 20.5], fov: 58 },
-	{ from: [8.0, 1.45, 10.8], to: [8.0, 1.55, 13.6], at: [8.0, 2.5, 21.5], fov: 46 },
+	{ from: [8.0, 1.65, 21.1], to: [8.0, 1.7, 19.1], at: [8.0, 2.4, 1.0], fov: 58 },
+	{ from: [3.6, 1.65, 20.5], to: [4.6, 1.75, 18.7], at: [8.8, 2.7, 1.5], fov: 58 },
+	{ from: [8.0, 1.45, 11.2], to: [8.0, 1.55, 8.4], at: [8.0, 2.5, 0.5], fov: 46 },
 	// over the pond, looking down into it (the koi can be fed here)
-	{ from: [7.1, 3.9, 10.6], to: [8.6, 3.7, 11.8], at: [8.0, -0.2, 14.8], fov: 50, pond: true },
-	{ from: [10.9, 1.5, 16.2], to: [10.3, 1.7, 17.4], at: [8.0, 2.6, 21.2], fov: 44 },
+	{ from: [8.9, 3.9, 11.4], to: [7.4, 3.7, 10.2], at: [8.0, -0.2, 7.2], fov: 50, pond: true },
+	{ from: [5.1, 1.5, 5.8], to: [5.7, 1.7, 4.6], at: [8.0, 2.6, 0.8], fov: 44 },
 	// from beside the niche, back down the pool to the red door
-	{ from: [5.4, 1.6, 19.6], to: [6.3, 1.7, 18.4], at: [8.0, 2.4, 0.0], fov: 60 },
-	{ from: [13.4, 1.5, 3.0], to: [12.4, 1.6, 4.6], at: [8.0, 6.8, 14.0], fov: 62 }
+	{ from: [10.6, 1.6, 2.4], to: [9.7, 1.7, 3.6], at: [8.0, 2.4, 22.0], fov: 60 },
+	{ from: [2.6, 1.5, 19.0], to: [3.6, 1.6, 17.4], at: [8.0, 6.8, 8.0], fov: 62 }
 ];
 const SHOT_LEN = 11;
 function previewCam(time) {
