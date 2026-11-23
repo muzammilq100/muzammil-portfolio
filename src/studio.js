@@ -62,14 +62,14 @@ const f = (x) => (+x).toFixed(4);
 
 const O = [-90.0, 0.0, 0.0];          // where the room sits in the gallery
 const W = 16.0;                        // width (x)
-const L = 22.0;                        // length (z)
+const L = 27.5;                        // length (z): long enough to stand well back from the rotunda
 const H = 7.8;                         // walls up to the roof's eaves
 const RIDGE = 11.6;                    // the glass roof's ridge
 const T = 0.55;                        // wall thickness
 const KR = (RIDGE - H) / (W / 2);      // the roof's slope
 
 // tall arched windows in both long walls
-const WIN = { c: [3.6, 8.6, 13.6, 18.6], hw: 1.3, sill: 0.62, spring: 4.9 };
+const WIN = { c: [3.6, 8.6, 13.6, 18.6, 23.6], hw: 1.3, sill: 0.62, spring: 4.9 };
 WIN.top = WIN.spring + WIN.hw;
 // their steel glazing: three upright bars, transoms, a ring in the arch
 const MULL = { cols: [-0.65, 0.0, 0.65], rowH: 0.71, w: 0.055, ring: 0.78 };
@@ -77,7 +77,7 @@ const MULL = { cols: [-0.65, 0.0, 0.65], rowH: 0.71, w: 0.055, ring: 0.78 };
 // the glass roof: rafters across, purlins along
 const ROOF = { rafter: L / 12, rafterW: 0.10, purlin: 1.0, purlinW: 0.07 };
 // the trusses under it (tie beams at the eaves)
-const TRUSS_Z = [5.5, 11.0, 16.5];
+const TRUSS_Z = [5.5, 11.0, 16.5, 22.0];
 
 // the niche (after his reference): an old stone aedicule standing proud of
 // the near wall (z = 0), rusticated piers either side of a deep round-arched
@@ -90,7 +90,7 @@ const NICHE = { cx: W / 2, hw: 1.12, spring: 3.95, pier: 1.05, face: L - 1.45, b
 NICHE.x0 = NICHE.cx - NICHE.hw - NICHE.pier;
 NICHE.x1 = NICHE.cx + NICHE.hw + NICHE.pier;
 // the pool, from the niche's foot towards the door
-const POOL = { x0: W / 2 - 1.7, x1: W / 2 + 1.7, z0: L - NICHE.face + 0.44, z1: L - 8.2, curb: 0.5, top: 0.13 };
+const POOL = { x0: W / 2 - 1.7, x1: W / 2 + 1.7, z0: L - NICHE.face + 0.44, z1: 13.8, curb: 0.5, top: 0.13 };
 // where the pool ends, before the red door: a ruined rotunda of old stone
 // (after his reference), a round drum with four arched openings, a cornice
 // and a broken top, all hung with sheer dark red cloth falling in folds and
@@ -552,8 +552,8 @@ const winTop = (dz) => (Math.abs(dz) >= WIN.hw ? null : WIN.spring + Math.sqrt(W
 //   'wall'   up the window wall between the windows at z = c, from the
 //            floor to the eaves, where it meets the vine on the trusses
 const VINE = [
-	['truss', TRUSS_Z[0], 3.1], ['truss', TRUSS_Z[1], 5.4], ['truss', TRUSS_Z[2], 7.7],
-	['rafter', ROOF.rafter * 2, 1.7], ['rafter', ROOF.rafter * 5, 8.5], ['rafter', ROOF.rafter * 8, 13.6], ['rafter', ROOF.rafter * 10, 17.0],
+	['truss', TRUSS_Z[0], 3.1], ['truss', TRUSS_Z[1], 5.4], ['truss', TRUSS_Z[2], 7.7], ['truss', TRUSS_Z[3], 2.2],
+	['rafter', ROOF.rafter * 2, 1.7], ['rafter', ROOF.rafter * 5, 8.5], ['rafter', ROOF.rafter * 8, 13.6], ['rafter', ROOF.rafter * 10, 17.0], ['rafter', ROOF.rafter * 11, 6.1],
 	['ridge', W / 2, 0.9],
 	...[0.75, ...WIN.c.slice(1).map((c, i) => (c + WIN.c[i]) / 2), L - 0.75].map((c, i) => ['wall', c, 2.3 + i * 4.1])
 ];
@@ -709,82 +709,21 @@ const rotTop = (a) => {
 // ledger slab worn and a little askew; at its head, towards the nymph,
 // a round-topped headstone leaning back with age, a raised cross and a
 // moulded panel on its face.
-const GRAVE = { cx: W / 2, cz: ROT.cz + 0.12, hx: 0.5, hz: 1.0, top: 0.6, yaw: 0.018 };
+// (the grave itself is his photographed ledger and headstone, res/studio/
+// grave.bin, packed by its own script: turned so the headstone faces the
+// nymph, levelled, 1.4 m tall; hx, hz its footprint, top its ledger)
+const GRAVE = { cx: W / 2, cz: ROT.cz, hx: 0.57, hz: 1.19, top: 0.19, file: 'res/studio/grave.bin', tex: 'res/studio/grave.webp' };
 // three stubs of candle on the ledger at its head, burnt down to different
 // heights, wax run over the stone: [x, z, height]
-const GRAVE_CANDLES = [[GRAVE.cx - 0.27, GRAVE.cz - 0.8, 0.16], [GRAVE.cx - 0.12, GRAVE.cz - 0.88, 0.25], [GRAVE.cx + 0.29, GRAVE.cz - 0.82, 0.1]];
+const GRAVE_CANDLES = [[GRAVE.cx - 0.19, GRAVE.cz - 0.36, 0.16], [GRAVE.cx - 0.05, GRAVE.cz - 0.43, 0.25], [GRAVE.cx + 0.24, GRAVE.cz - 0.38, 0.1]];
 function buildGrave(g) {
-	const S = K.OLDSTONE;
-	const { cx, cz, hx, hz, top, yaw } = GRAVE;
-	// the footing, the chest, the ledger with a chamfered lip
-	g.tbox(cx, cz - 0.08, 0, hx + 0.14, 0, 0.09, hz + 0.36, S);
-	g.tbox(cx, cz, yaw * 0.5, hx + 0.05, 0.09, 0.15, hz + 0.05, S);
-	g.tbox(cx, cz, yaw * 0.5, hx, 0.15, top - 0.12, hz, S);
-	g.tbox(cx, cz, yaw * 0.5, hx + 0.03, top - 0.12, top - 0.1, hz + 0.03, S);
-	g.tbox(cx + 0.006, cz + 0.01, yaw, hx + 0.07, top - 0.1, top - 0.035, hz + 0.07, S);
-	g.tbox(cx + 0.006, cz + 0.01, yaw, hx + 0.045, top - 0.035, top, hz + 0.045, S);
-	// a sunken panel round each long side of the chest
-	for (const sx of [-1, 1]) g.tbox(cx + sx * (hx + 0.008), cz, yaw * 0.5, 0.012, 0.22, top - 0.18, hz - 0.14, S);
-
-	// the headstone: round-topped, leaning back a little from its foot
-	const hw = 0.4, th = 0.075, z0 = cz - hz - 0.2, y0 = 0.09, spring = 0.78;
-	const lean = 0.05;
-	const P = (x, y, z) => [cx + x, y0 + (y - y0) * Math.cos(lean), z0 + z - (y - y0) * Math.sin(lean)];
-	const outline = [];
-	outline.push([-hw, y0], [hw, y0]);
-	const NA = 18;
-	for (let i = 0; i <= NA; i++) { const a = PI * i / NA; outline.push([Math.cos(a) * hw, spring + Math.sin(a) * hw]); }
-	const cyc = (y0 + spring + hw) / 2;
-	for (const side of [-1, 1]) {
-		const n = [0, 0, side];
-		const nr = [0, side * Math.sin(lean) * 0, side];
-		const c = g.v(P(0, cyc, side * th), nr, S, [cx, cyc]);
-		const ids = outline.map(([x, y]) => g.v(P(x, y, side * th), nr, S, [cx + x, y]));
-		for (let i = 0; i < ids.length; i++) {
-			const a = ids[i], b = ids[(i + 1) % ids.length];
-			if (side > 0) g.idx.push(c, a, b); else g.idx.push(c, b, a);
-		}
-		void n;
-	}
-	for (let i = 0; i < outline.length; i++) {
-		const [xa, ya] = outline[i], [xb, yb] = outline[(i + 1) % outline.length];
-		let nx = yb - ya, ny = -(xb - xa);
-		const l = Math.hypot(nx, ny) || 1; nx /= l; ny /= l;
-		if (i === 0) { nx = 0; ny = -1; }
-		const nn = [nx, ny * Math.cos(lean), -ny * Math.sin(lean)];
-		const u0 = i * 0.07, u1 = (i + 1) * 0.07;
-		g.quad(P(xa, ya, -th), P(xb, yb, -th), P(xb, yb, th), P(xa, ya, th), nn, S, [[u0, 0], [u1, 0], [u1, 0.15], [u0, 0.15]]);
-	}
-	// on its face (towards the nymph): a moulded frame and a raised cross
-	const relief = (x0, y0r, x1, y1, d) => {
-		const a = P(x0, y0r, -th - d), b = P(x1, y0r, -th - d), c = P(x1, y1, -th - d), e = P(x0, y1, -th - d);
-		const n = [0, Math.sin(lean) * 0, -1];
-		g.quad(a, e, c, b, n, S, [[cx + x0, y0r], [cx + x0, y1], [cx + x1, y1], [cx + x1, y0r]]);
-		// its edges
-		const a2 = P(x0, y0r, -th), b2 = P(x1, y0r, -th), c2 = P(x1, y1, -th), e2 = P(x0, y1, -th);
-		g.quad(a2, a, b, b2, [0, -1, 0], S, [[0, 0], [0, d], [1, d], [1, 0]]);
-		g.quad(e, e2, c2, c, [0, 1, 0], S, [[0, 0], [0, d], [1, d], [1, 0]]);
-		g.quad(a2, e2, e, a, [-1, 0, 0], S, [[0, 0], [1, 0], [1, d], [0, d]]);
-		g.quad(b, c, c2, b2, [1, 0, 0], S, [[0, 0], [1, 0], [1, d], [0, d]]);
-	};
-	// the frame: two posts and a sill under the arch
-	relief(-hw + 0.05, y0 + 0.12, -hw + 0.09, spring, 0.012);
-	relief(hw - 0.09, y0 + 0.12, hw - 0.05, spring, 0.012);
-	relief(-hw + 0.05, y0 + 0.12, hw - 0.05, y0 + 0.16, 0.012);
-	// the cross
-	relief(-0.03, spring - 0.16, 0.03, spring + 0.24, 0.02);
-	relief(-0.13, spring + 0.08, 0.13, spring + 0.14, 0.02);
+	const { top } = GRAVE;
 	// the candles, a pool of old wax round each
 	for (const [x, z, h] of GRAVE_CANDLES) {
-		const y = top, r = 0.032 + h * 0.06;
+		const y = top - 0.01, r = 0.032 + h * 0.06;
 		g.lathe(x, z, [[0.0, y + 0.002], [r * 1.9, y + 0.002], [r * 1.5, y + 0.012], [r * 1.05, y + 0.02], [r, y + h * 0.5], [r * 0.98, y + h], [r * 0.6, y + h + 0.006], [0.0, y + h - 0.004]], K.GESSO, 14);
 		g.beam([x, y + h - 0.004, z], [x, y + h + 0.018, z], 0.0025, K.STEEL);
 		g.lathe(x, z, [[0.0, y + h + 0.01], [0.012, y + h + 0.026], [0.0, y + h + 0.07]], K.FLAME, 8);
-	}
-	// three worn lines of an inscription nobody can read any more
-	for (let i = 0; i < 3; i++) {
-		const w = [0.2, 0.25, 0.14][i];
-		relief(-w, y0 + 0.4 - i * 0.075, w, y0 + 0.42 - i * 0.075, 0.004);
 	}
 }
 
@@ -1968,7 +1907,7 @@ function buildStudio(g) {
 	}
 }
 
-const LAMPS = [[4.2, 4.6, 7.33], [11.8, 4.6, 7.33], [4.2, 4.6, 16.5], [11.8, 4.6, 16.5]];
+const LAMPS = [[4.2, 4.6, 7.33], [11.8, 4.6, 7.33], [4.2, 4.6, 16.5], [11.8, 4.6, 16.5], [4.2, 4.6, 24.2], [11.8, 4.6, 24.2]];
 // two old iron lanterns either side of the red door, a candle burning in
 // each, day and night: the door's wall never sees the sun, and these keep
 // its red alive in the shade
@@ -2311,10 +2250,14 @@ function buildGreenery() {
 	patch(GW, 9.2, 4.6, 5.4, 1.2);
 	patch(GW, 15.6, 5.0, 7.4, 1.5);
 	patch(GW, 20.9, 2.0, 4.0, 1.2);
+	patch(GW, 23.8, 4.2, 6.6, 1.4);
+	patch(GW, 26.6, 1.8, 4.4, 1.2);
 	rose(GW, 3.2, 3.6, 5.4, 1.1);
 	rose(GW, 8.6, 3.0, 4.2, 1.0);
 	rose(GW, 13.4, 3.2, 5.8, 1.1);
 	rose(GW, 18.6, 3.4, 5.0, 1.2);
+	rose(GW, 23.2, 3.6, 5.6, 1.2);
+	rose(GW, 26.4, 1.6, 3.6, 0.9);
 	// (off the glass)
 	avoid = (s, y) => WIN.c.some((c) => { const t = winTop(s - c); return t !== null && Math.abs(s - c) < WIN.hw + 0.06 && y > WIN.sill - 0.05 && y < t + 0.06; });
 	// green vines up the window wall, twined through the bougainvillea
@@ -3344,6 +3287,70 @@ module.exports = function (regl) {
 		})
 		.catch((e) => console.error(e));
 
+	// the grave in the rotunda: his photographed ledger and headstone, with
+	// its own picture, lit by the room's light (see GRAVE)
+	let drawGrave = null;
+	const graveTex = loadTexture(regl, GRAVE.tex);
+	fetch(GRAVE.file)
+		.then((r) => { if (!r.ok) throw new Error('Could not load ' + GRAVE.file); return r.arrayBuffer(); })
+		.then((buf) => {
+			const dv = new DataView(buf);
+			const nV = dv.getUint32(4, true), nI = dv.getUint32(8, true);
+			let off = 12;
+			const p0 = new Float32Array(buf, off, nV * 3); off += nV * 12;
+			const uv = new Uint16Array(buf, off, nV * 2); off += nV * 4;
+			const idx = new Uint16Array(buf, off, nI); off += nI * 2;
+			const nr = new Int8Array(buf, off, nV * 3);
+			const pos = new Float32Array(nV * 3), nrm = new Float32Array(nV * 3), tuv = new Float32Array(nV * 2);
+			for (let i = 0; i < nV; i++) {
+				pos[i * 3] = p0[i * 3] + O[0]; pos[i * 3 + 1] = p0[i * 3 + 1] + O[1]; pos[i * 3 + 2] = p0[i * 3 + 2] + O[2];
+				nrm[i * 3] = nr[i * 3] / 127; nrm[i * 3 + 1] = nr[i * 3 + 1] / 127; nrm[i * 3 + 2] = nr[i * 3 + 2] / 127;
+				tuv[i * 2] = uv[i * 2] / 65535; tuv[i * 2 + 1] = 1 - uv[i * 2 + 1] / 65535;
+			}
+			drawGrave = regl({
+				vert: `
+				precision highp float;
+				uniform mat4 proj, view;
+				uniform float yScale;
+				attribute vec3 position, normal;
+				attribute vec2 uv;
+				varying vec3 v_pos, v_nrm, v_eye;
+				varying vec2 v_uv;
+				void main() {
+					v_pos = position; v_nrm = normal; v_uv = uv;
+					vec3 t = view[3].xyz;
+					v_eye = -vec3(dot(view[0].xyz, t), dot(view[1].xyz, t), dot(view[2].xyz, t));
+					v_eye.y *= yScale;
+					vec3 p = position; p.y *= yScale;
+					gl_Position = proj * view * vec4(p, 1.0);
+				}`,
+				frag: `
+				precision highp float;
+				uniform float night, time;
+				uniform sampler2D graveTex;
+				varying vec3 v_pos, v_nrm, v_eye;
+				varying vec2 v_uv;
+				${LIGHT}
+				void main() {
+					vec3 V = normalize(v_eye - v_pos);
+					vec3 N = normalize(v_nrm);
+					if (dot(N, V) < 0.0) N = -N;
+					vec3 tc = texture2D(graveTex, v_uv).rgb;
+					vec3 base = tc * tc * 1.15;
+					vec3 spec; float sv;
+					vec3 light = studioLight(v_pos, N, V, 0.15, spec, sv);
+					vec3 col = base * light + spec * 0.15;
+					col = studioAir(col, v_pos, v_eye);
+					gl_FragColor = vec4(sqrt(max(col, 0.0)), 1.0);
+				}`,
+				attributes: { position: pos, normal: nrm, uv: tuv },
+				elements: idx,
+				uniforms: { graveTex: () => graveTex.tex },
+				cull: { enable: false }
+			});
+		})
+		.catch((e) => console.error(e));
+
 	// the leaves: cut-out cards from the tree's leaf texture
 	const leafTex = loadTexture(regl, 'res/tree/leaves.webp');
 	const lv = buildLeaves();
@@ -3532,7 +3539,7 @@ module.exports = function (regl) {
 		precision highp float;
 		uniform mat4 proj, view;
 		uniform float yScale;
-		uniform float time;
+		uniform float time, windK;
 		attribute vec3 position, normal;
 		attribute vec2 uv;
 		attribute float sw;
@@ -3547,8 +3554,26 @@ module.exports = function (regl) {
 			float y = position.y;
 			float w = sin(time * 0.55 + a * 2.3 - y * 0.9) * 0.6 + sin(time * 0.93 + a * 5.1 + y * 1.7) * 0.3 + sin(time * 0.31 - a * 1.3) * 0.4;
 			float side = sin(time * 0.7 + a * 3.7 - y * 1.3);
-			vec3 p0 = position + vec3(out2.x, 0.0, out2.y) * w * 0.07 * sw + vec3(-out2.y, 0.0, out2.x) * side * 0.035 * sw;
-			v_pos = p0; v_nrm = normalize(normal + vec3(out2.x, 0.0, out2.y) * side * 0.25 * sw); v_uv = uv;
+			vec2 tng = vec2(-out2.y, out2.x);
+			// and the wind: a draught from the windows' side across the drum,
+			// coming in slow gusts. The cloth on the far side of the drum
+			// from it lifts and billows out; the near side is pressed in
+			// against the stone and ripples; the parted edges on the pool's
+			// line, free, flap and curl most.
+			vec2 wd = normalize(vec2(0.92, -0.38));
+			float gust = (0.55 + 0.3 * sin(time * 0.29) * sin(time * 0.17 + 1.3) + 0.25 * sin(time * 0.61 + 0.7) + 0.12 * sin(time * 1.37 + a)) * windK;
+			float lee = dot(out2, wd);
+			float wave = sin(time * 1.6 + a * 4.0 - y * 1.5) * 0.55 + sin(time * 2.7 + a * 9.0 + y * 2.4) * 0.25;
+			float lat = ${f(ROT.cloth)} * abs(sin(a));
+			float edge = (1.0 - smoothstep(${f(ROT.gap)}, ${f(ROT.gap + 0.9)}, lat)) * step(abs(sin(a)), 0.7);
+			vec2 blow = wd * gust * (0.16 + 0.1 * wave) * mix(0.35, 1.0, smoothstep(-0.6, 0.6, lee))
+				+ out2 * gust * max(lee, 0.0) * (0.14 + 0.08 * wave)
+				+ tng * edge * gust * (sin(time * 2.1 + y * 2.3 + a * 6.0) * 0.13 + sin(time * 3.3 - y * 3.1) * 0.05);
+			vec3 p0 = position + vec3(out2.x, 0.0, out2.y) * w * 0.09 * sw + vec3(tng.x, 0.0, tng.y) * side * 0.05 * sw
+				+ vec3(blow.x, 0.03 * gust * wave, blow.y) * sw;
+			v_pos = p0;
+			v_nrm = normalize(normal + vec3(out2.x, 0.0, out2.y) * side * 0.3 * sw + vec3(tng.x, 0.0, tng.y) * wave * gust * 0.5 * sw);
+			v_uv = uv;
 			vec3 t = view[3].xyz;
 			v_eye = -vec3(dot(view[0].xyz, t), dot(view[1].xyz, t), dot(view[2].xyz, t));
 			v_eye.y *= yScale;
@@ -3585,6 +3610,7 @@ module.exports = function (regl) {
 			gl_FragColor = vec4(sqrt(max(col, 0.0)) * a, a);
 		}`,
 		attributes: { position: cloth.pos, normal: cloth.nrm, uv: cloth.uv, sw: cloth.sw },
+		uniforms: { windK: () => WIND.k },
 		elements: new Uint32Array(cloth.idx),
 		cull: { enable: false },
 		depth: { enable: true, mask: false },
@@ -4547,6 +4573,7 @@ module.exports = function (regl) {
 		drawRoom();
 		if (!refl) { drawBed(); drawKoi(); drawCrumbs(); }
 		if (drawVenus) drawVenus();
+		if (drawGrave) drawGrave();
 		// (the reflection keeps the bougainvillea, the nymph and the cloth;
 		// the ivy, the roses, the weeds and the dust are left out of it)
 		drawLeaves();
@@ -4569,6 +4596,9 @@ module.exports = function (regl) {
 let ACTIVE = null;
 // the tour's petal (studio coordinates), set by studiotour.js
 const GUIDE = { vis: false, model: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1], ang: 0, size: 0.09, flex: 0, flutter: 0, floating: false };
+// how hard the wind blows in the rotunda's cloth (the tour raises it at the end)
+const WIND = { k: 1 };
+function setWind(k) { WIND.k = k; }
 function setGuide(g) { Object.assign(GUIDE, g); }
 // the petal's end: a koi waits below; it lands; it is taken
 function petalLure(x, z) { if (ACTIVE && !ACTIVE.feed.lure && !ACTIVE.feed.petal) ACTIVE.lure(x, z); }
@@ -4616,6 +4646,7 @@ function previewCam(time) {
 // for the light shafts (post.js) and the culling (cull.js)
 module.exports.previewCam = previewCam;
 module.exports.setGuide = setGuide;
+module.exports.setWind = setWind;
 module.exports.petalLure = petalLure;
 module.exports.petalLand = petalLand;
 module.exports.petalReset = petalReset;
