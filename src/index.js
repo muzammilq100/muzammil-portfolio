@@ -1195,113 +1195,13 @@ if (STUDIO_PREVIEW) {
 		const d = downAt; downAt = null;
 		if (!d || Math.hypot(e.clientX - d.x, e.clientY - d.y) > 10 || performance.now() - d.t > 500) return;
 		if (e.target.closest && e.target.closest('button')) return;
-		if (!koiFeed.takes(e)) studioTour().tap();
+		studioTour().tap();
 	});
 	window.addEventListener('keydown', (e) => { if (e.key === 'n') require('./env').toggle(); else if (e.key === ' ') studioTour().tap(); });
 }
 let studioTourNow = null;
 function studioTour() { if (!studioTourNow) studioTourNow = require('./studiotour')(); return studioTourNow; }
 
-// Feeding the koi: when the camera looks down into the pond, a line
-// invites the visitor to cast a crumb; the camera holds still, they
-// touch the water, and the koi come to it from all over the pond.
-const koiFeed = (() => {
-	const st = { mode: 'idle', fedTill: 0, offset: 0, holdAt: null, now: 0, lastShot: -1, doneShot: -1, since: 0, hintUntil: 0 };
-	let ui = null, btn = null, hint = null;
-	const say = (text, secs) => {
-		if (!hint) return;
-		hint.textContent = text;
-		hint.classList.add('on');
-		st.hintUntil = secs ? st.now + secs : 0;
-	};
-	const build = () => {
-		const css = document.createElement('style');
-		css.textContent = `
-.koi-feed { position: fixed; left: 0; right: 0; bottom: 7vh; display: flex; flex-direction: column; align-items: center; gap: 0.6em; z-index: 20; pointer-events: none; font-family: 'Cormorant Garamond', Georgia, serif; }
-.koi-feed-btn { pointer-events: none; opacity: 0; transform: translateY(6px); transition: opacity 1.2s ease, transform 1.2s ease; background: rgba(12, 10, 8, 0.28); border: 1px solid rgba(244, 236, 223, 0.38); border-radius: 999px; color: #f4ecdf; font: italic 400 clamp(17px, 2.3vw, 24px)/1 'Cormorant Garamond', Georgia, serif; letter-spacing: 0.06em; padding: 0.7em 1.5em 0.75em; cursor: pointer; text-shadow: 0 1px 8px rgba(0, 0, 0, 0.55); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
-.koi-feed-btn.on { opacity: 1; transform: none; pointer-events: auto; }
-.koi-feed-btn:hover { background: rgba(12, 10, 8, 0.42); border-color: rgba(244, 236, 223, 0.7); }
-.koi-feed-btn .orn { display: inline-block; margin: 0 0.55em; font-style: normal; opacity: 0.75; transform: translateY(-0.05em); }
-.koi-feed-hint { opacity: 0; transition: opacity 1.4s ease; color: #f4ecdf; font: italic 400 clamp(16px, 2vw, 21px)/1.3 'Cormorant Garamond', Georgia, serif; letter-spacing: 0.05em; text-shadow: 0 1px 10px rgba(0, 0, 0, 0.7); text-align: center; padding: 0 1em; }
-.koi-feed-hint.on { opacity: 0.95; }
-.koi-aim, .koi-aim canvas { cursor: crosshair !important; }
-`;
-		document.head.appendChild(css);
-		ui = document.createElement('div');
-		ui.className = 'koi-feed';
-		ui.innerHTML = '<button type="button" class="koi-feed-btn"><span class="orn">\u2766</span>Cast a crumb upon the water<span class="orn">\u2766</span></button><div class="koi-feed-hint"></div>';
-		document.body.appendChild(ui);
-		btn = ui.querySelector('.koi-feed-btn');
-		hint = ui.querySelector('.koi-feed-hint');
-		btn.addEventListener('pointerdown', (e) => {
-			e.stopPropagation();
-			if (st.mode !== 'idle') return;
-			st.mode = 'aim';
-			st.holdAt = st.now - st.offset;
-			st.since = st.now;
-			btn.classList.remove('on');
-			document.body.classList.add('koi-aim');
-			say('Touch the water where it should fall');
-		});
-	};
-	// where on the screen the visitor touched, as a ray into the room
-	const ray = (cx, cy) => {
-		const vp = glMat4.multiply([], camProj, camView);
-		const inv = glMat4.invert([], vp);
-		if (!inv) return null;
-		const x = cx / window.innerWidth * 2 - 1, y = 1 - cy / window.innerHeight * 2;
-		const p = [0, 0, 0, 0];
-		for (let i = 0; i < 4; i++) p[i] = inv[i] * x + inv[4 + i] * y + inv[8 + i] * 1 + inv[12 + i];
-		return [p[0] / p[3] - camEye[0], p[1] / p[3] - camEye[1], p[2] / p[3] - camEye[2]];
-	};
-	const release = () => {
-		if (st.holdAt !== null) st.offset = st.now - st.holdAt;
-		st.holdAt = null;
-		st.mode = 'idle';
-		st.doneShot = st.lastShot;
-		document.body.classList.remove('koi-aim');
-		if (hint) hint.classList.remove('on');
-	};
-	return {
-		// the preview's own time: it stands still while the koi are fed
-		time(time) { st.now = time; return st.holdAt !== null ? st.holdAt : time - st.offset; },
-		// called each frame with the preview shot
-		update(sc) {
-			if (!ui) build();
-			if (sc.shot !== st.lastShot) { st.lastShot = sc.shot; }
-			const studio = require('./studio');
-			if (st.mode === 'idle') {
-				btn.classList.toggle('on', !!sc.pond && st.doneShot !== sc.shot);
-			} else if (st.mode === 'aim') {
-				if (st.now - st.since > 40) release();
-			} else if (st.mode === 'watch') {
-				// stay to watch them, and a little while after the last crumb
-				if (studio.feeding()) st.fedTill = st.now;
-				if (st.now - st.fedTill > 5 && st.now - st.since > 8) release();
-				else if (st.now - st.since > 60) release();
-			}
-			if (st.hintUntil && st.now > st.hintUntil) { hint.classList.remove('on'); st.hintUntil = 0; }
-		},
-		// a tap: is it for the koi? (then it doesn't turn day to night)
-		takes(e) {
-			if (st.mode === 'idle') return false;
-			const studio = require('./studio');
-			const d = ray(e.clientX, e.clientY);
-			const hit = d && studio.poolHit(camEye, d);
-			if (!hit) {
-				if (st.mode === 'aim') say('Upon the water, there\u2026');
-				return true;
-			}
-			studio.feedAt(hit[0], hit[1]);
-			st.fedTill = st.now;
-			if (st.mode === 'aim') say('and they come, like embers through the dark', 5);
-			st.mode = 'watch';
-			st.since = st.now;
-			document.body.classList.remove('koi-aim');
-			return true;
-		}
-	};
-})();
 const FREE_LOOK = { fade: 0, fadeColor: [0, 0, 0], letterbox: 0, focus: 6, aperture: 0, exposure: 1, shafts: 1, vignette: 0 };
 let leafNow = null;
 let walkerNow = false;
@@ -1361,8 +1261,7 @@ function setCamera(time) {
 
 	// ?studio: a preview of the painter's studio (see studio.js)
 	if (STUDIO_PREVIEW && !(/tourdebug/.test(location.search) && window.__camOverride)) {
-		const sc = studioTour().update(koiFeed.time(time));
-		koiFeed.update(sc);
+		const sc = studioTour().update(time);
 		studioMoving = sc.moving !== false;
 		c = sc;
 		look = Object.assign({}, FREE_LOOK, sc.look);

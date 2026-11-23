@@ -35,7 +35,7 @@
  * as much as the surface lets them, with the room's reflection laid
  * over them, bent by the waves. The surface is alive (pondSim): petals
  * fall and float, rings spread where they land and bounce off the walls,
- * koi near the surface leave wakes, the koi rise to sip, and the visitor can feed them
+ * koi near the surface leave wakes, and the koi rise to sip
  * (see koiSim and feedAt). Credits for the pond's models and textures are
  * in the readme.
  *
@@ -90,7 +90,7 @@ const NICHE = { cx: W / 2, hw: 1.12, spring: 3.95, pier: 1.05, face: L - 1.45, b
 NICHE.x0 = NICHE.cx - NICHE.hw - NICHE.pier;
 NICHE.x1 = NICHE.cx + NICHE.hw + NICHE.pier;
 // the pool, from the niche's foot towards the door
-const POOL = { x0: W / 2 - 1.7, x1: W / 2 + 1.7, z0: L - NICHE.face + 0.44, z1: L - 8.2, curb: 0.5, top: 0.36 };
+const POOL = { x0: W / 2 - 1.7, x1: W / 2 + 1.7, z0: L - NICHE.face + 0.44, z1: L - 8.2, curb: 0.5, top: 0.13 };
 // where the pool ends, before the red door: a ruined rotunda of old stone
 // (after his reference), a round drum with four arched openings, a cornice
 // and a broken top, all hung with sheer dark red cloth falling in folds and
@@ -702,6 +702,92 @@ const rotTop = (a) => {
 	return ROT.top - 0.55 * Math.pow(Math.max(0, Math.sin(m * 3.0 + 0.6)), 6) - 0.25 * Math.pow(Math.max(0, Math.sin(m * 7.0 + 1.9)), 8) - 0.06 * Math.sin(m * 23.0);
 };
 
+// ------------------------------------------------------------------
+// GEOMETRY: the grave inside the rotunda
+// ------------------------------------------------------------------
+// An old chest tomb under the cloth, long along the pool's line, its
+// ledger slab worn and a little askew; at its head, towards the nymph,
+// a round-topped headstone leaning back with age, a raised cross and a
+// moulded panel on its face.
+const GRAVE = { cx: W / 2, cz: ROT.cz + 0.12, hx: 0.5, hz: 1.0, top: 0.6, yaw: 0.018 };
+// three stubs of candle on the ledger at its head, burnt down to different
+// heights, wax run over the stone: [x, z, height]
+const GRAVE_CANDLES = [[GRAVE.cx - 0.27, GRAVE.cz - 0.8, 0.16], [GRAVE.cx - 0.12, GRAVE.cz - 0.88, 0.25], [GRAVE.cx + 0.29, GRAVE.cz - 0.82, 0.1]];
+function buildGrave(g) {
+	const S = K.OLDSTONE;
+	const { cx, cz, hx, hz, top, yaw } = GRAVE;
+	// the footing, the chest, the ledger with a chamfered lip
+	g.tbox(cx, cz - 0.08, 0, hx + 0.14, 0, 0.09, hz + 0.36, S);
+	g.tbox(cx, cz, yaw * 0.5, hx + 0.05, 0.09, 0.15, hz + 0.05, S);
+	g.tbox(cx, cz, yaw * 0.5, hx, 0.15, top - 0.12, hz, S);
+	g.tbox(cx, cz, yaw * 0.5, hx + 0.03, top - 0.12, top - 0.1, hz + 0.03, S);
+	g.tbox(cx + 0.006, cz + 0.01, yaw, hx + 0.07, top - 0.1, top - 0.035, hz + 0.07, S);
+	g.tbox(cx + 0.006, cz + 0.01, yaw, hx + 0.045, top - 0.035, top, hz + 0.045, S);
+	// a sunken panel round each long side of the chest
+	for (const sx of [-1, 1]) g.tbox(cx + sx * (hx + 0.008), cz, yaw * 0.5, 0.012, 0.22, top - 0.18, hz - 0.14, S);
+
+	// the headstone: round-topped, leaning back a little from its foot
+	const hw = 0.4, th = 0.075, z0 = cz - hz - 0.2, y0 = 0.09, spring = 0.78;
+	const lean = 0.05;
+	const P = (x, y, z) => [cx + x, y0 + (y - y0) * Math.cos(lean), z0 + z - (y - y0) * Math.sin(lean)];
+	const outline = [];
+	outline.push([-hw, y0], [hw, y0]);
+	const NA = 18;
+	for (let i = 0; i <= NA; i++) { const a = PI * i / NA; outline.push([Math.cos(a) * hw, spring + Math.sin(a) * hw]); }
+	const cyc = (y0 + spring + hw) / 2;
+	for (const side of [-1, 1]) {
+		const n = [0, 0, side];
+		const nr = [0, side * Math.sin(lean) * 0, side];
+		const c = g.v(P(0, cyc, side * th), nr, S, [cx, cyc]);
+		const ids = outline.map(([x, y]) => g.v(P(x, y, side * th), nr, S, [cx + x, y]));
+		for (let i = 0; i < ids.length; i++) {
+			const a = ids[i], b = ids[(i + 1) % ids.length];
+			if (side > 0) g.idx.push(c, a, b); else g.idx.push(c, b, a);
+		}
+		void n;
+	}
+	for (let i = 0; i < outline.length; i++) {
+		const [xa, ya] = outline[i], [xb, yb] = outline[(i + 1) % outline.length];
+		let nx = yb - ya, ny = -(xb - xa);
+		const l = Math.hypot(nx, ny) || 1; nx /= l; ny /= l;
+		if (i === 0) { nx = 0; ny = -1; }
+		const nn = [nx, ny * Math.cos(lean), -ny * Math.sin(lean)];
+		const u0 = i * 0.07, u1 = (i + 1) * 0.07;
+		g.quad(P(xa, ya, -th), P(xb, yb, -th), P(xb, yb, th), P(xa, ya, th), nn, S, [[u0, 0], [u1, 0], [u1, 0.15], [u0, 0.15]]);
+	}
+	// on its face (towards the nymph): a moulded frame and a raised cross
+	const relief = (x0, y0r, x1, y1, d) => {
+		const a = P(x0, y0r, -th - d), b = P(x1, y0r, -th - d), c = P(x1, y1, -th - d), e = P(x0, y1, -th - d);
+		const n = [0, Math.sin(lean) * 0, -1];
+		g.quad(a, e, c, b, n, S, [[cx + x0, y0r], [cx + x0, y1], [cx + x1, y1], [cx + x1, y0r]]);
+		// its edges
+		const a2 = P(x0, y0r, -th), b2 = P(x1, y0r, -th), c2 = P(x1, y1, -th), e2 = P(x0, y1, -th);
+		g.quad(a2, a, b, b2, [0, -1, 0], S, [[0, 0], [0, d], [1, d], [1, 0]]);
+		g.quad(e, e2, c2, c, [0, 1, 0], S, [[0, 0], [0, d], [1, d], [1, 0]]);
+		g.quad(a2, e2, e, a, [-1, 0, 0], S, [[0, 0], [1, 0], [1, d], [0, d]]);
+		g.quad(b, c, c2, b2, [1, 0, 0], S, [[0, 0], [1, 0], [1, d], [0, d]]);
+	};
+	// the frame: two posts and a sill under the arch
+	relief(-hw + 0.05, y0 + 0.12, -hw + 0.09, spring, 0.012);
+	relief(hw - 0.09, y0 + 0.12, hw - 0.05, spring, 0.012);
+	relief(-hw + 0.05, y0 + 0.12, hw - 0.05, y0 + 0.16, 0.012);
+	// the cross
+	relief(-0.03, spring - 0.16, 0.03, spring + 0.24, 0.02);
+	relief(-0.13, spring + 0.08, 0.13, spring + 0.14, 0.02);
+	// the candles, a pool of old wax round each
+	for (const [x, z, h] of GRAVE_CANDLES) {
+		const y = top, r = 0.032 + h * 0.06;
+		g.lathe(x, z, [[0.0, y + 0.002], [r * 1.9, y + 0.002], [r * 1.5, y + 0.012], [r * 1.05, y + 0.02], [r, y + h * 0.5], [r * 0.98, y + h], [r * 0.6, y + h + 0.006], [0.0, y + h - 0.004]], K.GESSO, 14);
+		g.beam([x, y + h - 0.004, z], [x, y + h + 0.018, z], 0.0025, K.STEEL);
+		g.lathe(x, z, [[0.0, y + h + 0.01], [0.012, y + h + 0.026], [0.0, y + h + 0.07]], K.FLAME, 8);
+	}
+	// three worn lines of an inscription nobody can read any more
+	for (let i = 0; i < 3; i++) {
+		const w = [0.2, 0.25, 0.14][i];
+		relief(-w, y0 + 0.4 - i * 0.075, w, y0 + 0.42 - i * 0.075, 0.004);
+	}
+}
+
 function buildRotunda(g) {
 	const { cx, cz, ri, ro, hw, spring } = ROT;
 	const S = K.OLDSTONE;
@@ -1091,8 +1177,49 @@ function buildNiche(g) {
 }
 
 // the vine's own stems along the beams (twisting, dark), in the room's geometry
+// the roses climbing the nymph: how far her marble reaches from her axis,
+// every 10 cm up and every 15 degrees round (worked out from res/nymph.bin,
+// already turned as she stands, and widened a little so nothing passes
+// through her), in cm; the axis is at (VENUS.x + 0, VENUS.z - 0.05)
+const NYMPH_R = [[72,72,72,72,72,72,70,69,68,65,63,61,63,63,64,66,68,69,70,70,70,70,70,71],[72,72,72,72,72,72,70,69,68,65,63,61,63,63,64,66,68,69,70,70,70,70,70,71],[72,72,72,72,72,72,70,69,67,65,63,61,63,63,64,66,68,69,70,70,70,70,70,71],[41,44,57,57,57,53,51,34,53,55,57,57,59,59,59,63,65,65,65,64,60,60,60,59],[56,56,62,63,63,63,59,35,54,55,59,59,59,59,58,61,63,63,63,62,50,50,50,50],[62,73,73,73,71,71,60,40,54,55,59,60,60,60,58,62,65,65,65,61,54,49,49,54],[66,79,79,79,78,76,65,45,54,54,59,62,62,62,62,62,65,65,65,61,54,49,49,54],[66,80,81,82,82,82,65,50,48,57,62,62,62,62,62,62,65,65,65,61,54,49,49,54],[66,80,86,86,86,85,66,50,48,57,62,62,62,62,62,61,64,64,64,60,52,50,50,52],[64,80,86,86,86,85,66,50,43,57,62,62,62,62,61,61,63,63,63,59,51,50,50,49],[64,76,86,86,86,85,66,50,46,56,60,60,60,60,58,59,61,61,61,57,51,51,51,48],[59,66,85,85,85,85,66,50,46,47,54,56,56,56,53,55,58,58,58,55,52,52,51,46],[46,52,77,77,77,77,66,49,46,44,39,42,42,42,43,47,47,47,50,52,52,52,51,45],[38,38,49,60,60,60,56,46,46,44,39,42,42,42,44,47,47,47,51,52,52,52,51,37],[25,30,30,30,35,38,38,38,44,47,47,47,45,42,44,47,47,47,51,52,52,52,50,23],[13,14,27,28,29,30,31,36,45,49,49,49,48,41,44,47,47,47,51,52,52,52,41,17],[23,15,15,16,16,28,30,36,45,49,49,49,48,41,44,45,45,45,50,50,50,50,43,32],[23,19,19,19,19,19,23,34,45,49,49,49,48,41,44,44,44,44,51,51,51,51,46,32],[24,19,19,19,19,22,27,31,42,48,48,48,47,39,42,42,42,44,51,51,51,51,46,32],[24,19,19,19,23,25,28,31,38,42,42,42,40,37,40,41,42,44,51,51,51,51,46,32],[26,23,18,19,23,25,28,31,37,37,37,37,32,33,34,38,42,44,50,51,51,51,46,31],[31,30,27,27,23,25,28,30,31,31,31,30,28,28,29,34,40,42,48,49,49,49,46,31],[39,37,33,30,22,25,27,27,27,27,26,22,22,22,22,24,31,36,42,43,43,43,43,39],[42,40,35,30,27,14,14,15,15,15,12,12,12,13,13,15,16,18,39,43,43,43,43,42],[42,41,35,30,27,0,0,0,0,0,0,0,0,0,0,0,0,0,41,43,43,43,43,42],[42,41,35,29,27,0,0,0,0,0,0,0,0,0,0,0,0,0,41,43,43,43,43,42],[42,41,35,29,15,0,0,0,0,0,0,0,0,0,0,0,0,0,41,43,43,43,42,42]];
+function nymphR(y, a) {
+	const NA = 24, NY = NYMPH_R.length;
+	const fy = Math.max(0, Math.min(NY - 1.001, y / 0.1));
+	const fa = ((a / (2 * PI) * NA) % NA + NA) % NA;
+	const j = Math.floor(fy), k = Math.floor(fa), ty = fy - j, ta = fa - k;
+	const at = (jj, kk) => NYMPH_R[Math.min(NY - 1, jj)][kk % NA] / 100;
+	const r0 = at(j, k) * (1 - ta) + at(j, k + 1) * ta, r1 = at(j + 1, k) * (1 - ta) + at(j + 1, k + 1) * ta;
+	return r0 * (1 - ty) + r1 * ty;
+}
+// two canes of a climbing rose, coming up from the niche's floor and
+// winding round her: [start angle, turns, top height, sense, seed]
+const NYMPH_CANES = [[-2.5, 1.35, 1.95, 1, 1.3], [2.2, 0.95, 1.25, -1, 4.1]];
+// a cane's path, in the room's own metres, from foot to tip
+function nymphCane(c) {
+	const [a0, turns, top, sense, seed] = NYMPH_CANES[c];
+	const pts = [];
+	const N = 90;
+	let rs = null;
+	for (let i = 0; i <= N; i++) {
+		const t = i / N;
+		const y = 0.02 + Math.pow(t, 0.92) * top;
+		const a = a0 + sense * turns * 2 * PI * t;
+		const need = nymphR(y, a) + 0.035;
+		// follow her outline, but softly (never inwards of it)
+		rs = rs === null ? need : Math.max(need, rs * 0.75 + need * 0.25);
+		const r = rs + 0.012 * Math.sin(t * 37 + seed);
+		pts.push([VENUS.x + Math.sin(a) * r, VENUS.plinth + y + 0.01 * Math.sin(t * 23 + seed * 2), VENUS.z - 0.05 + Math.cos(a) * r, a, t]);
+	}
+	return pts;
+}
+
 function buildVineStems(g) {
 	const rnd = rng(77);
+	// the rose's canes round the nymph, thinning towards their tips
+	for (let c = 0; c < NYMPH_CANES.length; c++) {
+		const pts = nymphCane(c);
+		for (let i = 0; i < pts.length - 1; i++) g.beam(pts[i], pts[i + 1], 0.019 * (1 - pts[i][4] * 0.5), K.DARKWOOD);
+	}
 	for (const [kind, c, seed] of VINE) {
 		const [u0, u1] = vineRange(kind);
 		for (let strand = 0; strand < 2; strand++) {
@@ -1114,7 +1241,7 @@ function buildVineStems(g) {
 // pool, and a few floating on the water
 function buildPetals(g) {
 	const rnd = rng(4242);
-	const onFloor = (x, z) => !(x > POOL.x0 - POOL.curb - 0.1 && x < POOL.x1 + POOL.curb + 0.1 && z > POOL.z0 - POOL.curb - 0.1 && z < POOL.z1 + POOL.curb + 0.1) && x > 0.2 && x < W - 0.2 && z > 0.3 && z < L - 0.4;
+	const onFloor = (x, z) => !(Math.abs(x - GRAVE.cx) < GRAVE.hx + 0.2 && Math.abs(z - GRAVE.cz + 0.08) < GRAVE.hz + 0.42) && !(x > POOL.x0 - POOL.curb - 0.1 && x < POOL.x1 + POOL.curb + 0.1 && z > POOL.z0 - POOL.curb - 0.1 && z < POOL.z1 + POOL.curb + 0.1) && x > 0.2 && x < W - 0.2 && z > 0.3 && z < L - 0.4;
 	const petal = (x, y, z, white) => {
 		const s = 0.022 + rnd() * 0.022, a = rnd() * 2 * PI;
 		const c = Math.cos(a), sn = Math.sin(a);
@@ -1616,11 +1743,12 @@ function buildRoom() {
 
 	// --- the rotunda where the pool ends
 	buildRotunda(g);
+	buildGrave(g);
 
 	// --- the pool: a curb of old weathered stone round dark water
 	{
 		const { x0, x1, z0, z1, curb, top } = POOL;
-		const lip = 0.06, cap = 0.08;
+		const lip = 0.06, cap = 0.085;
 		// the curb's body
 		g.box(x0 - curb, 0, z0 - curb, x0, top - cap, z1 + curb, K.OLDSTONE, { bottom: true });
 		g.box(x1, 0, z0 - curb, x1 + curb, top - cap, z1 + curb, K.OLDSTONE, { bottom: true });
@@ -2117,6 +2245,29 @@ function buildGreenery() {
 		}
 	};
 	const rose = (w, ...a) => rosePatch(w.o, w.u, w.n, ...a);
+	// the canes round the nymph: leaves all along, and dark roses where
+	// they come round to the front (three on the long cane, three on the other)
+	{
+		const BLOOMS = [[0.3, 0.5, 0.7, 0.93], [0.42, 0.72, 0.96]];
+		for (let c = 0; c < NYMPH_CANES.length; c++) {
+			const pts = nymphCane(c);
+			for (let i = 3; i < pts.length; i++) {
+				const [x, y, z, a, t] = pts[i];
+				const out = [Math.sin(a), 0, Math.cos(a)];
+				const p = [x + out[0] * 0.025, y, z + out[2] * 0.025];
+				for (let l = 0; l < 2; l++) roseLeaf(madd(p, [rnd() - 0.5, (rnd() - 0.5) * 0.6, rnd() - 0.5], 0.07), out, UP, 0.06 + 0.04 * rnd() * (1 - t * 0.3), 0.35 + 0.4 * rnd());
+			}
+			for (const tb of BLOOMS[c]) {
+				const i = Math.round(tb * (pts.length - 1));
+				const [x, y, z, a] = pts[i];
+				const out = [Math.sin(a), 0, Math.cos(a)];
+				// facing out, a little up and towards the pool
+				const f = norm([out[0] * 0.8, 0.35, out[2] * 0.8 + 0.45]);
+				roses.push({ at: [x + out[0] * 0.08, y + 0.03, z + out[2] * 0.08], f, size: 0.22 + 0.05 * rnd(), spin: rnd() * 2 * PI });
+				for (let l = 0; l < 3; l++) roseLeaf(madd([x, y, z], out, 0.04 + 0.03 * rnd()), out, UP, 0.06 + 0.03 * rnd(), 0.6 + 0.4 * rnd());
+			}
+		}
+	}
 	const NW = { o: [0, 0, 0], u: [1, 0, 0], n: [0, 0, 1] };          // the niche wall
 	const DW = { o: [0, 0, L], u: [1, 0, 0], n: [0, 0, -1] };         // the red door's wall
 	const GW = { o: [W, 0, 0], u: [0, 0, 1], n: [-1, 0, 0] };         // the wall shared with the gallery
@@ -2221,7 +2372,7 @@ function buildGreenery() {
 	const pX0 = POOL.x0 - POOL.curb - 0.08, pX1 = POOL.x1 + POOL.curb + 0.08, pZ0 = POOL.z0 - POOL.curb - 0.08, pZ1 = POOL.z1 + POOL.curb + 0.08;
 	const nX0 = W - NICHE.x1 - 0.16, nX1 = W - NICHE.x0 + 0.16, nZ1 = L - NICHE.face + 0.36;
 	const rotD = (x, z) => Math.hypot(x - ROT.cx, z - ROT.cz);
-	const blocked = (x, z) => (rotD(x, z) > ROT.ri - 0.1 && rotD(x, z) < ROT.ro + 1.6) || (x > pX0 && x < pX1 && z > pZ0 && z < pZ1) || (x > nX0 && x < nX1 && z < nZ1) || (Math.abs(x - W / 2) < 1.15 && z > L - 0.5) || x < 0.06 || x > W - 0.06 || z < 0.06 || z > L - 0.06;
+	const blocked = (x, z) => (Math.abs(x - GRAVE.cx) < GRAVE.hx + 0.16 && Math.abs(z - GRAVE.cz + 0.08) < GRAVE.hz + 0.4) || (rotD(x, z) > ROT.ri - 0.1 && rotD(x, z) < ROT.ro + 1.6) || (x > pX0 && x < pX1 && z > pZ0 && z < pZ1) || (x > nX0 && x < nX1 && z < nZ1) || (Math.abs(x - W / 2) < 1.15 && z > L - 0.5) || x < 0.06 || x > W - 0.06 || z < 0.06 || z > L - 0.06;
 	const nearEdge = (x, z) => {
 		const dw = Math.min(x, W - x, z, L - z);
 		const dp = Math.max(pX0 - x, x - pX1, pZ0 - z, z - pZ1);
@@ -2270,6 +2421,17 @@ function buildGreenery() {
 		else { z = POOL.z1 + 0.08 + rnd() * 0.38; x = POOL.x0 + rnd() * (POOL.x1 - POOL.x0); }
 		tuft(x, POOL.top, z, 0.04 + 0.06 * rnd(), 2 + Math.floor(rnd() * 3));
 	}
+	// grass and weeds pushing up round the grave's footing, and a few in
+	// the joints of its ledger
+	for (let i = 0; i < 70; i++) {
+		const t = rnd() * 2 - 1, side = Math.floor(rnd() * 4);
+		const ex = GRAVE.hx + 0.16 + rnd() * rnd() * 0.25, ez = GRAVE.hz + 0.3 + rnd() * rnd() * 0.25;
+		let x, z;
+		if (side < 2) { x = GRAVE.cx + (side ? ex : -ex); z = GRAVE.cz - 0.08 + t * ez; }
+		else { z = GRAVE.cz - 0.08 + (side === 2 ? ez : -ez); x = GRAVE.cx + t * ex; }
+		tuft(x, 0.0, z, 0.05 + 0.09 * rnd(), 2 + Math.floor(rnd() * 4));
+	}
+	for (let i = 0; i < 6; i++) tuft(GRAVE.cx + (rnd() * 2 - 1) * (GRAVE.hx + 0.1), 0.09, GRAVE.cz - 0.08 + (rnd() < 0.5 ? -1 : 1) * (GRAVE.hz + 0.08 + rnd() * 0.12), 0.03 + 0.04 * rnd(), 2);
 	return { walls, ground, roses };
 }
 
@@ -2361,6 +2523,19 @@ const LIGHT = `
 				float w = mix(1.6, 2.4, night) / (0.25 + dd * 1.8);
 				col += vec3(1.0, 0.6, 0.3) * w * (max(dot(N, Ld), 0.0) * 0.9 + 0.1);
 				spec += vec3(1.0, 0.65, 0.35) * w * pow(max(dot(N, normalize(Ld + V)), 0.0), mix(16.0, 300.0, gloss)) * gloss * 0.6;
+			}`).join('')}
+		}
+		// the candles on the grave
+		if (abs(p.z - ${f(GRAVE.cz)}) < 4.5 && abs(p.x - ${f(GRAVE.cx)}) < 4.5) {
+			${GRAVE_CANDLES.map(([x, z, h]) => toW([x, GRAVE.top + h + 0.05, z])).map((l, i) => `
+			{
+				vec3 d = vec3(${f(l[0])}, ${f(l[1])}, ${f(l[2])}) - pw;
+				float dd = dot(d, d);
+				vec3 Ld = d * inversesqrt(dd);
+				float fl = 1.0;
+				float w = mix(0.2, 0.32, night) * fl / (0.04 + dd * 2.6);
+				col += vec3(1.0, 0.55, 0.24) * w * (max(dot(N, Ld), 0.0) * 0.9 + 0.1);
+				spec += vec3(1.0, 0.6, 0.3) * w * pow(max(dot(N, normalize(Ld + V)), 0.0), mix(16.0, 300.0, gloss)) * gloss * 0.5;
 			}`).join('')}
 		}
 		// the lamps (by night)
@@ -4445,7 +4620,7 @@ module.exports.petalLure = petalLure;
 module.exports.petalLand = petalLand;
 module.exports.petalReset = petalReset;
 module.exports.petalState = petalState;
-module.exports.STUDIO = { W, L, H, POOL, ROT, NICHE, VENUS, WIN, TRUSS_Z };
+module.exports.STUDIO = { W, L, H, POOL, ROT, NICHE, VENUS, WIN, TRUSS_Z, GRAVE };
 module.exports.poolHit = poolHit;
 module.exports.feedAt = feedAt;
 module.exports.feeding = feeding;
