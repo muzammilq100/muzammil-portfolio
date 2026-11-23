@@ -60,11 +60,10 @@ const f = (x) => (+x).toFixed(4);
 // LAYOUT (room metres)
 // ------------------------------------------------------------------
 
-const O = [-90.0, 0.0, 0.0];          // where the room sits in the gallery
-const W = 16.0;                        // width (x)
-const L = 27.5;                        // length (z): long enough to stand well back from the rotunda
+// where the room sits in the gallery, its width (x), length (z) and the
+// glass roof's ridge (studiobox.js, which the gallery shares)
+const { O, W, L, RIDGE } = require('./studiobox');
 const H = 7.8;                         // walls up to the roof's eaves
-const RIDGE = 11.6;                    // the glass roof's ridge
 const T = 0.55;                        // wall thickness
 const KR = (RIDGE - H) / (W / 2);      // the roof's slope
 
@@ -1927,6 +1926,22 @@ const LANTERNS = [-1, 1].map((sx) => [W / 2 + sx * (1.95 / 2 + 0.62), 2.95, L - 
 // over the grave, through its open top)
 const CANDLE_DRIFTS = [[8.0, 3.6, 5.4, 12], [4.6, 6.8, 5.0, 12], [11.2, 7.4, 5.2, 12], [8.0, 9.8, 5.7, 10], [2.4, 11.6, 4.8, 11], [13.8, 12.2, 5.0, 11], [ROT.cx, ROT.cz, 4.9, 10], [2.8, 24.4, 4.8, 11], [13.2, 24.6, 5.0, 11], [8.0, 25.9, 5.8, 9]];
 const GRAVE_DRIFT = 6;
+// the way the camera comes in from the gallery (studiotour.js, INTRO): from
+// before the door, up over the rotunda and down the pool, under the
+// candles, to the bougainvillea over the nymph (the tour's first shot)
+const INTRO_PATH = [[W / 2, 2.3, L - 3.9], [8.6, 4.2, 22.0], [9.5, 6.9, 18.1], [8.6, 5.2, 14.2], [8.0, 3.6, 10.5], [7.6, 4.1, 6.0], [7.4, 4.8, 3.2]];
+// where the camera goes that no candle may hang: that way in, and the
+// tour's first fall past her face
+const CAMERA_CLEAR = [INTRO_PATH, [[7.4, 4.8, 3.2], [8.2, 4.3, 3.4], [9.0, 3.7, 3.0], [9.2, 3.45, 2.6]]];
+const clearOf = (p, r) => CAMERA_CLEAR.every((line) => {
+	for (let i = 0; i < line.length - 1; i++) {
+		const a = line[i], b = line[i + 1];
+		const ab = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], ap = [p[0] - a[0], p[1] - a[1], p[2] - a[2]];
+		const t = Math.max(0, Math.min(1, (ap[0] * ab[0] + ap[1] * ab[1] + ap[2] * ab[2]) / (ab[0] * ab[0] + ab[1] * ab[1] + ab[2] * ab[2])));
+		if (Math.hypot(ap[0] - ab[0] * t, ap[1] - ab[1] * t, ap[2] - ab[2] * t) < r) return false;
+	}
+	return true;
+});
 const HCANDLES = (() => {
 	const out = [];
 	let sd = 911;
@@ -1942,6 +1957,7 @@ const HCANDLES = (() => {
 			if (!inside && rr < 7.0 && (rr > 4.4 || y < ROT.top + 0.5)) continue;
 			if (x < 0.8 || x > W - 0.8 || z < 2.2 || z > L - 0.9) continue;
 			if (out.some((c) => Math.hypot(c[0] - x, c[2] - z) < 0.2)) continue;
+			if (!clearOf([x, y + len * 0.5, z], 0.85)) continue;
 			out.push([x, y, z, len, d]);
 			k++;
 		}
@@ -2635,8 +2651,13 @@ function decodeStatue(buf) {
 	return { nV, nI, mn, sz, pos, idx, nrm };
 }
 
+// how many of the room's pictures and models are still on their way (the
+// gallery waits for them before it lets the visitor in)
+const LOADS = { pending: 0 };
+const sfetch = (url) => { LOADS.pending++; return fetch(url).finally(() => { setTimeout(() => { LOADS.pending--; }, 250); }); };
 function loadTexture(regl, url, opts) {
 	const wrap = (opts && opts.wrap) || 'clamp';
+	LOADS.pending++;
 	const tex = regl.texture({ data: [[[0, 0, 0, 0]]], min: 'linear', mag: 'linear' });
 	const state = { tex, ready: false };
 	fetch(url)
@@ -2645,7 +2666,8 @@ function loadTexture(regl, url, opts) {
 			const img = new Image(); img.onload = () => ok(img); img.onerror = fail; img.src = URL.createObjectURL(b);
 		})))
 		.then((img) => { tex({ data: img, flipY: false, min: 'mipmap', mipmap: 'nice', mag: 'linear', wrap }); state.ready = true; })
-		.catch((e) => console.error(e));
+		.catch((e) => console.error(e))
+		.finally(() => { LOADS.pending--; });
 	return state;
 }
 
@@ -3401,7 +3423,7 @@ module.exports = function (regl) {
 
 	// the statue, loaded when it arrives
 	let drawVenus = null;
-	fetch(VENUS.file)
+	sfetch(VENUS.file)
 		.then((r) => { if (!r.ok) throw new Error('Could not load ' + VENUS.file); return r.arrayBuffer(); })
 		.then((buf) => {
 			const m = decodeStatue(buf);
@@ -3425,7 +3447,7 @@ module.exports = function (regl) {
 	// its own picture, lit by the room's light (see GRAVE)
 	let drawGrave = null;
 	const graveTex = loadTexture(regl, GRAVE.tex);
-	fetch(GRAVE.file)
+	sfetch(GRAVE.file)
 		.then((r) => { if (!r.ok) throw new Error('Could not load ' + GRAVE.file); return r.arrayBuffer(); })
 		.then((buf) => {
 			const dv = new DataView(buf);
@@ -3480,6 +3502,73 @@ module.exports = function (regl) {
 				attributes: { position: pos, normal: nrm, uv: tuv },
 				elements: idx,
 				uniforms: { graveTex: () => graveTex.tex },
+				cull: { enable: false }
+			});
+		})
+		.catch((e) => console.error(e));
+
+	// the visitor's flower: a red rose (scanned, res/conservatory/flower.bin),
+	// laid on the grave at the end; FLOWER.k runs from 0 (held above it,
+	// tilted) to 1 (lying on the ledger), below 0 it is not there
+	let drawFlower = null;
+	const flowerTex = loadTexture(regl, 'res/conservatory/flower.webp');
+	const flowerModel = new Float32Array(16);
+	sfetch('res/conservatory/flower.bin')
+		.then((r) => { if (!r.ok) throw new Error('Could not load the flower'); return r.arrayBuffer(); })
+		.then((buf) => {
+			const dv = new DataView(buf);
+			const nV = dv.getUint32(4, true), nI = dv.getUint32(8, true);
+			let off = 12;
+			const pos = new Float32Array(buf.slice(off, off + nV * 12)); off += nV * 12;
+			const uv = new Uint16Array(buf, off, nV * 2); off += nV * 4;
+			const idx = new Uint16Array(buf.slice(off, off + nI * 2)); off += nI * 2;
+			const nr = new Int8Array(buf, off, nV * 3);
+			const nrm = new Float32Array(nV * 3), tuv = new Float32Array(nV * 2);
+			for (let i = 0; i < nV * 3; i++) nrm[i] = nr[i] / 127;
+			for (let i = 0; i < nV; i++) { tuv[i * 2] = uv[i * 2] / 65535; tuv[i * 2 + 1] = 1 - uv[i * 2 + 1] / 65535; }
+			drawFlower = regl({
+				vert: `
+				precision highp float;
+				uniform mat4 proj, view, model;
+				uniform float yScale;
+				attribute vec3 position, normal;
+				attribute vec2 uv;
+				varying vec3 v_pos, v_nrm, v_eye;
+				varying vec2 v_uv;
+				void main() {
+					vec4 w = model * vec4(position, 1.0);
+					v_pos = w.xyz; v_nrm = mat3(model) * normal; v_uv = uv;
+					vec3 t = view[3].xyz;
+					v_eye = -vec3(dot(view[0].xyz, t), dot(view[1].xyz, t), dot(view[2].xyz, t));
+					v_eye.y *= yScale;
+					vec3 p = w.xyz; p.y *= yScale;
+					gl_Position = proj * view * vec4(p, 1.0);
+				}`,
+				frag: `
+				precision highp float;
+				uniform float night, time, glow;
+				uniform sampler2D flowerTex;
+				varying vec3 v_pos, v_nrm, v_eye;
+				varying vec2 v_uv;
+				${LIGHT}
+				void main() {
+					vec3 V = normalize(v_eye - v_pos);
+					vec3 N = normalize(v_nrm);
+					if (dot(N, V) < 0.0) N = -N;
+					vec3 tc = texture2D(flowerTex, v_uv).rgb;
+					vec3 base = tc * tc * 1.5;
+					vec3 spec; float sv;
+					vec3 light = studioLight(v_pos, N, V, 0.35, spec, sv);
+					// velvet: the petals' edges catch the light
+					float rim = pow(1.0 - max(dot(N, V), 0.0), 3.0);
+					vec3 col = base * (light + vec3(0.05, 0.03, 0.035)) + spec * 0.12 + base * rim * 0.35 * (light + 0.2);
+					col = studioAir(col, v_pos, v_eye);
+					col += base * vec3(1.0, 0.45, 0.5) * glow;
+					gl_FragColor = vec4(sqrt(max(col, 0.0)), 1.0);
+				}`,
+				attributes: { position: pos, normal: nrm, uv: tuv },
+				elements: idx,
+				uniforms: { flowerTex: () => flowerTex.tex, model: () => flowerModel, glow: () => FLOWER.glow },
 				cull: { enable: false }
 			});
 		})
@@ -3766,7 +3855,7 @@ module.exports = function (regl) {
 	// the roses: his scanned bloom, one copy at each place the climbers flower
 	const roseTex = loadTexture(regl, 'res/studio/rose_col.webp');
 	let drawRoses = null;
-	fetch('res/studio/rose.bin')
+	sfetch('res/studio/rose.bin')
 		.then((r) => { if (!r.ok) throw new Error('Could not load res/studio/rose.bin'); return r.arrayBuffer(); })
 		.then((buf) => {
 			const n = new DataView(buf).getUint32(4, true), a = new Float32Array(buf, 8, n * 8);
@@ -4293,7 +4382,7 @@ module.exports = function (regl) {
 	// bent each frame along its turn with a swimming wave down its body
 	const koiTex = loadTexture(regl, 'res/koi.webp');
 	let drawKoiPart = null, koiEls = null;
-	fetch('res/koi.bin')
+	sfetch('res/koi.bin')
 		.then((r) => { if (!r.ok) throw new Error('Could not load res/koi.bin'); return r.arrayBuffer(); })
 		.then((buf) => {
 			const dv = new DataView(buf);
@@ -4727,6 +4816,7 @@ module.exports = function (regl) {
 		if (!refl) { drawBed(); drawKoi(); drawCrumbs(); }
 		if (drawVenus) drawVenus();
 		if (drawGrave) drawGrave();
+		if (drawFlower && FLOWER.k >= 0) { flowerPose(FLOWER.k, flowerModel); drawFlower(); }
 		// (the reflection keeps the bougainvillea, the nymph and the cloth;
 		// the ivy, the roses, the weeds and the dust are left out of it)
 		drawLeaves();
@@ -4749,6 +4839,23 @@ module.exports = function (regl) {
 let ACTIVE = null;
 // the tour's petal (studio coordinates), set by studiotour.js
 const GUIDE = { vis: false, model: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1], ang: 0, size: 0.09, flex: 0, flutter: 0, floating: false };
+// the visitor's flower (see drawFlower): where it comes to lie on the
+// ledger, its bloom towards the headstone, a little across the grave
+const FLOWER = { k: -1, glow: 0, at: [GRAVE.cx - 0.16, GRAVE.top - 0.004, GRAVE.cz - 0.1], yaw: -0.3 };
+function setFlower(k, glow) { FLOWER.k = k; FLOWER.glow = glow || 0; }
+// its model matrix at k: lowered from a hand's height, tilting down from
+// held to lying, turning a little as it settles
+function flowerPose(k, m) {
+	const u = Math.max(0, Math.min(1, k));
+	const lift = (1 - u) * (1 - u) * 0.6;
+	const pitch = -(1 - u) * 1.05, yaw = FLOWER.yaw + (1 - u) * 0.5;
+	const cy = Math.cos(yaw), sy = Math.sin(yaw), cp = Math.cos(pitch), sp = Math.sin(pitch);
+	// R = Ry(yaw) * Rx(pitch)
+	m[0] = cy; m[1] = 0; m[2] = -sy; m[3] = 0;
+	m[4] = sy * sp; m[5] = cp; m[6] = cy * sp; m[7] = 0;
+	m[8] = sy * cp; m[9] = -sp; m[10] = cy * cp; m[11] = 0;
+	m[12] = FLOWER.at[0] + O[0]; m[13] = FLOWER.at[1] + lift + O[1]; m[14] = FLOWER.at[2] + O[2]; m[15] = 1;
+}
 // how hard the wind blows in the rotunda's cloth (the tour raises it at the end)
 const WIND = { k: 1, close: 0 };
 function setWind(k, close) { WIND.k = k; WIND.close = close || 0; }
@@ -4800,6 +4907,10 @@ function previewCam(time) {
 module.exports.previewCam = previewCam;
 module.exports.setGuide = setGuide;
 module.exports.setWind = setWind;
+module.exports.setFlower = setFlower;
+module.exports.INTRO_PATH = INTRO_PATH;
+// whether everything the room needs has come
+module.exports.ready = () => LOADS.pending <= 0;
 module.exports.petalLure = petalLure;
 module.exports.petalLand = petalLand;
 module.exports.petalReset = petalReset;
@@ -4812,5 +4923,5 @@ module.exports.sunGLSL = sunGLSL;
 module.exports.bakedSun = bakedSun;
 module.exports.O = O;
 module.exports.SIZE = { W, L, H, RIDGE };
-module.exports.BOX = [O[0] - 0.8, 0, O[2] - 0.8, O[0] + W + 0.8, RIDGE + 0.5, O[2] + L + 0.8];
-module.exports.AIR_BOX = [O[0], 0, O[2], O[0] + W, RIDGE, O[2] + L];
+module.exports.BOX = require('./studiobox').BOX;
+module.exports.AIR_BOX = require('./studiobox').AIR_BOX;

@@ -193,8 +193,12 @@ const drawFireflies = require('./fireflies')(regl, quality);
 const drawLanterns = require('./lanterns')(regl);
 const drawConfessional = require('./confessional')(regl);
 const drawStairHall = require('./stairhall')(regl);
-// the painter's studio (studio.js): a room of its own, not yet joined to the rest
-const drawStudio = require('./studio')(regl);
+// the Conservatory of Unsaid Things (studio.js), behind "Love me like I am
+// Already Dead": fetched only when a visitor is let in (conservatory.js)
+const conservatory = require('./conservatory');
+conservatory.init({ regl, post });
+const drawStudio = (o) => { const d = conservatory.draw; if (d) d(o); };
+drawStudio.reflect = (fn, n) => { const d = conservatory.draw; if (d) d.reflect(fn, n); };
 
 // the cinematic tour the visit opens with (see tour.js)
 const tour = require('./tour')({
@@ -234,7 +238,7 @@ const context = regl({
 		// 0 by day, 1 at night (see env.js)
 		night: () => env.night,
 		// the studio's sun through its windows and roof, worked out once
-		studioBake: () => require('./studio').bakedSun(regl),
+		studioBake: () => conservatory.bake(),
 		candleT: regl.context('time'),
 		time: regl.context('time')
 	}
@@ -1172,36 +1176,8 @@ function applyAboutZoom(time) {
    over, the view glides from the tour's last shot into their own.
 =========================================================== */
 
-// ?studio in the address: show the painter's studio (not joined to the
-// gallery yet) instead of the tour; a tap turns day to night and back
-const STUDIO_PREVIEW = /[?&]studio\b/.test(location.search);
-if (STUDIO_PREVIEW) {
-	const st = document.createElement('style');
-	st.textContent = '.tour, #museum-mobile-controls, .painting-plaque { display: none !important; }';
-	document.head.appendChild(st);
-	// the tour (studiotour.js): scrolling, swiping or tapping winds it on;
-	// a small moon (or sun) in the corner turns day to night and back
-	const ui = document.createElement('button');
-	ui.type = 'button';
-	ui.className = 'st-ui';
-	ui.setAttribute('aria-label', 'Day or night');
-	ui.textContent = '\u263E';
-	st.textContent += '.st-ui { position: fixed; top: 18px; right: 18px; z-index: 30; width: 42px; height: 42px; border-radius: 50%; border: 1px solid rgba(244,236,223,0.4); background: rgba(12,10,8,0.3); color: #f4ecdf; font-size: 20px; cursor: pointer; backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }';
-	document.body.appendChild(ui);
-	ui.addEventListener('pointerdown', (e) => e.stopPropagation());
-	ui.addEventListener('click', (e) => { e.stopPropagation(); require('./env').toggle(); setTimeout(() => { ui.textContent = require('./env').night > 0.5 ? '\u2600' : '\u263E'; }, 50); });
-	let downAt = null;
-	window.addEventListener('pointerdown', (e) => { downAt = { x: e.clientX, y: e.clientY, t: performance.now() }; });
-	window.addEventListener('pointerup', (e) => {
-		const d = downAt; downAt = null;
-		if (!d || Math.hypot(e.clientX - d.x, e.clientY - d.y) > 10 || performance.now() - d.t > 500) return;
-		if (e.target.closest && e.target.closest('button')) return;
-		studioTour().tap();
-	});
-	window.addEventListener('keydown', (e) => { if (e.key === 'n') require('./env').toggle(); else if (e.key === ' ') studioTour().tap(); });
-}
-let studioTourNow = null;
-function studioTour() { if (!studioTourNow) studioTourNow = require('./studiotour')(); return studioTourNow; }
+// ?studio in the address: the conservatory on its own (conservatory.js)
+const STUDIO_PREVIEW = conservatory.PREVIEW;
 
 const FREE_LOOK = { fade: 0, fadeColor: [0, 0, 0], letterbox: 0, focus: 6, aperture: 0, exposure: 1, shafts: 1, vignette: 0 };
 let leafNow = null;
@@ -1260,12 +1236,15 @@ function setCamera(time) {
 	// the operator's hand on the tour's camera (see cine.js)
 	if (c && t) c = cine.apply(c, time);
 
-	// ?studio: a preview of the painter's studio (see studio.js)
-	if (STUDIO_PREVIEW && !(/tourdebug/.test(location.search) && window.__camOverride)) {
-		const sc = studioTour().update(time);
-		studioMoving = sc.moving !== false;
-		c = sc;
-		look = Object.assign({}, FREE_LOOK, sc.look);
+	// the Conservatory of Unsaid Things: while a visit lasts (or on
+	// ?studio) its camera and look are the ones used (conservatory.js)
+	if (!(/tourdebug/.test(location.search) && window.__camOverride)) {
+		const sc = conservatory.update(time, c, look);
+		if (sc) {
+			studioMoving = sc.moving !== false;
+			c = sc;
+			look = sc.look;
+		}
 	}
 
 	if (c) {

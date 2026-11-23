@@ -35,7 +35,7 @@ const { A: COURT } = require('./alcove');
 const { C: WING } = require('./wing');
 const { DOOR } = require('./entrance');
 const SH = require('./stairhall');
-const STUDIO = require('./studio');
+const STUDIO = require('./studiobox');
 
 const HALL_END = WING.hallEnd + 0.35;
 

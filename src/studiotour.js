@@ -160,6 +160,24 @@ const MOVES = [
 ];
 // after it settles: the camera creeps in, low, while the wind works the cloth
 const FINALE = { delay: 0.8, dur: 14, eye: [AXIS - 0.1, 1.5, 22.9], at: [AXIS, 0.68, 15.6] };
+// when the visitor lays their flower on the grave: the camera comes round
+// to take in the headstone, the rose, the cloth either side and, beyond
+// them, the nymph over her pool
+const FLOWER_CAM = { dur: 5.0, eye: [AXIS + 0.2, 1.5, 20.3], at: [AXIS, 0.1, 15.4], fov: 54 };
+
+// coming in from the gallery (conservatory.js): out of the red of the door,
+// drawing back from it, then rising and turning over the rotunda to the
+// bougainvillea over the nymph, where the petal waits (shot 0). The path
+// keeps clear of the hanging candles (studio.js, CAMERA_CLEAR).
+const { L: ROOM_L } = studio.STUDIO;
+const INTRO = {
+	hold: 0.9, back: 3.6, rise: 7.6,
+	door: [AXIS, 2.75, ROOM_L],
+	close: [AXIS, 2.75, ROOM_L - 0.38],
+	away: [AXIS, 2.3, ROOM_L - 3.9],
+	path: studio.INTRO_PATH
+};
+const RED = [0.32, 0.02, 0.05];
 const AT = [0];
 MOVES.forEach((m) => AT.push(AT[AT.length - 1] + m.dur));
 const END = AT[AT.length - 1];
@@ -187,10 +205,16 @@ function smoothDamp(current, target, velocity, smoothTime, dt, maxSpeed) {
 	return [out, v];
 }
 
-module.exports = function createStudioTour() {
+module.exports = function createStudioTour(opts) {
+	opts = opts || {};
 	let scroll = 0, vel = 0, target = 0, lastInput = -10, now = 0, last = null;
 	let gestureFrom = null, auto = false;
-	let landed = false, landedAt = 0;
+	let landed = false, landedAt = 0, told = false;
+	let introAt = null;                 // when the way in from the gallery began
+	let introDone = !opts.intro;
+	let flowerAt = null;                // when the visitor laid their flower
+	const listeners = [];
+	const on = (t, fn, o) => { window.addEventListener(t, fn, o); listeners.push([t, fn, o]); };
 	let eyeNow = SHOTS[0].eye;
 
 	const nearest = (s) => { let b = 0; for (let i = 1; i < AT.length; i++) if (Math.abs(AT[i] - s) < Math.abs(AT[b] - s)) b = i; return b; };
@@ -210,18 +234,19 @@ module.exports = function createStudioTour() {
 
 	// input
 	let drag = null;
-	window.addEventListener('wheel', (e) => {
-		if (e.target.closest && e.target.closest('.st-ui')) return;
+	on('wheel', (e) => {
+		if (e.target.closest && e.target.closest('.st-ui, .cons-ui, .cons-note')) return;
+		if (!introDone) { e.preventDefault(); return; }
 		e.preventDefault();
 		const px = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaMode === 2 ? e.deltaY * window.innerHeight : e.deltaY;
 		wind(px / WHEEL_PX_PER_SEC);
 	}, { passive: false });
-	window.addEventListener('pointerdown', (e) => {
-		if (e.target.closest && e.target.closest('button, a, .st-ui')) return;
-		drag = { ly: e.clientY, lx: e.clientX, moved: 0, v: 0, lt: performance.now() };
+	on('pointerdown', (e) => {
+		if (e.target.closest && e.target.closest('button, a, .st-ui, .cons-ui, .cons-note')) return;
+		drag = { ly: e.clientY, lx: e.clientX, moved: 0, v: 0, lt: performance.now(), t0: performance.now() };
 	});
-	window.addEventListener('pointermove', (e) => {
-		if (!drag) return;
+	on('pointermove', (e) => {
+		if (!drag || !introDone) return;
 		const dx = e.clientX - drag.lx, dy = e.clientY - drag.ly;
 		drag.lx = e.clientX; drag.ly = e.clientY;
 		const d = Math.abs(dy) >= Math.abs(dx) ? -dy : -dx;
@@ -231,19 +256,44 @@ module.exports = function createStudioTour() {
 		drag.lt = t;
 		if (drag.moved > 6) wind(secs);
 	});
-	window.addEventListener('pointerup', () => {
+	on('pointerup', () => {
 		const d = drag; drag = null;
-		if (!d) return;
+		if (!d || !introDone) return;
 		// a flick glides on a little
 		if (d.moved >= 10 && performance.now() - d.lt < 120) wind(Math.max(-1.6, Math.min(1.6, d.v * 0.22)));
+		// a tap: on to the next shot
+		else if (d.moved < 8 && performance.now() - d.t0 < 450) go(1);
 	});
-	window.addEventListener('keydown', (e) => {
+	on('keydown', (e) => {
+		if (!introDone) return;
 		if (e.key === 'ArrowDown' || e.key === 'ArrowRight' || e.key === 'PageDown') go(1);
 		else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft' || e.key === 'PageUp') go(-1);
 	});
 
 	// a tap that nothing else took: on to the next shot
-	function tap() { go(1); }
+	function tap() { if (introDone) go(1); }
+	function dispose() { for (const [t, fn, o] of listeners) window.removeEventListener(t, fn, o); listeners.length = 0; }
+	// the visitor lays their flower on the grave
+	function placeFlower() { if (flowerAt === null) flowerAt = now; }
+
+	// the way in: the camera at t seconds after it began
+	const dirTo = (a, b) => norm3(sub3(b, a));
+	function introCam(t) {
+		const I = INTRO;
+		if (t < I.hold + I.back) {
+			const k = sstep(I.hold, I.hold + I.back, t);
+			const eye = mix3(I.close, I.away, k);
+			return { eye, at: I.door, fov: mix(24, 50, k), k: 0 };
+		}
+		const k = clamp01((t - I.hold - I.back) / I.rise);
+		const e = easeIO(k);
+		const eye = spline(I.path, e);
+		// turning from the door to the blossom, looking up as it turns
+		const s = sstep(0.05, 0.6, e);
+		const a = dirTo(eye, I.door), b = dirTo(eye, HOME);
+		const d = norm3(add3(mix3(a, b, s), [0, Math.sin(Math.PI * s) * 0.9, 0]));
+		return { eye, at: add3(eye, scale3(d, 4.0)), fov: mix(50, SHOTS[0].fov, e), k };
+	}
 
 	// the petal and the camera at a place on the film
 	function frame(s, time) {
@@ -381,6 +431,31 @@ module.exports = function createStudioTour() {
 			const k = easeIO((time - landedAt - FINALE.delay) / FINALE.dur);
 			F.eye = mix3(F.eye, FINALE.eye, k);
 			F.at = mix3(F.at, FINALE.at, k);
+			// (once it has settled, the visitor is asked to lay their flower)
+			if (!told && time - landedAt > 3.2) { told = true; if (opts.onLanded) opts.onLanded(); }
+		}
+		let fade = 0, fadeColor = [0, 0, 0];
+		// their flower: lowered onto the grave, the camera coming round to
+		// see it there with all the rest
+		if (flowerAt !== null && landed) {
+			const ft = time - flowerAt;
+			const kc = easeIO(ft / FLOWER_CAM.dur);
+			F.eye = mix3(F.eye, FLOWER_CAM.eye, kc);
+			F.at = mix3(F.at, FLOWER_CAM.at, kc);
+			F.fov = mix(F.fov, FLOWER_CAM.fov, kc);
+			const kf = easeIO((ft - 0.8) / 3.4);
+			studio.setFlower(kf, (0.26 + 0.4 * (1 - sstep(3.2, 7.0, ft))) * sstep(0.0, 0.8, ft));
+		} else studio.setFlower(-1);
+		// the way in from the gallery
+		if (!introDone) {
+			if (introAt === null) introAt = time;
+			const t = time - introAt;
+			const ic = introCam(t);
+			F.eye = ic.eye; F.at = ic.at; F.fov = ic.fov; F.roll = 0;
+			F.aperture = 0.15;
+			fade = 1 - sstep(0.1, 1.1, t);
+			fadeColor = RED;
+			if (ic.k >= 1) { introDone = true; scroll = target = 0; vel = 0; }
 		}
 		// the wind in the cloth rises as it comes down to the grave
 		studio.setWind(1 + 0.8 * sstep(0.3, 1.0, F.idx === MOVES.length - 1 ? F.u : 0) + (landed ? 0.2 * sstep(0, 4, time - landedAt) : 0), landed ? sstep(0.5, 3.5, time - landedAt) : 0);
@@ -395,13 +470,13 @@ module.exports = function createStudioTour() {
 		const pw = model.slice(12, 15);
 		const ew = W3(F.eye);
 		return {
-			eye: ew, target: W3(F.at), fov: F.fov, roll: F.roll, fade: 0,
+			eye: ew, target: W3(F.at), fov: F.fov, roll: F.roll, fade,
 			shot: landed ? SHOTS.length : F.near,
-			look: { letterbox: 0.55, focus: Math.max(0.3, Math.hypot(ew[0] - pw[0], ew[1] - pw[1], ew[2] - pw[2])), aperture: F.aperture, vignette: 0.28, exposure: 1.0, shafts: 1.0 },
+			look: { letterbox: 0.55, focus: Math.max(0.3, Math.hypot(ew[0] - pw[0], ew[1] - pw[1], ew[2] - pw[2])), aperture: F.aperture, vignette: 0.28, exposure: 1.0, shafts: 1.0, fade, fadeColor },
 			// whether anything is on the move (the frame rate can rest when not)
-			moving: Math.abs(vel) > 0.02 || Math.abs(target - scroll) > 0.01 || (landed && time - landedAt < FINALE.delay + FINALE.dur + 0.5)
+			moving: !introDone || flowerAt !== null && time - flowerAt < 8 || Math.abs(vel) > 0.02 || Math.abs(target - scroll) > 0.01 || (landed && time - landedAt < FINALE.delay + FINALE.dur + 0.5)
 		};
 	}
 
-	return { update, tap, get scroll() { return scroll; }, END };
+	return { update, tap, dispose, placeFlower, get scroll() { return scroll; }, END };
 };

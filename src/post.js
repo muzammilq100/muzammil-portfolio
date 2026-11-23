@@ -32,7 +32,10 @@ const { windowLightGLSL, C: WING } = require('./wing');
 const { doorLightGLSL } = require('./entrance');
 const env = require('./env');
 const cull = require('./cull');
-const studio = require('./studio');
+// the conservatory (studio.js) arrives only when a visitor is let in;
+// until then its light shafts are left out (see useStudio)
+const studioBox = require('./studiobox');
+let studio = null;
 
 const f = (x) => x.toFixed(4);
 
@@ -169,11 +172,14 @@ module.exports = (regl, quality) => {
 	const COURT_BOX = [COURT.x0 - 0.2, 0.0, COURT.z0, COURT.x1, COURT.domeTop, COURT.z1];
 	const WIN_BOX = [WING.x0, 0.0, WING.z0, WING.x1, 7.6, WING.z1];
 	const DOOR_BOX = [0.35, 0.0, 0.35, 13.65, 7.6, 9.0];
-	const STUDIO_BOX = studio.AIR_BOX;
+	const STUDIO_BOX = studioBox.AIR_BOX;
 
 	const box = (b) => `vec3(${f(b[0])}, ${f(b[1])}, ${f(b[2])}), vec3(${f(b[3])}, ${f(b[4])}, ${f(b[5])})`;
 
-	const volPass = pass(`
+	const NO_STUDIO = `
+	#define STUDIO_SUN vec3(0.0, 1.0, 0.0)
+	float studioSun(vec3 p) { return 0.0; }`;
+	const makeVolPass = (studioGLSL) => pass(`
 	precision highp float;
 	varying vec2 uv;
 	uniform sampler2D depthTex;
@@ -201,7 +207,7 @@ module.exports = (regl, quality) => {
 	${oculusGLSL()}
 	${windowLightGLSL()}
 	${doorLightGLSL()}
-	${studio.sunGLSL()}
+	${studioGLSL}
 
 	// the air is not perfectly even: slow drifting wisps of dust
 	float air(vec3 p) {
@@ -334,8 +340,9 @@ module.exports = (regl, quality) => {
 		night: () => env.night,
 		strength: () => volStrength,
 		strength5: () => volStrength5,
-		studioBake: () => studio.bakedSun(regl)
+		...(studioGLSL === NO_STUDIO ? {} : { studioBake: () => studio.bakedSun(regl) })
 	});
+	let volPass = makeVolPass(NO_STUDIO);
 
 	// how strong each lit volume is this frame: nothing for the ones the
 	// camera cannot see, so their samples are never taken
@@ -558,6 +565,13 @@ module.exports = (regl, quality) => {
 		shot,
 		look: LOOK,
 		hasDepth,
+
+		// the conservatory has come (studio.js): its light shafts join in
+		useStudio(mod) {
+			if (studio === mod) return;
+			studio = mod;
+			volPass = makeVolPass(mod ? mod.sunGLSL() : NO_STUDIO);
+		},
 
 		// draw the room (drawFn) into the off-screen picture
 		capture(ctx, camera, drawFn) {
