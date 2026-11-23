@@ -56,15 +56,30 @@ function spline(pts, t) {
 }
 
 const AXIS = ROT.cx;
-// where it settles: on the grave's ledger, towards its foot
-const LANDG = [AXIS + 0.06, GRAVE.top + 0.012, GRAVE.cz + 0.55];
+// where it settles: in the middle of the grave's ledger
+const LANDG = [AXIS + 0.06, GRAVE.top + 0.012, GRAVE.cz + 0.22];
+// the spiral it comes down round the rotunda, outside its cloth: a turn and
+// a half, from high on the nymph's side round to low before the door.
+// a: round from the door's side (0) through the gallery's (PI / 2) and
+// hers (PI) to the windows' (3 PI / 2); the camera keeps outside it,
+// a little behind
+const SPIRAL = { a0: Math.PI, a1: 4 * Math.PI, r0: 4.3, r1: 3.7, y0: 4.4, y1: 1.3 };
+const spiralAt = (k, dr, dy, da) => {
+	const a = SPIRAL.a0 + (SPIRAL.a1 - SPIRAL.a0) * k + (da || 0);
+	const r = SPIRAL.r0 + (SPIRAL.r1 - SPIRAL.r0) * k + (dr || 0);
+	const y = SPIRAL.y0 + (SPIRAL.y1 - SPIRAL.y0) * (k * k * (3 - 2 * k)) + (dy || 0);
+	return [ROT.cx + Math.sin(a) * r, y, ROT.cz + Math.cos(a) * r];
+};
+const spiralPts = (k0, k1, n, dr, dy, da) => { const o = []; for (let i = 0; i <= n; i++) o.push(spiralAt(k0 + (k1 - k0) * i / n, dr, dy, da)); return o; };
+const CAM_R = 1.7, CAM_LAG = 0.8, CAM_UP = 1.2;
 // where it hangs at each shot
 const HOME = [9.1, 7.42, 5.5];                           // in the flowers on the first truss, over her
 const P1 = [8.6, 3.3, 1.95];                            // before her face
 const P2 = [7.9, 1.6, 2.5];                              // by the roses at her waist
 const P3 = [7.95, 0.17, 6.4];                            // a hand above the water
 const P4 = [AXIS, 0.25, 10.4];                           // halfway down the pool
-const P5 = [AXIS, 2.0, 22.6];                            // before the door's arch, on the line
+const P5 = spiralAt(0.5);                                 // half way round its spiral, on the gallery's side
+const P6 = spiralAt(1);                                   // at the foot of the spiral, before the door's arch
 
 const SHOTS = [
 	// 0: under the old glass, the petal among the blossom, over her
@@ -77,10 +92,12 @@ const SHOTS = [
 	{ petal: P3, eye: [8.45, 0.55, 7.9], at: [7.9, 0.25, 5.0], fov: 46, look: { aperture: 0.35 } },
 	// 4: halfway, from behind it: the rotunda and the door on one line
 	{ petal: P4, eye: [AXIS, 0.95, 7.4], at: [AXIS, 2.0, 22.0], fov: 48, look: { aperture: 0.12 } },
-	// 5: from by the door: the whole rotunda, its cloth in the wind, and her
+	// 5: half way down its spiral, the rotunda beside it
+	{ petal: P5, eye: spiralAt(0.5, CAM_R, CAM_UP, CAM_LAG), at: spiralAt(0.47), fov: 54, look: { aperture: 0.12 } },
+	// 6: from by the door: the whole rotunda, its cloth in the wind, and her
 	// far down the pool through its arches
-	{ petal: P5, eye: [AXIS, 2.6, 26.9], at: [AXIS, 2.6, 10.0], fov: 58, look: { aperture: 0.04 } },
-	// 6: it settles on the grave; the cloth either side of the arch in the wind
+	{ petal: P6, eye: [AXIS, 2.6, 26.9], at: [AXIS, 2.6, 10.0], fov: 58, look: { aperture: 0.04 } },
+	// 7: it settles on the grave; the cloth either side of the arch in the wind
 	{ petal: LANDG, eye: [AXIS + 0.2, 1.6, 23.3], at: [AXIS, 0.7, 15.4], fov: 50, look: { aperture: 0.2 } }
 ];
 // the moves between them: how long each takes (film seconds), the petal's
@@ -118,18 +135,26 @@ const MOVES = [
 		sway: 0.06, track: 0.5, roll: 0.06
 	},
 	{
-		// up from the water and round the rotunda's side, outside its cloth,
-		// to the door
+		// up from the water to the nymph's side of the rotunda, high, and
+		// round it, coming down
 		dur: 9,
-		petal: [P4, [8.4, 0.6, 12.6], [10.6, 1.2, 14.2], [11.8, 1.7, 16.4], [12.0, 2.0, 18.4], [11.4, 2.1, 20.6], [9.8, 2.1, 22.0], P5],
-		eye: [SHOTS[4].eye, [9.6, 1.4, 10.4], [13.0, 1.9, 13.8], [14.4, 2.2, 18.2], [13.3, 2.3, 22.6], [10.6, 2.5, 25.8], SHOTS[5].eye],
-		sway: 0.15, track: 0.75, roll: -0.05
+		petal: [P4, [AXIS, 1.5, 11.6], [AXIS - 0.3, 3.4, 12.9], ...spiralPts(0, 0.5, 6)],
+		eye: [SHOTS[4].eye, [AXIS + 0.6, 2.2, 8.6], [AXIS + 2.4, 4.2, 10.6], ...spiralPts(0.1, 0.5, 5, CAM_R, CAM_UP, CAM_LAG)],
+		sway: 0.15, track: 0.8, roll: -0.04
 	},
 	{
-		// in by the door's arch, down onto the grave
+		// on round and down, to before the door; the camera draws back to
+		// the door for the whole of it
+		dur: 9,
+		petal: spiralPts(0.5, 1, 6),
+		eye: [...spiralPts(0.5, 0.92, 5, CAM_R, CAM_UP, CAM_LAG), [6.0, 2.8, 25.8], SHOTS[6].eye],
+		sway: 0.12, track: 0.7, roll: -0.04
+	},
+	{
+		// in by the door's arch, down onto the middle of the grave
 		dur: 8,
-		petal: [P5, [AXIS, 1.6, 21.0], [AXIS + 0.02, 1.0, 19.9], [AXIS + 0.05, 0.55, 19.1], [LANDG[0], 0.26, LANDG[2] + 0.1], LANDG],
-		eye: [SHOTS[5].eye, [AXIS + 0.15, 2.1, 24.6], SHOTS[6].eye],
+		petal: [P6, [AXIS, 1.15, 20.6], [AXIS + 0.02, 0.9, 19.6], [AXIS + 0.05, 0.55, 18.9], [LANDG[0], 0.3, LANDG[2] + 0.12], LANDG],
+		eye: [SHOTS[6].eye, [AXIS + 0.15, 2.1, 24.6], SHOTS[7].eye],
 		sway: 0.25, track: 0.45
 	}
 ];

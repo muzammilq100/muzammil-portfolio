@@ -1903,11 +1903,11 @@ function buildStudio(g) {
 	// --- the hanging candles: a thread up to the roof, the taper with its
 	// wax run down from the lip, the wick, and the flame (lit by night)
 	for (const [x, y, z, len] of HCANDLES) {
-		const top = y + len, r = 0.017;
+		const top = y + len, r = 0.024;
 		g.beam([x, top + 0.02, z], [x, roofY(x) - 0.05, z], 0.0018, K.STEEL);
 		g.lathe(x, z, [[0.0, y], [r * 0.8, y + 0.004], [r, y + 0.02], [r, top - 0.02], [r * 1.12, top - 0.008], [r * 0.9, top], [0.0, top - 0.004]], K.GESSO, 10);
 		g.beam([x, top - 0.004, z], [x, top + 0.014, z], 0.0016, K.STEEL);
-		g.lathe(x, z, [[0.0, top + 0.008], [0.011, top + 0.026], [0.008, top + 0.05], [0.0, top + 0.085]], K.CFLAME, 8);
+		g.lathe(x, z, [[0.0, top + 0.008], [0.013, top + 0.028], [0.009, top + 0.055], [0.0, top + 0.095]], K.CFLAME, 8);
 	}
 }
 
@@ -1922,21 +1922,26 @@ const LANTERNS = [-1, 1].map((sx) => [W / 2 + sx * (1.95 / 2 + 0.62), 2.95, L - 
 // room as one flickering flame at its middle (CANDLE_LIGHTS), and the
 // rotunda's ring and cloth throw their shadows from it.
 // [x, z, y of the middle, how many]
-const CANDLE_DRIFTS = [[8.0, 3.4, 5.3, 7], [5.0, 7.4, 4.8, 8], [10.9, 9.6, 5.0, 8], [6.2, 12.2, 4.6, 7], [3.4, 17.6, 4.8, 7], [12.6, 18.8, 4.8, 7], [8.6, 24.0, 5.0, 8], [3.0, 23.8, 4.6, 6]];
+// (they keep clear of a ring round the rotunda, 4.6 to 7 m from its middle,
+// where the tour's camera circles it; one drift hangs inside the rotunda,
+// over the grave, through its open top)
+const CANDLE_DRIFTS = [[8.0, 3.6, 5.4, 12], [4.6, 6.8, 5.0, 12], [11.2, 7.4, 5.2, 12], [8.0, 9.8, 5.7, 10], [2.4, 11.6, 4.8, 11], [13.8, 12.2, 5.0, 11], [ROT.cx, ROT.cz, 4.9, 10], [2.8, 24.4, 4.8, 11], [13.2, 24.6, 5.0, 11], [8.0, 25.9, 5.8, 9]];
+const GRAVE_DRIFT = 6;
 const HCANDLES = (() => {
 	const out = [];
 	let sd = 911;
 	const rnd = () => { sd = (sd * 16807) % 2147483647; return (sd - 1) / 2147483646; };
 	CANDLE_DRIFTS.forEach(([cx, cz, cy, n], d) => {
 		for (let k = 0, tries = 0; k < n && tries < 400; tries++) {
-			const a = rnd() * 2 * PI, r = 0.25 + 1.25 * Math.sqrt(rnd());
+			const inside = d === GRAVE_DRIFT;
+			const a = rnd() * 2 * PI, r = inside ? 0.15 + 0.95 * Math.sqrt(rnd()) : 0.25 + 1.35 * Math.sqrt(rnd());
 			const x = cx + Math.cos(a) * r, z = cz + Math.sin(a) * r;
-			const len = 0.24 + 0.16 * rnd();
-			const y = cy + (rnd() - 0.5) * 2.4;         // the candle's foot
+			const len = 0.26 + 0.18 * rnd();
+			const y = cy + (rnd() - 0.5) * (inside ? 1.8 : 2.6);         // the candle's foot
 			const rr = Math.hypot(x - ROT.cx, z - ROT.cz);
-			if (rr < 3.4 && y < ROT.top + 0.5) continue;
+			if (!inside && rr < 7.0 && (rr > 4.4 || y < ROT.top + 0.5)) continue;
 			if (x < 0.8 || x > W - 0.8 || z < 2.2 || z > L - 0.9) continue;
-			if (out.some((c) => Math.hypot(c[0] - x, c[2] - z) < 0.22)) continue;
+			if (out.some((c) => Math.hypot(c[0] - x, c[2] - z) < 0.2)) continue;
 			out.push([x, y, z, len, d]);
 			k++;
 		}
@@ -2476,6 +2481,19 @@ const LIGHT = `
 		float gut = smoothstep(0.92, 1.0, sin(t * 0.83 + s * 2.3) * sin(t * 1.37 + s));
 		return f * (1.0 - 0.45 * gut);
 	}
+	// the candles' drifts mirrored in the water: R the reflected ray off it
+	vec3 candleGlints(vec3 R, vec3 pw) {
+		float nkw = smoothstep(0.35, 0.8, night);
+		if (nkw < 0.01) return vec3(0.0);
+		float cg = 0.0;
+		${CANDLE_LIGHTS.map((l, i) => { const w = toW(l); return `
+		{
+			vec3 Lc = normalize(vec3(${f(w[0])}, ${f(w[1])}, ${f(w[2])}) - pw);
+			float k = max(dot(R, Lc), 0.0);
+			cg += (pow(k, 500.0) * 2.6 + pow(k, 60.0) * 0.12) * candleFlicker(${f(i * 7.31 + 1.7)});
+		}`; }).join('')}
+		return vec3(1.0, 0.6, 0.27) * cg * nkw;
+	}
 	// what stands between a point and a candle: the rotunda's ring (but for
 	// its arches) and its cloth
 	vec3 candleShade(vec3 p, vec3 lp) {
@@ -2567,7 +2585,7 @@ const LIGHT = `
 				float dd = dot(d, d);
 				vec3 Ld = d * inversesqrt(dd);
 				vec3 sh = candleShade(p + N * 0.02, lp);
-				vec3 w = sh * (nk * ${f(1.6 + 0.3 * l[3])} * fl / (0.6 + dd * 0.42));
+				vec3 w = sh * (nk * ${f(1.4 + 0.3 * l[3])} * fl / (0.4 + dd * 0.9));
 				col += vec3(1.0, 0.56, 0.24) * w * (max(dot(N, Ld), 0.0) * 0.88 + 0.12);
 				spec += vec3(1.0, 0.62, 0.3) * w * pow(max(dot(N, normalize(Ld + V)), 0.0), mix(16.0, 300.0, gloss)) * gloss;
 			}`).join('')}
@@ -2582,7 +2600,22 @@ const LIGHT = `
 		// thicker low down, where the damp hangs over the floor and the pool
 		float low = 1.0 - smoothstep(0.0, 3.0, (pw.y + eye.y) * 0.5);
 		vec3 airC = mix(vec3(0.17, 0.17, 0.16), vec3(0.012, 0.018, 0.035), night);
-		return mix(col, airC, clamp(h * (0.42 + 0.25 * low), 0.0, 0.8));
+		col = mix(col, airC, clamp(h * (0.42 + 0.25 * low), 0.0, 0.8));
+		// by night the damp air glows round each drift of candles
+		float nka = smoothstep(0.35, 0.8, night);
+		if (nka > 0.01) {
+			vec3 rd = (pw - eye) / max(d, 1e-4);
+			float g = 0.0;
+			${CANDLE_LIGHTS.map((l, i) => { const w = toW(l); return `
+			{
+				vec3 c = vec3(${f(w[0])}, ${f(w[1])}, ${f(w[2])}) - eye;
+				float t = clamp(dot(c, rd), 0.0, d);
+				vec3 q = c - rd * t;
+				g += ${f(0.012 * l[3])} * candleFlicker(${f(i * 7.31 + 1.7)}) / (0.5 + dot(q, q) * 1.6);
+			}`; }).join('')}
+			col += vec3(1.0, 0.55, 0.25) * g * nka;
+		}
+		return col;
 	}
 `;
 
@@ -3065,6 +3098,11 @@ const FRAG = `
 			}
 			col += glintC * glint;
 			alpha = max(alpha, glint);
+			// by night each drift of candles lies in the water as a long warm
+			// shimmer, broken up by the ripples
+			vec3 cgl = candleGlints(Rw, pw) * (0.6 + 0.8 * stir + 0.5 * F);
+			col += cgl;
+			alpha = max(alpha, clamp(dot(cgl, vec3(0.33)), 0.0, 1.0));
 			if (mirrorOn < 0.5) { col = mix(col, studioSky(Rw) * 0.35, F); alpha = 1.0; }
 		}
 
@@ -4125,7 +4163,7 @@ module.exports = function (regl) {
 			float ring = clamp(dot(grad, normalize(V.xz + vec2(1e-4))) * 12.0, -1.0, 1.0);
 			float stir = clamp(length(grad) * 8.0, 0.0, 1.0);
 			under *= 1.0 + 0.55 * ring * stir;
-			return under * (1.0 - R) + rc * R + glintC * glint;
+			return under * (1.0 - R) + rc * R + glintC * glint + candleGlints(Rw, S) * (0.7 + 0.8 * stir);
 		}
 		// what the water does to light that comes back up through it
 		float showThrough(vec3 V) {
