@@ -3673,7 +3673,7 @@ module.exports = function (regl) {
 		precision highp float;
 		uniform mat4 proj, view;
 		uniform float yScale;
-		uniform float time, windK;
+		uniform float time, windK, closeK;
 		attribute vec3 position, normal;
 		attribute vec2 uv;
 		attribute float sw;
@@ -3705,6 +3705,19 @@ module.exports = function (regl) {
 				+ tng * edge * gust * (sin(time * 2.1 + y * 2.3 + a * 6.0) * 0.13 + sin(time * 3.3 - y * 3.1) * 0.05);
 			vec3 p0 = position + vec3(out2.x, 0.0, out2.y) * w * 0.09 * sw + vec3(tng.x, 0.0, tng.y) * side * 0.05 * sw
 				+ vec3(blow.x, 0.03 * gust * wave, blow.y) * sw;
+			// at the end the wind swings the two halves either side of each
+			// arch in towards each other, so that now and then they meet
+			// across it and hide what is beyond, and then part again
+			if (closeK > 0.0) {
+				float lx = c.x;
+				float ax = abs(lx);
+				float hang = sqrt(clamp(sw, 0.0, 1.0));
+				float wgt = (1.0 - smoothstep(${f(ROT.gap)}, ${f(ROT.gap + 1.9)}, ax)) * step(${f(ROT.gap - 0.05)}, ax) * step(0.55, abs(out2.y));
+				float swing = smoothstep(-0.25, 0.85, sin(time * 0.42 + 0.6) * 0.65 + sin(time * 0.23 + 2.1) * 0.35 + 0.08 * sin(time * 1.3 + y));
+				float move = min(closeK * swing * wgt * hang * (0.98 + 0.06 * wave), max(ax - 0.035, 0.0));
+				p0.x -= sign(lx) * move;
+				p0.z += out2.y * move * 0.12;
+			}
 			v_pos = p0;
 			v_nrm = normalize(normal + vec3(out2.x, 0.0, out2.y) * side * 0.3 * sw + vec3(tng.x, 0.0, tng.y) * wave * gust * 0.5 * sw);
 			v_uv = uv;
@@ -3744,7 +3757,7 @@ module.exports = function (regl) {
 			gl_FragColor = vec4(sqrt(max(col, 0.0)) * a, a);
 		}`,
 		attributes: { position: cloth.pos, normal: cloth.nrm, uv: cloth.uv, sw: cloth.sw },
-		uniforms: { windK: () => WIND.k },
+		uniforms: { windK: () => WIND.k, closeK: () => WIND.close },
 		elements: new Uint32Array(cloth.idx),
 		cull: { enable: false },
 		depth: { enable: true, mask: false },
@@ -3920,6 +3933,12 @@ module.exports = function (regl) {
 			// and a little light of its own, so the eye can follow it through the shade
 			vec3 col = base * (light + vec3(0.2, 0.15, 0.17)) + base * vec3(1.0, 0.7, 0.8) * through * 2.0 * (1.0 - night * 0.5) + spec * 0.05;
 			col = studioAir(col, v_pos, v_eye);
+			// and it glows: a soft light of its own, brighter than anything
+			// round it, more so by night (the bloom spreads it into a halo);
+			// it breathes a little, and the veins and the middle glow most
+			float breath = 0.88 + 0.12 * sin(time * 1.7) * sin(time * 0.9 + 1.3);
+			vec3 glow = vec3(1.0, 0.2, 0.55) * (0.7 + 0.45 * vein + 0.6 * mid) * mix(0.55, 1.6, night) * breath;
+			col += glow;
 			gl_FragColor = vec4(sqrt(max(col, 0.0)), 1.0);
 		}`,
 		attributes: { uvw: PETAL_GRID.uvw },
@@ -4731,8 +4750,8 @@ let ACTIVE = null;
 // the tour's petal (studio coordinates), set by studiotour.js
 const GUIDE = { vis: false, model: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1], ang: 0, size: 0.09, flex: 0, flutter: 0, floating: false };
 // how hard the wind blows in the rotunda's cloth (the tour raises it at the end)
-const WIND = { k: 1 };
-function setWind(k) { WIND.k = k; }
+const WIND = { k: 1, close: 0 };
+function setWind(k, close) { WIND.k = k; WIND.close = close || 0; }
 function setGuide(g) { Object.assign(GUIDE, g); }
 // the petal's end: a koi waits below; it lands; it is taken
 function petalLure(x, z) { if (ACTIVE && !ACTIVE.feed.lure && !ACTIVE.feed.petal) ACTIVE.lure(x, z); }

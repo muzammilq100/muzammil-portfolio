@@ -383,7 +383,7 @@ module.exports = function createStudioTour() {
 			F.at = mix3(F.at, FINALE.at, k);
 		}
 		// the wind in the cloth rises as it comes down to the grave
-		studio.setWind(1 + 0.8 * sstep(0.3, 1.0, F.idx === MOVES.length - 1 ? F.u : 0) + (landed ? 0.2 * sstep(0, 4, time - landedAt) : 0));
+		studio.setWind(1 + 0.8 * sstep(0.3, 1.0, F.idx === MOVES.length - 1 ? F.u : 0) + (landed ? 0.2 * sstep(0, 4, time - landedAt) : 0), landed ? sstep(0.5, 3.5, time - landedAt) : 0);
 		eyeNow = F.eye;
 		let model = petalModel(F.p, dt, F.hanging, time);
 		// lying down on the stone: flat, still, turned a little
