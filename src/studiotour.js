@@ -1,27 +1,42 @@
 /*
  * The studio's tour (?studio). A petal of bougainvillea leads the eye.
- * It parts from the vine under the glass roof, falls through a window's
- * beam among the dust, drifts the length of the room to the red door, and
- * from there glides through the rotunda's arches on the pool's line (the
- * symmetry of the room in one frame: arch, arch, pool, niche, nymph), skims
- * the water to the nymph, and lands on the pool, where a koi comes up and
- * takes it.
+ *
+ * It lets go of the vine under the glass roof and falls, rocking and
+ * slipping like a real petal, through a window's beam; it drifts past the
+ * tall red door; then, in one wide shot of the whole rotunda hung with its
+ * moving cloth, it passes through the arches on the pool's line; it comes
+ * out over the water to the nymph, where the low sun through the first
+ * window lights her and her reflection lies in the pool; it circles her,
+ * and settles on the water, where the skylight and the bougainvillea lie
+ * mirrored, and a koi comes up and takes it.
  *
  * Like the gallery's tour it moves only while the visitor scrolls, swipes
- * or taps: each gesture carries the camera at most to the next shot, and it
- * settles there. All positions are in the studio's own coordinates
+ * or taps: each gesture carries the camera at most to the next shot, and
+ * it settles there. Positions are in the studio's own coordinates
  * (studio.js); the camera it returns is in the world's.
+ *
+ * The petal's turning is worked out from its flight, as the gallery's
+ * falling leaf's is (tour.js, leafState): it rides flat on the air and
+ * rocks, slipping towards the edge that is down; carried along, it trails
+ * its tip and banks into the bends; dropping fast, it goes over and whirls.
+ * The faster the air goes over it, the more it bends and flutters.
  */
 const studio = require('./studio');
 const O = studio.O;
-const { W, H, POOL, ROT, WIN } = studio.STUDIO;
+const { POOL, ROT } = studio.STUDIO;
 
 const W3 = (p) => [p[0] + O[0], p[1] + O[1], p[2] + O[2]];
 const mix = (a, b, t) => a + (b - a) * t;
 const mix3 = (a, b, t) => [mix(a[0], b[0], t), mix(a[1], b[1], t), mix(a[2], b[2], t)];
+const add3 = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+const sub3 = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+const scale3 = (a, k) => [a[0] * k, a[1] * k, a[2] * k];
+const norm3 = (a) => { const l = Math.hypot(a[0], a[1], a[2]) || 1; return scale3(a, 1 / l); };
+const cross3 = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
 const clamp01 = (x) => Math.max(0, Math.min(1, x));
 const smooth = (t) => t * t * (3 - 2 * t);
-const ease = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+const sstep = (a, b, x) => smooth(clamp01((x - a) / (b - a)));
+const easeIO = (t) => 0.5 - 0.5 * Math.cos(Math.PI * clamp01(t));
 
 // a smooth curve through points (Catmull-Rom, ends held)
 function spline(pts, t) {
@@ -34,64 +49,71 @@ function spline(pts, t) {
 	return [0, 1, 2].map((k) => 0.5 * ((2 * p1[k]) + (-p0[k] + p2[k]) * u + (2 * p0[k] - 5 * p1[k] + 4 * p2[k] - p3[k]) * u2 + (-p0[k] + 3 * p1[k] - 3 * p2[k] + p3[k]) * u3));
 }
 
-// where the petal comes down on the water, near the nymph
-const LAND = [W / 2 + 0.35, 0.02, POOL.z0 + 3.5];
-// where it hangs at each shot, and where the camera stands
 const AXIS = ROT.cx;
-const HOME = [4.3, 7.42, 16.35];                   // under the vine on the far truss
-const BEAM = [2.25, 3.35, WIN.c[2] - 0.75];        // in a window's beam
-const DOOR = [AXIS, 1.95, 20.85];                  // before the red door, on the line
-const OUT = [AXIS, 1.45, ROT.cz - ROT.ro - 1.55];  // out through the rotunda, over the pool
-const NYMPH = [AXIS + 0.2, 0.95, POOL.z0 + 2.6];   // before the nymph
+// where it comes down on the water, where the roof and the vine lie mirrored
+const LAND = [AXIS + 0.3, 0.02, POOL.z0 + 5.4];
+// where it hangs at each shot
+const HOME = [5.0, 7.42, 11.25];                       // under the vine on the middle truss
+const BYDOOR = [6.15, 2.65, 21.0];                     // drifting before the red door
+const INROT = [AXIS, 2.35, ROT.cz - 0.9];              // inside the rotunda, framed by its front arch
+const SUNLIT = [AXIS + 0.75, 1.85, 3.35];              // in the beam, beside the nymph
+const CLOSE = [AXIS - 0.75, 1.6, 3.7];                 // on her other side
+const OVERWATER = [AXIS + 0.15, 1.05, LAND[2] - 0.6];  // over the water, about to come down
+
 const SHOTS = [
-	// 0: the petal among the blossom under the old glass
-	{ petal: HOME, eye: [5.75, 6.25, 14.55], at: HOME, fov: 40, look: { focus: 2.4, aperture: 0.7 } },
-	// 1: falling through a window's beam, the dust gold about it
-	{ petal: BEAM, eye: [3.6, 3.05, BEAM[2] - 1.15], at: BEAM, fov: 46, look: { focus: 3.3, aperture: 0.6 } },
-	// 2: before the red door: the rotunda's arches frame the niche, the nymph in it
-	{ petal: DOOR, eye: [AXIS, DOOR[1] - 0.06, DOOR[2] + 0.95], at: [AXIS, 2.1, 1.0], fov: 50, look: { focus: 0.9, aperture: 0.12 } },
-	// 3: out of the rotunda over the water, the pool running to the niche
-	{ petal: OUT, eye: [AXIS, OUT[1] - 0.06, OUT[2] + 0.95], at: [AXIS, 2.1, 1.0], fov: 54, look: { focus: 1.5, aperture: 0.15 } },
-	// 4: low by the water before the nymph, her reflection below
-	{ petal: NYMPH, eye: [AXIS + 1.35, 0.42, NYMPH[2] + 1.7], at: [AXIS, 2.1, 1.0], fov: 48, look: { focus: 2.2, aperture: 0.55 } },
-	// 5: on the water: the koi comes up for it
-	{ petal: LAND, eye: [LAND[0] - 0.62, 0.2, LAND[2] + 0.85], at: [LAND[0] + 0.05, 0.0, LAND[2] - 0.1], fov: 40, look: { focus: 1.05, aperture: 0.8 } }
+	// 0: under the old glass, the petal among the blossom
+	{ petal: HOME, eye: [6.5, 6.0, 9.55], at: HOME, fov: 42, look: { aperture: 0.7 } },
+	// 1: the tall red door, the rotunda's cloth to one side
+	{ petal: BYDOOR, eye: [2.6, 2.2, 18.2], at: [7.8, 3.1, 22.0], fov: 50, look: { aperture: 0.35 } },
+	// 2: the whole rotunda, its cloth stirring, the petal in its arch
+	{ petal: INROT, eye: [AXIS, 1.05, 8.4], at: [AXIS, 3.05, ROT.cz], fov: 56, look: { aperture: 0.08 } },
+	// 3: the nymph in the low sun, her reflection in the pool below
+	{ petal: SUNLIT, eye: [10.55, 0.55, 4.9], at: [AXIS, 1.95, 1.0], fov: 50, look: { aperture: 0.3 } },
+	// 4: from the water's edge before her, low, the sunlit nymph and her
+	// reflection lying in the pool
+	{ petal: CLOSE, eye: [7.15, 0.24, 5.4], at: [AXIS, 1.7, 1.0], fov: 56, look: { aperture: 0.35 } },
+	// 5: low over the water, the nymph and her reflection beyond: it lands here
+	{ petal: LAND, eye: [LAND[0] - 0.2, 0.38, LAND[2] + 1.5], at: [AXIS, 0.9, 1.0], fov: 44, look: { aperture: 0.45 } }
 ];
 // the moves between them: how long each takes (film seconds), the petal's
-// path and the camera's (both through the shots' own places at their ends)
+// path, the camera's, how far the petal sways from side to side as it
+// goes (a falling petal swings like a pendulum), and how strongly the
+// camera watches the petal rather than the shots' own framing on the way
 const MOVES = [
 	{
-		dur: 5.5,
-		petal: [HOME, [3.6, 6.4, 15.6], [2.7, 5.1, 14.6], [2.15, 4.1, 13.4], BEAM],
-		eye: [SHOTS[0].eye, [5.0, 5.4, 14.6], [4.2, 3.9, 13.4], SHOTS[1].eye]
-	},
-	{
 		dur: 7,
-		petal: [BEAM, [3.0, 3.9, 15.0], [4.6, 3.4, 18.4], [6.4, 2.6, 20.6], DOOR],
-		eye: [SHOTS[1].eye, [2.0, 2.7, 15.2], [3.0, 2.2, 20.3], [5.9, 2.0, 21.8], SHOTS[2].eye],
-		// the camera keeps the petal in view, then swings round onto the line
-		at: (u, p) => (u < 0.72 ? p : mix3(p, SHOTS[2].at, smooth((u - 0.72) / 0.28)))
+		petal: [HOME, [4.6, 6.6, 12.4], [3.9, 5.3, 14.0], [3.6, 4.1, 16.2], [4.4, 3.2, 18.8], BYDOOR],
+		eye: [SHOTS[0].eye, [6.0, 5.2, 10.8], [5.4, 3.9, 12.8], [3.6, 2.7, 15.6], SHOTS[1].eye],
+		sway: 0.55, track: 1.0
 	},
 	{
-		// through the arches on the line: the symmetry of the room
+		// round the rotunda's side to the wide front; the petal crosses before
+		// the door and goes in by the arch on the line
+		dur: 8,
+		petal: [BYDOOR, [7.3, 2.5, 21.25], [AXIS, 2.45, 20.7], [AXIS, 2.4, ROT.cz + 1.2], INROT],
+		eye: [SHOTS[1].eye, [1.8, 2.3, 15.6], [3.2, 1.9, 11.6], [6.2, 1.3, 9.2], SHOTS[2].eye],
+		sway: 0.12, track: 0.35
+	},
+	{
+		// out through the front arch, over the water, to the nymph
 		dur: 7,
-		petal: [DOOR, [AXIS, 2.0, ROT.cz + ROT.ri], [AXIS, 1.85, ROT.cz], [AXIS, 1.65, ROT.cz - ROT.ri], OUT],
-		eye: null,
-		follow: (p) => [AXIS, p[1] - 0.06, p[2] + 0.95],
-		at: () => SHOTS[2].at
+		petal: [INROT, [AXIS, 2.15, ROT.cz - ROT.ro - 0.8], [AXIS + 0.25, 1.7, 11.0], [AXIS - 0.3, 1.55, 7.2], [AXIS + 0.5, 1.75, 4.6], SUNLIT],
+		eye: [SHOTS[2].eye, [AXIS + 0.7, 0.9, 9.0], [10.3, 0.95, 7.0], SHOTS[3].eye],
+		sway: 0.25, track: 0.6
 	},
 	{
-		dur: 7,
-		petal: [OUT, [AXIS + 0.25, 1.05, OUT[2] - 3.2], [AXIS - 0.35, 0.65, (OUT[2] + NYMPH[2]) / 2], [AXIS + 0.3, 0.75, NYMPH[2] + 1.8], NYMPH],
-		eye: [SHOTS[3].eye, [AXIS + 1.6, 0.7, OUT[2] - 1.5], [AXIS + 1.75, 0.45, (OUT[2] + NYMPH[2]) / 2 + 1.0], SHOTS[4].eye],
-		at: (u, p) => (u < 0.3 ? mix3(SHOTS[3].at, p, smooth(u / 0.3)) : mix3(p, SHOTS[4].at, smooth(clamp01((u - 0.55) / 0.45))))
-	},
-	{
-		// a last turn before her, and down, spinning, onto the water
+		// round her, through the sun
 		dur: 6,
-		petal: [NYMPH, [AXIS - 0.4, 1.35, NYMPH[2] - 0.8], [AXIS - 0.15, 0.9, NYMPH[2] + 0.4], [LAND[0] - 0.1, 0.38, LAND[2] - 0.15], [LAND[0], 0.06, LAND[2]], LAND],
-		eye: [SHOTS[4].eye, [AXIS + 1.2, 0.5, NYMPH[2] + 1.6], [LAND[0] - 0.4, 0.3, LAND[2] + 1.2], SHOTS[5].eye],
-		at: (u, p) => (u < 0.25 ? mix3(SHOTS[4].at, p, smooth(u / 0.25)) : mix3(p, SHOTS[5].at, smooth(clamp01((u - 0.7) / 0.3))))
+		petal: [SUNLIT, [AXIS + 0.85, 2.7, 2.3], [AXIS - 0.1, 3.1, 2.15], [AXIS - 0.95, 2.4, 2.9], CLOSE],
+		eye: [SHOTS[3].eye, [9.6, 0.55, 5.6], [7.7, 0.45, 5.3], SHOTS[4].eye],
+		sway: 0.1, track: 0.5
+	},
+	{
+		// away over the water, falling, onto the mirrored skylight
+		dur: 7,
+		petal: [CLOSE, [AXIS - 0.4, 1.5, 4.8], [AXIS + 0.6, 1.25, 5.9], OVERWATER, [LAND[0] - 0.05, 0.4, LAND[2] - 0.15], [LAND[0], 0.07, LAND[2]], LAND],
+		eye: [SHOTS[4].eye, [7.4, 0.55, 6.4], [7.9, 0.5, 8.0], SHOTS[5].eye],
+		sway: 0.35, track: 0.7
 	}
 ];
 const AT = [0];
@@ -125,6 +147,7 @@ module.exports = function createStudioTour() {
 	let scroll = 0, vel = 0, target = 0, lastInput = -10, now = 0, last = null;
 	let gestureFrom = null, auto = false;
 	let landed = false, lured = false, landedAt = 0;
+	let eyeNow = SHOTS[0].eye;
 
 	const nearest = (s) => { let b = 0; for (let i = 1; i < AT.length; i++) if (Math.abs(AT[i] - s) < Math.abs(AT[b] - s)) b = i; return b; };
 	// one gesture never carries past the next shot
@@ -143,16 +166,15 @@ module.exports = function createStudioTour() {
 
 	// input
 	let drag = null;
-	const onWheel = (e) => {
+	window.addEventListener('wheel', (e) => {
 		if (e.target.closest && e.target.closest('.koi-feed, .st-ui')) return;
 		e.preventDefault();
 		const px = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaMode === 2 ? e.deltaY * window.innerHeight : e.deltaY;
 		wind(px / WHEEL_PX_PER_SEC);
-	};
-	window.addEventListener('wheel', onWheel, { passive: false });
+	}, { passive: false });
 	window.addEventListener('pointerdown', (e) => {
 		if (e.target.closest && e.target.closest('button, a, .st-ui')) return;
-		drag = { ly: e.clientY, lx: e.clientX, moved: 0, t: performance.now(), v: 0, lt: performance.now() };
+		drag = { ly: e.clientY, lx: e.clientX, moved: 0, v: 0, lt: performance.now() };
 	});
 	window.addEventListener('pointermove', (e) => {
 		if (!drag) return;
@@ -168,7 +190,7 @@ module.exports = function createStudioTour() {
 	window.addEventListener('pointerup', () => {
 		const d = drag; drag = null;
 		if (!d) return;
-		// a tap is for the koi (when feeding) or carries on; a flick glides a little
+		// a flick glides on a little
 		if (d.moved >= 10 && performance.now() - d.lt < 120) wind(Math.max(-1.6, Math.min(1.6, d.v * 0.22)));
 	});
 	window.addEventListener('keydown', (e) => {
@@ -185,34 +207,95 @@ module.exports = function createStudioTour() {
 		while (idx < MOVES.length - 1 && s >= AT[idx + 1]) idx++;
 		const M = MOVES[idx];
 		const u = clamp01((s - AT[idx]) / M.dur);
-		const e = ease(u);
+		const e = easeIO(u);
 		const near = nearest(s);
-		const drift = 1 - smooth(clamp01(Math.abs(s - AT[near]) / 0.9));
-		// the petal: along its path; at a shot, hovering on the air
+		const rest = 1 - sstep(0, 0.9, Math.abs(s - AT[near]));
+		// the petal: along its path, swinging from side to side as it goes
 		let p = spline(M.petal, e);
-		const hov = [Math.sin(time * 0.53 + near) * 0.06, Math.sin(time * 0.71 + near * 2.0) * 0.05, Math.cos(time * 0.47 + near) * 0.06];
-		const still = near === 5 ? 0 : drift;
-		p = [p[0] + hov[0] * still, p[1] + hov[1] * still, p[2] + hov[2] * still];
-		// the camera
-		let eye = M.eye ? spline(M.eye, e) : M.follow(p);
-		let at = M.at ? M.at(u, p) : p;
-		// a breath of hand-held movement
-		eye = [eye[0] + Math.sin(time * 0.31) * 0.025, eye[1] + Math.sin(time * 0.43 + 1) * 0.018, eye[2] + Math.cos(time * 0.27) * 0.025];
+		const ahead = sub3(spline(M.petal, Math.min(1, e + 0.02)), spline(M.petal, Math.max(0, e - 0.02)));
+		const side = norm3(cross3([0, 1, 0], Math.hypot(ahead[0], ahead[2]) > 1e-4 ? ahead : [1, 0, 0]));
+		const swing = Math.sin(e * Math.PI * (2.5 + M.dur * 0.25)) * Math.sin(e * Math.PI);
+		p = add3(p, scale3(side, swing * M.sway));
+		p[1] += -Math.abs(swing) * M.sway * 0.25;     // dipping at the bottom of each swing
+		// at a shot: hanging on the air (on the vine at the first, still)
+		const hov = near === 0 ? [Math.sin(time * 0.9) * 0.01, 0, Math.cos(time * 0.7) * 0.01]
+			: [Math.sin(time * 0.53 + near) * 0.07, Math.sin(time * 0.71 + near * 2.0) * 0.05, Math.cos(time * 0.47 + near) * 0.07];
+		const still = near === 5 ? 0 : rest;
+		p = add3(p, scale3(hov, still));
+		// the camera: along its path; it watches the petal on the way and
+		// comes round to each shot's own framing at either end
+		const eye = spline(M.eye, e);
+		const A = SHOTS[idx].at, B = SHOTS[idx + 1].at;
+		const w = M.track * sstep(0, 0.3, u) * (1 - sstep(0.65, 1, u));
+		const at = mix3(mix3(A, B, sstep(0.25, 0.95, u)), p, w);
 		const fov = mix(SHOTS[idx].fov, SHOTS[idx + 1].fov, smooth(u));
-		const la = SHOTS[idx].look, lb = SHOTS[idx + 1].look;
-		const focus = Math.hypot(eye[0] - p[0], eye[1] - p[1], eye[2] - p[2]);
-		const aperture = mix(la.aperture, lb.aperture, smooth(u));
-		// the tumble: a slow turn and flutter, flatter as it settles
-		const spin = s * 1.7 + time * 0.5;
-		const axis = [Math.sin(spin * 0.37), 0.8 + 0.2 * Math.cos(spin * 0.5), Math.cos(spin * 0.29)];
-		const ang = (idx === 4 ? (1 - u) : 1) * (spin * 1.3) + (idx === 4 ? u * 0.3 : 0);
-		// the roll: a lean into the swing round to the door, and the glide over the water
-		const roll = idx === 1 ? Math.sin(u * Math.PI) * -0.07 : idx === 3 ? Math.sin(u * Math.PI) * 0.05 : 0;
-		return { p, eye, at, fov, focus, aperture, axis, ang, roll, idx, u, near };
+		const aperture = mix(SHOTS[idx].look.aperture, SHOTS[idx + 1].look.aperture, smooth(u));
+		// a lean into the big swing round the rotunda, and the glide over the water
+		const roll = idx === 1 ? Math.sin(u * Math.PI) * -0.08 : idx === 2 ? Math.sin(u * Math.PI) * 0.04 : idx === 3 ? Math.sin(u * Math.PI) * 0.05 : 0;
+		return { p, eye, at, fov, aperture, roll, idx, u, near, hanging: near === 0 && rest > 0.98 };
+	}
+
+	// how the petal turns, from how it is moving (see the top)
+	const fl = { prev: null, vel: [0, 0, 0], axis: [1, 0, 0], dir: null, bank: 0, rock: 0, spin: 0, fresh: true, go: 0, fall: 0 };
+	function petalModel(p, dt, hanging, time) {
+		let X, Y, Z;
+		if (hanging) {
+			// on the vine: hanging from where it is joined, turning a little in the air
+			X = norm3([Math.sin(time * 0.8) * 0.25, -1, 0.35 + Math.sin(time * 1.1) * 0.15]);
+			Y = norm3(cross3(cross3(X, [0.4, 0, -1]), X));
+			Z = cross3(X, Y);
+			fl.prev = null; fl.vel = [0, 0, 0]; fl.fresh = true; fl.spin = 0; fl.bank = 0; fl.dir = null; fl.go = 0; fl.fall = 0;
+		} else {
+			if (fl.prev && dt > 0) {
+				const d = sub3(p, fl.prev);
+				if (Math.hypot(d[0], d[1], d[2]) < 1.5) {
+					const kk = Math.min(1, dt * 6);
+					for (let i = 0; i < 3; i++) fl.vel[i] += (d[i] / dt - fl.vel[i]) * kk;
+				} else fl.vel = [0, 0, 0];
+			}
+			fl.prev = p.slice();
+			const v = fl.vel;
+			const speed = Math.hypot(v[0], v[1], v[2]);
+			const go = sstep(0.2, 1.2, speed), fall = sstep(0.35, 1.6, -v[1]);
+			fl.go = go; fl.fall = fall;
+			const yaw = time * 0.35 + 0.65;
+			let ax = [Math.cos(yaw), 0, Math.sin(yaw)];
+			if (speed > 1e-3) ax = mix3(ax, scale3(v, -1 / speed), go);
+			fl.axis = mix3(fl.axis, ax, fl.fresh ? 1 : Math.min(1, dt * 4));
+			X = norm3(fl.axis);
+			// its face up, leaning towards the camera enough to be seen
+			const c = norm3(sub3(eyeNow, p));
+			const see = mix(0.6, 0.25, go);
+			Y = [c[0] * see, 1 + c[1] * see, c[2] * see];
+			Y = norm3(sub3(Y, scale3(X, X[0] * Y[0] + X[1] * Y[1] + X[2] * Y[2])));
+			Z = cross3(X, Y);
+			// banking into the bends of its path
+			const hs = Math.hypot(v[0], v[2]);
+			let turn = 0;
+			if (hs > 0.15 && fl.dir && dt > 0) { const nd = [v[0] / hs, v[2] / hs]; turn = (fl.dir[0] * nd[1] - fl.dir[1] * nd[0]) / dt; fl.dir = nd; }
+			else if (hs > 0.15) fl.dir = [v[0] / hs, v[2] / hs];
+			fl.bank += (Math.max(-0.8, Math.min(0.8, turn * 0.3)) * go - fl.bank) * Math.min(1, dt * 3);
+			// rocking (quicker in faster air), and the whirl when it drops
+			fl.rock += dt * (1.7 + 2.6 * go);
+			fl.spin += dt * fall * 6.0;
+			const roll = Math.sin(fl.rock) * (0.42 + 0.2 * go) * (1 - 0.5 * fall) + fl.bank + fl.spin;
+			const pitch = Math.sin(fl.rock * 0.63 + 1.0) * 0.32;
+			let cs = Math.cos(roll), sn = Math.sin(roll);
+			const Y1 = add3(scale3(Y, cs), scale3(Z, sn)), Z1 = add3(scale3(Z, cs), scale3(Y, -sn));
+			cs = Math.cos(pitch); sn = Math.sin(pitch);
+			X = add3(scale3(X, cs), scale3(Y1, sn));
+			Y = add3(scale3(Y1, cs), scale3(X, -sn));
+			Z = Z1;
+			// slipping towards the edge that is down
+			p = add3(p, scale3(Z, Math.sin(fl.rock + 1.5708) * 0.05 * (1 - 0.5 * go)));
+			fl.fresh = false;
+		}
+		const q = W3(p);
+		return [X[0], X[1], X[2], 0, Y[0], Y[1], Y[2], 0, Z[0], Z[1], Z[2], 0, q[0], q[1], q[2], 1];
 	}
 
 	function update(time) {
-		const dt = last === null ? 0 : Math.min(0.1, time - last);
+		const dt = last === null ? 0 : Math.min(0.1, Math.max(0, time - last));
 		last = time; now = time;
 		if (!auto && !drag && now - lastInput > SETTLE_AFTER) {
 			const i = nearest(target);
@@ -230,28 +313,36 @@ module.exports = function createStudioTour() {
 		// (tests: ?tourdebug and window.__stScroll put the film anywhere)
 		if (typeof window !== 'undefined' && window.__stScroll !== undefined && /tourdebug/.test(location.search)) { scroll = target = window.__stScroll; vel = 0; }
 		const F = frame(scroll, time);
-		// the petal's end on the water: a koi drifts over to wait as it comes
-		// down; it lands; it is taken. Winding back takes it off the water.
+		// the end on the water: a koi drifts over to wait as it comes down;
+		// it lands; it is taken. Winding back takes it off the water.
 		if (F.idx >= 3 && !lured) { studio.petalLure(LAND[0], LAND[2]); lured = true; }
 		if (scroll >= END - 0.02 && !landed) { studio.petalLand(LAND[0], LAND[2]); landed = true; landedAt = time; }
 		if (scroll < END - 0.3 && landed) { studio.petalReset(); landed = false; }
-		if (F.idx < 3 && lured) { lured = false; }
+		if (F.idx < 3 && lured) lured = false;
 		const ps = studio.petalState();
-		// on the water: the camera sinks slowly towards it and leans in, and
-		// holds there while the koi comes up for it
+		// on the water: the camera comes down slowly towards it and holds
+		// while the koi comes up for it
 		if (landed) {
-			const k = ease(clamp01((time - landedAt) / 7));
-			const close = [LAND[0] - 0.36, 0.1, LAND[2] + 0.5];
-			F.eye = mix3(F.eye, close, k);
-			F.fov = mix(F.fov, 34, k);
-			F.focus = Math.hypot(F.eye[0] - LAND[0], F.eye[1] - LAND[1], F.eye[2] - LAND[2]);
+			const k = easeIO((time - landedAt) / 7);
+			F.eye = mix3(F.eye, [LAND[0] + 0.35, 0.3, LAND[2] + 0.95], k);
+			F.at = mix3(F.at, [LAND[0], 0.0, LAND[2] - 0.3], k);
+			F.fov = mix(F.fov, 38, k);
 		}
-		studio.setGuide({ vis: true, pos: F.p, axis: F.axis, ang: F.ang, size: 0.07 });
+		eyeNow = F.eye;
+		const model = petalModel(F.p, dt, F.hanging, time);
+		// the air working it: bending and fluttering with its speed
+		const flutter = F.hanging ? 0.12 : 0.2 + 0.55 * fl.go + 0.35 * fl.fall;
+		const flex = F.hanging ? 0.05 : Math.sin(fl.rock * 1.3) * 0.18 + 0.12 * fl.go;
+		studio.setGuide({ vis: true, model, ang: time * 0.08, size: 0.09, flex, flutter });
+		const pw = model.slice(12, 15);
+		const ew = W3(F.eye);
 		return {
-			eye: W3(F.eye), target: W3(F.at), fov: F.fov, roll: F.roll, fade: 0,
+			eye: ew, target: W3(F.at), fov: F.fov, roll: F.roll, fade: 0,
 			// at the end, after the koi has eaten, the visitor may feed them
 			pond: landed && ps.eaten, shot: landed ? 5 : F.near,
-			look: { letterbox: 0.55, focus: Math.max(0.3, F.focus), aperture: F.aperture, vignette: 0.28, exposure: 1.0, shafts: 1.0 }
+			look: { letterbox: 0.55, focus: Math.max(0.3, Math.hypot(ew[0] - pw[0], ew[1] - pw[1], ew[2] - pw[2])), aperture: F.aperture, vignette: 0.28, exposure: 1.0, shafts: 1.0 },
+			// whether anything is on the move (the frame rate can rest when not)
+			moving: Math.abs(vel) > 0.02 || Math.abs(target - scroll) > 0.01 || landed
 		};
 	}
 

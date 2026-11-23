@@ -233,6 +233,8 @@ const context = regl({
 		mirrorOn: () => (useReflexion ? 1.0 : 0.0),
 		// 0 by day, 1 at night (see env.js)
 		night: () => env.night,
+		// the studio's sun through its windows and roof, worked out once
+		studioBake: () => require('./studio').bakedSun(regl),
 		time: regl.context('time')
 	}
 });
@@ -1361,6 +1363,7 @@ function setCamera(time) {
 	if (STUDIO_PREVIEW && !(/tourdebug/.test(location.search) && window.__camOverride)) {
 		const sc = studioTour().update(koiFeed.time(time));
 		koiFeed.update(sc);
+		studioMoving = sc.moving !== false;
 		c = sc;
 		look = Object.assign({}, FREE_LOOK, sc.look);
 	}
@@ -1460,6 +1463,11 @@ function updateDust(time) {
 
 let lastFrame = 0;
 let skipFrame = false;
+// the studio is held to 30 frames a second (24 when nothing moves): its
+// light and water are soft and slow, and the machine stays cool
+let capTicks = 0, lastDrawn = 0;
+let studioMoving = true;
+const NOCAP = /[?&]nocap\b/.test(location.search);
 
 regl.frame(
 	function ({ time }) {
@@ -1470,6 +1478,15 @@ regl.frame(
 			lastFrame = 0;
 			return;
 		}
+
+		capTicks++;
+		if (cull.zone === 'studio' && !NOCAP && lastDrawn > 0 && time > lastDrawn) {
+			const iv = (studioMoving || !env.settled) ? 1 / 30 : 1 / 24;
+			if (time - lastDrawn < iv - 0.006) return;
+		}
+		lastDrawn = time;
+		const ticks = Math.max(1, capTicks);
+		capTicks = 0;
 
 		stats.begin();
 
@@ -1491,7 +1508,7 @@ regl.frame(
 		// when there is room (quality.js)
 		const frameDt = time - lastFrame;
 		lastFrame = time;
-		quality.frame(resting ? frameDt / 2 : frameDt);
+		quality.frame(resting ? frameDt / 2 : frameDt / ticks);
 		useReflexion = quality.reflection;
 
 
@@ -1534,7 +1551,10 @@ regl.frame(
 
 							// the room upside down beneath the polished floor
 							// (only the rooms whose reflection is in view)
-							reflexion(
+							// in the studio the reflection is drawn into a smaller
+							// picture of its own, and not every frame (studio.js)
+							if (cull.zone === 'studio' && drawStudio.reflect) drawStudio.reflect(() => reflexion(() => drawStudio({ reflected: true })), studioMoving ? 2 : 4);
+							else reflexion(
 								() => {
 									if (cull.room('studio', true)) drawStudio({ reflected: true });
 									if (cull.zone === 'studio') return;

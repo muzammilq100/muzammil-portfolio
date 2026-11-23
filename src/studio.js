@@ -111,12 +111,13 @@ const PZ = (z) => POOL.z1 - (z - 5.6) / 11.0 * (POOL.z1 - POOL.z0);
 const VENUS = { x: W / 2, z: 1.0, plinth: NICHE.floor + 0.26, height: 2.75, yaw: 0.35, file: 'res/nymph.bin' };
 const NZ = L - VENUS.z;
 
-// the sun: the direction towards it. Low (about 24 degrees), from the
+// the sun: the direction towards it. Low (about 18 degrees), from the
 // window wall (x = 0) and a little from behind the red door's end, so long
-// raking beams cross the room on the diagonal, over the floor and the pool,
-// and fall on the niche and the nymph; the rest of the room stays in shade.
+// raking beams cross the room on the diagonal, over the floor and the pool;
+// the first window's beam reaches into the niche and lights the nymph,
+// the rest of the room stays in shade.
 const SUN = (() => {
-	const v = [-0.80, 0.42, 0.43];
+	const v = [-0.85, 0.30, 0.30];
 	const l = Math.hypot(v[0], v[1], v[2]);
 	return v.map((x) => x / l);
 })();
@@ -129,6 +130,24 @@ const MOON = (() => {
 	return v.map((x) => x / l);
 })();
 
+// THE BAKED SUN
+// What the windows and the glass roof let through depends only on the line
+// a beam runs along, so it is worked out once at load, for the sun and for
+// the moon, on the plane at the eaves' height (each beam named by where it
+// crosses that plane), and the shaders look it up instead of tracing the
+// windows' bars and the roof's rafters for every pixel, every frame.
+// [x0, z0, width, depth] of that plane that the room's beams cross
+const bakeDomain = (S) => {
+	let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9;
+	for (const x of [0, W]) for (const y of [0, RIDGE + 0.3]) for (const z of [0, L]) {
+		const k = (H - y) / S[1];
+		const qx = x + S[0] * k, qz = z + S[2] * k;
+		x0 = Math.min(x0, qx); x1 = Math.max(x1, qx); z0 = Math.min(z0, qz); z1 = Math.max(z1, qz);
+	}
+	return [x0 - 0.3, z0 - 0.3, x1 - x0 + 0.6, z1 - z0 + 0.6];
+};
+const BAKE_DOM = { sun: bakeDomain(SUN), moon: bakeDomain(MOON) };
+
 const toW = (p) => [p[0] + O[0], p[1] + O[1], p[2] + O[2]];
 
 // ------------------------------------------------------------------
@@ -137,7 +156,9 @@ const toW = (p) => [p[0] + O[0], p[1] + O[1], p[2] + O[2]];
 //   float studioSun(vec3 pw)    0..1: how much sun reaches world point pw
 //   STUDIO_SUN                  direction towards the sun
 
-function sunGLSL() {
+function sunGLSL(mode) {
+	// (?analyticsun: the old way, traced every frame, for comparison)
+	if (!mode || mode === 'baked') mode = typeof location !== 'undefined' && /analyticsun/.test(location.search) ? 'analytic' : 'baked';
 	const winTests = WIN.c.map((c) => `
 		{
 			float dz = q.z - ${f(c)};
@@ -188,7 +209,7 @@ function sunGLSL() {
 		return band * studioVineClump(u, seed) * dap * 0.85;
 	}
 
-	float studioSun0(vec3 pw) {
+${mode === 'analytic' ? `	float studioSun0(vec3 pw) {
 		vec3 p = pw - vec3(${f(O[0])}, ${f(O[1])}, ${f(O[2])});
 		vec3 S = STUDIO_SUN;
 		// the niche: inside its hollow, the sun gets in only through the arch;
@@ -266,7 +287,101 @@ function sunGLSL() {
 		return vis * (1.0 - bar) * pat * 0.78;
 	}
 
-	// the rotunda: its ring of stone stops the sun except through the
+` : mode === 'bake' ? `	// for the bake: how much of the sky a beam along S gets through the
+	// windows or the roof, given where it crosses the eaves' height
+	// (r: for points below the eaves, past the tie beams; g: above them)
+	vec2 studioExit(vec3 q, vec3 S) {
+		float g = 0.0;
+		{
+			float tl = (${f(KR)} * q.x - q.y + ${f(H)}) / (S.y - ${f(KR)} * S.x);
+			float tr = (${f(KR)} * (${f(W)} - q.x) - q.y + ${f(H)}) / (S.y + ${f(KR)} * S.x);
+			float t = 1e9;
+			vec3 h = vec3(0.0);
+			vec3 hl = q + S * tl, hr = q + S * tr;
+			if (tl > -20.0 && hl.x >= -0.01 && hl.x <= ${f(W / 2 + 0.01)}) { t = tl; h = hl; }
+			if (tr > -20.0 && tr < t && hr.x >= ${f(W / 2 - 0.01)} && hr.x <= ${f(W + 0.01)}) { t = tr; h = hr; }
+			if (t < 1e8 && h.z >= 0.0 && h.z <= ${f(L)}) {
+				float b = 0.03 + 0.0075 * max(t, 0.0);
+				float rz = abs(h.z - ${f(ROOF.rafter)} * floor(h.z / ${f(ROOF.rafter)} + 0.5));
+				float bar = 1.0 - smoothstep(${f(ROOF.rafterW * 0.5)} - b, ${f(ROOF.rafterW * 0.5)} + b, rz);
+				bar = max(bar, 1.0 - smoothstep(0.14 - b, 0.14 + b, abs(h.x - ${f(W / 2)})));
+				float pat = 0.42 + 0.3 * smoothstep(-0.6, 0.6, sin(h.x * 0.9 + 1.3) * sin(h.z * 0.7 + 0.4) + 0.4 * sin(h.x * 2.1 - h.z * 1.7));
+				${VINE.filter((v) => v[0] === 'rafter').map(([k, c, sd]) => `pat *= 1.0 - studioVineShade(h.z - ${f(c)}, h.x, h.z, ${f(sd)});`).join('\n\t\t\t\t')}
+				pat *= 1.0 - studioVineShade(h.x - ${f(W / 2)}, h.z, h.x, 0.9);
+				g = (1.0 - bar) * pat * 0.78;
+			}
+		}
+		float r = 0.0;
+		if (q.x < 0.0) {
+			// it leaves through a window in the left wall
+			vec3 h0 = q + S * ((0.0 - q.x) / S.x);
+			if (h0.z >= 0.0 && h0.z <= ${f(L)} && h0.y > 0.0) {
+				vec3 h1 = q + S * ((${f(-T)} - q.x) / S.x);
+				vec3 hm = q + S * ((${f(-T * 0.5)} - q.x) / S.x);
+				float b = 0.022;
+				float open = min(studioWinOpen(h0, b), studioWinOpen(h1, b));
+				r = open * (1.0 - studioWinBars(hm, b)) * 0.92;
+			}
+		} else if (q.x <= ${f(W)} && q.z >= 0.0 && q.z <= ${f(L)}) {
+			// up through the roof, past the tie beams and their vine
+			float vis = 1.0;
+			float be = 0.025;
+			${TRUSS_Z.map((z) => `vis *= smoothstep(0.08 - be, 0.08 + be, abs(q.z - ${f(z)}));`).join('\n\t\t\t')}
+			${VINE.filter((v) => v[0] === 'truss').map(([k, c, sd]) => `vis *= 1.0 - studioVineShade(q.z - ${f(c)}, q.x, q.z, ${f(sd)});`).join('\n\t\t\t')}
+			r = vis * g;
+		}
+		return vec2(r, g);
+	}
+	float studioSun0(vec3 pw) { return 0.0; }
+
+` : `	uniform sampler2D studioBake;
+	float studioSun0(vec3 pw) {
+		vec3 p = pw - vec3(${f(O[0])}, ${f(O[1])}, ${f(O[2])});
+		vec3 S = STUDIO_SUN;
+		// the niche: inside its hollow, the sun gets in only through the arch;
+		// elsewhere its block of stone stands in the way of some of the light
+		{
+			// (worked as if the niche stood against the far wall: z turned round)
+			vec3 q = vec3(${f(W)} - p.x, p.y, ${f(L)} - p.z);
+			vec3 Sq = vec3(-S.x, S.y, -S.z);
+			float dxn = q.x - ${f(NICHE.cx)};
+			if (abs(dxn) < ${f(NICHE.hw)} && q.z > ${f(NICHE.face)} && q.y > ${f(NICHE.floor - 0.05)} && q.y < ${f(NICHE.spring)} + sqrt(max(${f(NICHE.hw * NICHE.hw)} - dxn * dxn, 0.0))) {
+				if (Sq.z >= 0.0) return 0.0;
+				vec3 hf = q + Sq * ((${f(NICHE.face)} - q.z) / Sq.z);
+				float hx = hf.x - ${f(NICHE.cx)};
+				float edge = ${f(NICHE.hw)} - abs(hx);
+				float topY = ${f(NICHE.spring)} + sqrt(max(${f(NICHE.hw * NICHE.hw)} - hx * hx, 0.0));
+				float soft = 0.02 + 0.03 * (${f(NICHE.face)} - q.z) / Sq.z;
+				float inA = smoothstep(-soft, soft, edge) * smoothstep(-soft, soft, topY - hf.y);
+				if (inA <= 0.0) return 0.0;
+			} else {
+				vec3 bmin = vec3(${f(NICHE.x0 - 0.2)}, 0.0, ${f(NICHE.face - 0.3)}), bmax = vec3(${f(NICHE.x1 + 0.2)}, ${f(6.95)}, ${f(L)});
+				vec3 inv = 1.0 / Sq;
+				vec3 t0 = (bmin - q) * inv, t1 = (bmax - q) * inv;
+				vec3 tn = min(t0, t1), tf = max(t0, t1);
+				float a = max(max(tn.x, tn.y), tn.z), bb = min(min(tf.x, tf.y), tf.z);
+				if (bb > max(a, 0.0) && a > 0.0) return 0.0;
+			}
+		}
+		// the windows and the roof: worked out once (bakeSun below), looked
+		// up along the beam where it crosses the eaves' height
+		float w = smoothstep(0.25, 0.75, night);
+		float hi = step(${f(H)}, p.y);
+		float v = 0.0;
+		if (w < 0.999) {
+			vec2 q = (p.xz + STUDIO_SUN_D.xz * ((${f(H)} - p.y) / STUDIO_SUN_D.y) - vec2(${f(BAKE_DOM.sun[0])}, ${f(BAKE_DOM.sun[1])})) / vec2(${f(BAKE_DOM.sun[2])}, ${f(BAKE_DOM.sun[3])});
+			vec4 t = texture2D(studioBake, q);
+			v += (1.0 - w) * mix(t.r, t.g, hi);
+		}
+		if (w > 0.001) {
+			vec2 q = (p.xz + STUDIO_MOON_D.xz * ((${f(H)} - p.y) / STUDIO_MOON_D.y) - vec2(${f(BAKE_DOM.moon[0])}, ${f(BAKE_DOM.moon[1])})) / vec2(${f(BAKE_DOM.moon[2])}, ${f(BAKE_DOM.moon[3])});
+			vec4 t = texture2D(studioBake, q);
+			v += w * mix(t.b, t.a, hi);
+		}
+		return v;
+	}
+
+`}	// the rotunda: its ring of stone stops the sun except through the
 	// arches; its sheer cloth lets about half through
 	float rotHit(vec2 c, vec2 d, float a, float R, out float t1, out float t2) {
 		float b = dot(c, d), cc = dot(c, c) - R * R, disc = b * b - a * cc;
@@ -332,7 +447,7 @@ const K = {
 	MARBLE: 8, WOOD: 9, GESSO: 10, PAINT: 11, POT: 12, SHADE: 13, BULB: 14, NICHE: 15,
 	JAR: 16, SOIL: 17, BRUSH: 18, TRAVERTINE: 19, CLOTH: 20,
 	WMARBLE: 21, REDDOOR: 22, REDPANEL: 23, DARKWOOD: 24, BRASS: 25, BRACT: 26, KEYHOLE: 27,
-	ROCK: 28, OLDSTONE: 29, HOLLOW: 30
+	ROCK: 28, OLDSTONE: 29, HOLLOW: 30, FLAME: 31
 };
 
 function Geo() {
@@ -461,7 +576,8 @@ const vineRange = (kind) => (kind === 'ridge' ? [0.4, L - 0.4] : kind === 'wall'
 // knob, all in a dark wooden pointed frame on plinth blocks.
 // ------------------------------------------------------------------
 
-const DOOR = { w: 1.72, spring: 2.05, r: 2.05, frame: 0.21, zl: L - 0.05, zf: L - 0.13 };
+// (tall: its point some 5.2 m up, so it holds its own against the rotunda)
+const DOOR = { w: 1.95, spring: 3.35, r: 2.3, frame: 0.23, zl: L - 0.05, zf: L - 0.13 };
 DOOR.c = DOOR.r - DOOR.w / 2;
 // the top of the arch at x (from the door's centre), for an arch of
 // half width hw drawn on the same two centres
@@ -515,7 +631,7 @@ function buildDoor(g) {
 		g.quad([cx + xb, 0, zl], [cx + xa, 0, zl], [cx + xa, ta, zl], [cx + xb, tb, zl], [0, 0, -1], K.REDDOOR, [[xb, 0], [xa, 0], [xa, ta], [xb, tb]]);
 	}
 	// the tall fielded panel below: a moulded border and a raised field
-	const px = hw - 0.2, py0 = 0.3, py1 = 2.12, z = zl - 0.006;
+	const px = hw - 0.2, py0 = 0.3, py1 = DOOR.spring + 0.07, z = zl - 0.006;
 	const mould = 0.05;
 	const rail = (x0, y0, x1, y1) => g.box(cx + x0, y0, z - 0.018, cx + x1, y1, z, K.REDDOOR);
 	rail(-px, py0, px, py0 + mould); rail(-px, py1 - mould, px, py1);
@@ -523,7 +639,7 @@ function buildDoor(g) {
 	g.box(cx - px + 0.14, py0 + 0.14, z - 0.022, cx + px - 0.14, py1 - 0.14, z, K.REDDOOR);
 	// a lock rail across, and the two pointed panels in the arch,
 	// recessed and darker, split by a muntin
-	const ay0 = 2.36;
+	const ay0 = DOOR.spring + 0.31;
 	rail(-hw + 0.08, py1 + 0.06, hw - 0.08, py1 + 0.12);
 	for (const sx of [-1, 1]) {
 		const x0 = 0.07, x1 = hw - 0.17;
@@ -1705,6 +1821,17 @@ function buildStudio(g) {
 		g.quad([x + 0.18, 0, z - w / 2], [x + 0.18, 0, z + w / 2], [x + 0.18 - h * Math.sin(lean), h * Math.cos(lean), z + w / 2], [x + 0.18 - h * Math.sin(lean), h * Math.cos(lean), z - w / 2], [Math.cos(lean), Math.sin(lean), 0], i % 2 ? K.WOOD : K.GESSO, [[0, 0], [1, 0], [1, 1], [0, 1]]);
 		void top;
 	}
+	// --- the lanterns by the red door: a bracket from the wall, an iron cage
+	// with a little roof, and the candle's flame inside
+	for (const [x, y, z] of LANTERNS) {
+		g.beam([x, y + 0.42, L], [x, y + 0.42, z - 0.02], 0.016, K.STEEL);
+		g.beam([x, y + 0.42, z], [x, y + 0.26, z], 0.01, K.STEEL);
+		for (const [dx, dz] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) g.beam([x + dx * 0.085, y - 0.2, z + dz * 0.085], [x + dx * 0.085, y + 0.16, z + dz * 0.085], 0.009, K.STEEL);
+		g.box(x - 0.1, y - 0.24, z - 0.1, x + 0.1, y - 0.2, z + 0.1, K.STEEL);
+		g.lathe(x, z, [[0.13, y + 0.16], [0.05, y + 0.27], [0.0, y + 0.29]], K.STEEL, 4);
+		g.lathe(x, z, [[0.0, y - 0.2], [0.022, y - 0.19], [0.022, y - 0.06], [0.0, y - 0.055]], K.GESSO, 10);
+		g.lathe(x, z, [[0.0, y - 0.055], [0.014, y - 0.035], [0.0, y + 0.02]], K.FLAME, 8);
+	}
 	// --- pendant lamps hanging from the trusses (lit at night)
 	for (const p of LAMPS) {
 		g.beam([p[0], H, p[2]], [p[0], p[1] + 0.05, p[2]], 0.008, K.STEEL);
@@ -1714,6 +1841,10 @@ function buildStudio(g) {
 }
 
 const LAMPS = [[4.2, 4.6, 7.33], [11.8, 4.6, 7.33], [4.2, 4.6, 16.5], [11.8, 4.6, 16.5]];
+// two old iron lanterns either side of the red door, a candle burning in
+// each, day and night: the door's wall never sees the sun, and these keep
+// its red alive in the shade
+const LANTERNS = [-1, 1].map((sx) => [W / 2 + sx * (1.95 / 2 + 0.62), 2.95, L - 0.34]);
 const PLANTS = [[POOL.x0 - 1.0, POOL.z0 - 1.0, 1.0], [POOL.x1 + 1.0, POOL.z0 - 1.0, 0.95], [POOL.x0 - 1.0, POOL.z1 + 1.0, 1.15], [POOL.x1 + 1.0, POOL.z1 + 1.0, 1.1], [0.9, 1.3, 1.25], [W - 0.9, L - 1.2, 1.3]];
 
 // ------------------------------------------------------------------
@@ -2019,7 +2150,7 @@ function buildGreenery() {
 	patch(DW, 11.0, 3.6, 7.0, 1.4);
 	patch(DW, 1.2, 2.4, 4.4, 1.2);
 	patch(DW, 14.9, 2.2, 5.4, 1.2);
-	ivyPatch(DW.o, DW.u, DW.n, W / 2 + 0.3, 3.8, 1.8, 1.3, 5.4, (s) => (Math.abs(s - W / 2) < 1.25 ? 4.15 : 2.4));
+	ivyPatch(DW.o, DW.u, DW.n, W / 2 + 0.3, 4.0, 1.6, 1.3, DOOR.top + 1.7, (s) => (Math.abs(s - W / 2) < DOOR.w / 2 + 0.3 ? DOOR.top + DOOR.frame + 0.15 : 2.4));
 	rose(DW, 5.6, 3.4, 5.2, 1.2);
 	rose(DW, 10.6, 3.6, 5.8, 1.2);
 	rose(DW, 14.6, 2.0, 4.0, 0.9);
@@ -2219,6 +2350,19 @@ const LIGHT = `
 		float pools = mix(1.0, 0.15, night);
 		col += vec3(0.95, 0.68, 0.42) * pools * (0.07 + 0.18 * max(-N.y, 0.0)) * (1.0 - smoothstep(0.5, 6.0, p.y)) * smoothstep(0.0, 1.2, dw);
 
+		// the lanterns by the red door: warm candlelight on the door and the
+		// stone round it (only near that end of the room)
+		if (p.z > ${f(L - 6.0)}) {
+			${LANTERNS.map((l) => toW(l)).map((l) => `
+			{
+				vec3 d = vec3(${f(l[0])}, ${f(l[1] - 0.06)}, ${f(l[2])}) - pw;
+				float dd = dot(d, d);
+				vec3 Ld = d * inversesqrt(dd);
+				float w = mix(1.6, 2.4, night) / (0.25 + dd * 1.8);
+				col += vec3(1.0, 0.6, 0.3) * w * (max(dot(N, Ld), 0.0) * 0.9 + 0.1);
+				spec += vec3(1.0, 0.65, 0.35) * w * pow(max(dot(N, normalize(Ld + V)), 0.0), mix(16.0, 300.0, gloss)) * gloss * 0.6;
+			}`).join('')}
+		}
 		// the lamps (by night)
 		if (night > 0.01) {
 			${LAMPS_W.map((l) => `
@@ -2607,6 +2751,10 @@ const FRAG = `
 		} else if (is(${K.SHADE}.0)) {
 			base = vec3(0.03);
 			gloss = 0.6;
+		} else if (is(${K.FLAME}.0)) {
+			float fl = 0.85 + 0.15 * sin(time * 9.0 + p.x * 3.0) * sin(time * 5.3 + 1.0);
+			gl_FragColor = vec4(sqrt(vec3(1.0, 0.62, 0.28) * 4.0 * fl), 1.0);
+			return;
 		} else if (is(${K.BULB}.0)) {
 			vec3 glow = mix(vec3(0.75, 0.70, 0.62) * 0.35, vec3(1.0, 0.75, 0.45) * 3.5, night);
 			gl_FragColor = vec4(sqrt(glow), 1.0);
@@ -2659,6 +2807,11 @@ const FRAG = `
 			// worn stone: no mirror, just a faint sheen of the room at grazing angles
 			float cosV = clamp(V.y, 0.0, 1.0);
 			alpha = 1.0 - 0.1 * pow(1.0 - cosV, 4.0) * mirrorOn;
+			if (reflOn > 0.5 && mirrorOn > 0.5) {
+				vec3 rc = texture2D(reflTex, clamp(gl_FragCoord.xy / reflSize, vec2(0.001), vec2(0.999))).rgb;
+				col = mix(rc, col, alpha);
+				alpha = 1.0;
+			}
 		}
 		if (is(${K.WATER}.0)) {
 			// still, dark water: almost a mirror, the sky's light on it, a
@@ -2705,7 +2858,48 @@ const FRAG = `
 		gl_FragColor = vec4(sqrt(col), alpha);
 	}`;
 
+// the baked sun (see BAKE_DOM): rg for the sun, ba for the moon
+const BAKED = { tex: null, dummy: null };
+function bakeSun(regl) {
+	if (BAKED.tex) return;
+	const phone = typeof navigator !== 'undefined' && /Mobi|Android|iPhone|iPad/.test(navigator.userAgent);
+	const N = Math.min(phone ? 1024 : 2048, regl.limits.maxTextureSize);
+	const tex = regl.texture({ width: N, height: N, min: 'linear', mag: 'linear', wrap: 'clamp' });
+	const fbo = regl.framebuffer({ color: tex, depth: false });
+	regl({
+		vert: `
+		precision highp float;
+		attribute vec2 pos;
+		varying vec2 uv;
+		void main() { uv = pos * 0.5 + 0.5; gl_Position = vec4(pos, 0.0, 1.0); }`,
+		frag: `
+		precision highp float;
+		varying vec2 uv;
+		uniform float night;
+		${sunGLSL('bake')}
+		void main() {
+			vec2 qs = vec2(${f(BAKE_DOM.sun[0])}, ${f(BAKE_DOM.sun[1])}) + uv * vec2(${f(BAKE_DOM.sun[2])}, ${f(BAKE_DOM.sun[3])});
+			vec2 qm = vec2(${f(BAKE_DOM.moon[0])}, ${f(BAKE_DOM.moon[1])}) + uv * vec2(${f(BAKE_DOM.moon[2])}, ${f(BAKE_DOM.moon[3])});
+			gl_FragColor = vec4(studioExit(vec3(qs.x, ${f(H)}, qs.y), STUDIO_SUN_D), studioExit(vec3(qm.x, ${f(H)}, qm.y), STUDIO_MOON_D));
+		}`,
+		attributes: { pos: [-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1] },
+		uniforms: { night: 0 },
+		count: 6,
+		depth: { enable: false },
+		framebuffer: fbo
+	})();
+	BAKED.tex = tex;
+}
+// for the shaders that share the studio's light (the context in index.js
+// and the light shafts in post.js)
+function bakedSun(regl) {
+	if (BAKED.tex) return BAKED.tex;
+	if (!BAKED.dummy) BAKED.dummy = regl.texture({ width: 1, height: 1, data: [0, 0, 0, 0] });
+	return BAKED.dummy;
+}
+
 module.exports = function (regl) {
+	bakeSun(regl);
 	const room = buildRoom();
 	buildSteel(room);
 	buildPond(room);
@@ -2879,16 +3073,46 @@ module.exports = function (regl) {
 
 	// the reflection under the floor, kept as a picture each frame so the
 	// water can bend it
-	let reflTex = regl.texture({ width: 4, height: 4, min: 'linear', mag: 'linear', wrap: 'clamp' });
+	const copyTex = regl.texture({ width: 4, height: 4, min: 'linear', mag: 'linear', wrap: 'clamp' });
+	let reflTex = copyTex;
 	const reflSize = [4, 4];
 	let reflOn = 0;
 	const scope = regl({});
+	// seen from elsewhere in the house: the reflection was drawn into the
+	// picture itself, so keep a copy of it before the room goes over it
 	const keepReflection = () => scope((ctx) => {
+		if (reflFresh) { reflFresh = false; return; }
 		const w = ctx.viewportWidth, h = ctx.viewportHeight;
-		if (reflTex.width !== w || reflTex.height !== h) reflTex({ copy: true, width: w, height: h, min: 'linear', mag: 'linear', wrap: 'clamp' });
-		else reflTex.subimage({ copy: true, width: w, height: h });
+		if (copyTex.width !== w || copyTex.height !== h) copyTex({ copy: true, width: w, height: h, min: 'linear', mag: 'linear', wrap: 'clamp' });
+		else copyTex.subimage({ copy: true, width: w, height: h });
+		reflTex = copyTex;
 		reflSize[0] = w; reflSize[1] = h;
 		reflOn = 1;
+	});
+	// inside the studio: the reflection goes into a picture of its own at
+	// half the size, and is only redrawn every other frame (every fourth
+	// when the camera rests); the water ripples it anyway
+	const reflColor = regl.texture({ width: 4, height: 4, min: 'linear', mag: 'linear', wrap: 'clamp' });
+	const reflFbo = regl.framebuffer({ color: reflColor, depth: true });
+	const reflScope = regl({ framebuffer: reflFbo });
+	const reflDummy = regl.texture({ width: 1, height: 1, data: [0, 0, 0, 255] });
+	let reflFresh = false, reflCount = 0, reflReady = false;
+	const reflect = (fn, every) => scope((ctx) => {
+		const W0 = ctx.viewportWidth, H0 = ctx.viewportHeight;
+		const w = Math.max(2, Math.round(W0 / 2)), h = Math.max(2, Math.round(H0 / 2));
+		let fresh = !reflReady;
+		if (reflFbo.width !== w || reflFbo.height !== h) { reflFbo.resize(w, h); fresh = true; }
+		reflSize[0] = W0; reflSize[1] = H0;
+		reflFresh = true;
+		reflOn = 1;
+		if (!fresh && (++reflCount % every) !== 0) { reflTex = reflColor; return; }
+		reflTex = reflDummy;
+		reflScope(() => {
+			regl.clear({ color: [0, 0, 0, 1], depth: 1 });
+			fn();
+		});
+		reflTex = reflColor;
+		reflReady = true;
 	});
 
 	const padTex = loadTexture(regl, 'res/pond/lilypad.webp');
@@ -3265,43 +3489,72 @@ module.exports = function (regl) {
 	const drawWeeds = makeGreen(green.ground);
 	if (typeof location !== 'undefined' && /tourdebug/.test(location.search)) console.log('studio greenery: ivy verts', green.walls.pos.length / 3, 'ground verts', green.ground.pos.length / 3);
 
-	// the tour's petal (see studiotour.js): one bract, set each frame by
-	// the tour; on the water it rides the swell where the koi will find it
+	// the tour's petal (see studiotour.js): one bract of bougainvillea, a
+	// thin papery heart, cupped and wavy-edged, that bends and flutters as
+	// it flies. The tour sets where it is and how it is turned (gModel,
+	// worked out from its flight as the gallery's falling leaf is), and how
+	// hard the air works it (gFlex, gFlutter). On the water it lies on the
+	// swell where the koi will find it.
+	const PETAL_GRID = (() => {
+		const uvw = [], idx = [], NL = 14, NW = 6;
+		for (let i = 0; i <= NL; i++) for (let j = 0; j <= NW * 2; j++) uvw.push([i / NL, j / NW - 1]);
+		const w = NW * 2 + 1;
+		for (let i = 0; i < NL; i++) for (let j = 0; j < NW * 2; j++) { const a = i * w + j; idx.push([a, a + w, a + w + 1], [a, a + w + 1, a + 1]); }
+		return { uvw, idx };
+	})();
 	const drawGuide = regl({
 		vert: V(`
 		precision highp float;
-		uniform mat4 proj, view;
-		uniform float yScale, gFloat, gSize;
-		uniform vec3 gPos, gAxis;
-		uniform float gAng;
-		attribute vec2 corner;
+		uniform mat4 proj, view, gModel;
+		uniform float yScale, gFloat, gSize, gFlex, gFlutter, gAng, time;
+		uniform vec3 gPos;
+		attribute vec2 uvw;
 		varying vec3 v_pos, v_nrm, v_eye;
 		varying vec2 v_uv;
 		${WAVES}
-		mat3 rotAxis(vec3 a, float t) {
-			float c = cos(t), s = sin(t), ic = 1.0 - c;
-			return mat3(c + a.x * a.x * ic, a.y * a.x * ic + a.z * s, a.z * a.x * ic - a.y * s,
-			            a.x * a.y * ic - a.z * s, c + a.y * a.y * ic, a.z * a.y * ic + a.x * s,
-			            a.x * a.z * ic + a.y * s, a.y * a.z * ic - a.x * s, c + a.z * a.z * ic);
+		// the bract at (u, v): u 0 (where it was joined) .. 1 (its tip),
+		// v -1 .. 1 across. x along its length, y out of its face, z across
+		vec3 shape(float u, float v) {
+			float L = gSize;
+			// an ovate heart: rounded lobes near the base, widest past the
+			// middle, drawn to a soft point
+			float hw = L * 0.36 * pow(max(sin(3.14159 * pow(u, 0.72)), 0.0), 0.8) * (1.0 + 0.18 * (1.0 - u) * (1.0 - u));
+			float x = (u - 0.38) * L;
+			float z = v * hw;
+			// cupped along its middle, the tip curling back, the edge rippling
+			float y = abs(v) * hw * 0.38 + v * v * hw * 0.12 - 0.1 * u * u * L;
+			y += sin(u * 13.0 + (v > 0.0 ? 0.0 : 1.9)) * 0.018 * L * v * v * v * v;
+			// the air bending it: the whole blade arching, and a ripple
+			// running along it from the base to the tip
+			y += gFlex * L * (0.45 * u * u - 0.25 * v * v);
+			y += gFlutter * L * 0.16 * u * sin(time * 17.0 - u * 6.0 + v * 1.3);
+			z += gFlutter * L * 0.05 * u * sin(time * 11.0 - u * 4.0);
+			return vec3(x, y, z);
 		}
+		mat3 rotY(float t) { float c = cos(t), s = sin(t); return mat3(c, 0.0, -s, 0.0, 1.0, 0.0, s, 0.0, c); }
 		void main() {
-			vec3 local = vec3(corner.x, 0.0, corner.y) * gSize;
-			// a little cupped, like a real bract
-			local.y += 0.25 * gSize * (corner.x * corner.x + corner.y * corner.y) * 0.5;
-			vec3 n = vec3(0.0, 1.0, 0.0);
-			vec3 pos = gPos;
-			mat3 R = rotAxis(normalize(gAxis), gAng);
+			float u = uvw.x, v = uvw.y;
+			vec3 p0 = shape(u, v);
+			vec3 du = shape(min(u + 0.02, 1.0), v) - shape(max(u - 0.02, 0.0), v);
+			vec3 dv = shape(u, min(v + 0.05, 1.0)) - shape(u, max(v - 0.05, -1.0));
+			vec3 n0 = normalize(cross(dv, du));
+			vec3 q, n;
 			if (gFloat > 0.5) {
+				// lying on the water, turning slowly, lifted and tilted by the swell
+				vec3 pos = gPos;
 				float h0 = poolHeight(pos.xz);
 				vec2 grad = vec2(poolHeight(pos.xz + vec2(0.05, 0.0)) - h0, poolHeight(pos.xz + vec2(0.0, 0.05)) - h0) / 0.05;
-				pos.y = 0.017 + h0 * 1.4;
-				R = rotAxis(vec3(0.0, 1.0, 0.0), gAng);
-				local = R * local;
-				local.y += dot(local.xz, grad) * 1.4;
-				n = normalize(vec3(-grad.x, 1.0, -grad.y));
-			} else { local = R * local; n = R * n; }
-			vec3 q = pos + local;
-			v_pos = q; v_nrm = n; v_uv = corner * 0.5 + 0.5;
+				pos.y = 0.018 + h0 * 1.4;
+				mat3 R = rotY(gAng);
+				vec3 l = R * vec3(p0.x, p0.y * 0.6, p0.z);
+				l.y += dot(l.xz, grad) * 1.4;
+				q = pos + l;
+				n = normalize(R * n0 + vec3(-grad.x, 0.0, -grad.y));
+			} else {
+				q = (gModel * vec4(p0, 1.0)).xyz;
+				n = normalize(mat3(gModel) * n0);
+			}
+			v_pos = q; v_nrm = n; v_uv = vec2(u, v);
 			vec3 t = view[3].xyz;
 			v_eye = -vec3(dot(view[0].xyz, t), dot(view[1].xyz, t), dot(view[2].xyz, t));
 			v_eye.y *= yScale;
@@ -3315,28 +3568,32 @@ module.exports = function (regl) {
 		varying vec2 v_uv;
 		${LIGHT}
 		void main() {
-			vec2 u = v_uv * 2.0 - 1.0;
-			float heart = length(vec2(u.x * 1.1, u.y + 0.15 * abs(u.x) * 2.0 - 0.1));
-			if (heart > 0.85 + 0.1 * sin(atan(u.y, u.x) * 3.0)) discard;
 			vec3 V = normalize(v_eye - v_pos);
 			vec3 N = normalize(v_nrm);
 			if (dot(N, V) < 0.0) N = -N;
-			// veined from the heart out, deeper magenta at the base
-			float vein = 0.5 + 0.5 * cos(atan(u.y, u.x) * 9.0);
-			vec3 base = vec3(0.62, 0.03, 0.22) * (0.85 + 0.25 * smoothstep(0.9, 0.0, heart)) * (0.92 + 0.12 * vein);
+			float u = v_uv.x, w = abs(v_uv.y);
+			// papery magenta: deeper towards the base, the fine veins running
+			// out from the midrib, the edge a shade darker
+			float vein = 0.5 + 0.5 * cos((w * 7.0 + u * 2.0) * 3.14159 * 1.6);
+			float mid = exp(-w * w * 120.0) * (1.0 - u);
+			vec3 base = mix(vec3(0.66, 0.03, 0.24), vec3(0.42, 0.015, 0.16), (1.0 - u) * 0.6);
+			base *= (0.9 + 0.12 * vein) * (1.0 - 0.18 * smoothstep(0.75, 1.0, w)) * (1.0 + 0.4 * mid * vec3(0.4, 1.0, 0.6));
 			vec3 spec; float sv;
 			vec3 light = studioLight(v_pos, N, V, 0.3, spec, sv);
+			// thin as paper: the sun behind it sets it glowing
 			float through = abs(dot(N, STUDIO_SUN)) * sv;
-			// it carries a little light of its own, so the eye can follow it through the shade
-			vec3 col = base * (light + vec3(0.22, 0.16, 0.18)) + base * vec3(1.0, 0.75, 0.8) * through * 1.8 * (1.0 - night * 0.5);
+			// and a little light of its own, so the eye can follow it through the shade
+			vec3 col = base * (light + vec3(0.2, 0.15, 0.17)) + base * vec3(1.0, 0.7, 0.8) * through * 2.0 * (1.0 - night * 0.5) + spec * 0.05;
 			col = studioAir(col, v_pos, v_eye);
 			gl_FragColor = vec4(sqrt(max(col, 0.0)), 1.0);
 		}`,
-		attributes: { corner: [[-1, -1], [1, -1], [1, 1], [-1, 1]] },
-		elements: [[0, 1, 2], [0, 2, 3]],
+		attributes: { uvw: PETAL_GRID.uvw },
+		elements: PETAL_GRID.idx,
 		uniforms: Object.assign({
-			gPos: () => { const g = GUIDE, c = koi.sim.crumbs[0]; return g.floating ? [c.x + O[0], 0, c.z + O[2]] : [g.pos[0] + O[0], g.pos[1], g.pos[2] + O[2]]; },
-			gAxis: () => GUIDE.axis, gAng: () => GUIDE.ang, gSize: () => GUIDE.size,
+			gModel: () => GUIDE.model,
+			gPos: () => { const c = koi.sim.crumbs[0]; return [c.x + O[0], 0, c.z + O[2]]; },
+			gAng: () => GUIDE.ang, gSize: () => GUIDE.size,
+			gFlex: () => GUIDE.flex, gFlutter: () => GUIDE.flutter,
 			gFloat: () => (GUIDE.floating ? 1 : 0)
 		}, POOL_UNIFORMS),
 		cull: { enable: false }
@@ -4048,7 +4305,7 @@ module.exports = function (regl) {
 		uniform float time, night, pixelScale;
 		attribute vec4 seed;
 		varying float v_light, v_seed, v_spark;
-		${sunGLSL()}
+		${sunGLSL(regl.limits.maxVertexTextureUnits > 0 ? 'baked' : 'analytic')}
 		void main() {
 			float s = seed.w * 6.2831;
 			vec3 p = seed.xyz;
@@ -4109,20 +4366,26 @@ module.exports = function (regl) {
 	});
 
 	function draw(opts) {
-		if (!(opts && opts.reflected)) { keepReflection(); tick(); }
+		const refl = !!(opts && opts.reflected);
+		if (!refl) { keepReflection(); tick(); }
 		drawSky();
 		drawRoom();
-		if (!(opts && opts.reflected)) { drawBed(); drawKoi(); drawCrumbs(); }
+		if (!refl) { drawBed(); drawKoi(); drawCrumbs(); }
 		if (drawVenus) drawVenus();
+		// (the reflection keeps the bougainvillea, the nymph and the cloth;
+		// the ivy, the roses, the weeds and the dust are left out of it)
 		drawLeaves();
-		drawIvy();
-		if (drawRoses) drawRoses();
-		if (!(opts && opts.reflected)) drawWeeds();
+		if (!refl) {
+			drawIvy();
+			if (drawRoses) drawRoses();
+			drawWeeds();
+		}
 		drawFalling();
 		if (GUIDE.vis && !(GUIDE.floating && koi.sim.feed.eaten)) drawGuide();
 		drawCloth();
-		if (!(opts && opts.reflected)) { drawGlass(); drawMotes(); }
+		if (!refl) { drawGlass(); drawMotes(); }
 	}
+	draw.reflect = reflect;
 	return draw;
 };
 
@@ -4130,7 +4393,7 @@ module.exports = function (regl) {
 // from the eye meets the water, and a handful of crumbs cast there
 let ACTIVE = null;
 // the tour's petal (studio coordinates), set by studiotour.js
-const GUIDE = { vis: false, pos: [0, 0, 0], axis: [0, 1, 0], ang: 0, size: 0.06, floating: false };
+const GUIDE = { vis: false, model: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1], ang: 0, size: 0.09, flex: 0, flutter: 0, floating: false };
 function setGuide(g) { Object.assign(GUIDE, g); }
 // the petal's end: a koi waits below; it lands; it is taken
 function petalLure(x, z) { if (ACTIVE && !ACTIVE.feed.lure && !ACTIVE.feed.petal) ACTIVE.lure(x, z); }
@@ -4187,6 +4450,7 @@ module.exports.poolHit = poolHit;
 module.exports.feedAt = feedAt;
 module.exports.feeding = feeding;
 module.exports.sunGLSL = sunGLSL;
+module.exports.bakedSun = bakedSun;
 module.exports.O = O;
 module.exports.SIZE = { W, L, H, RIDGE };
 module.exports.BOX = [O[0] - 0.8, 0, O[2] - 0.8, O[0] + W + 0.8, RIDGE + 0.5, O[2] + L + 0.8];

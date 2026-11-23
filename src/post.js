@@ -113,7 +113,10 @@ module.exports = (regl, quality) => {
 	// samples per lit volume, per pixel (the light-shaft picture is half
 	// the screen's size at full quality, a quarter otherwise)
 	const VOL_STEPS = phone ? 10 : 18;
-	const volDiv = () => (quality.post >= 2 ? 2 : 4);
+	const volDiv = () => (cull.zone === 'studio' ? 4 : quality.post >= 2 ? 2 : 4);
+	// (the studio's beams, through its windows' bars and the dusty air, are
+	// soft anyway: a quarter-size picture and fewer samples, blurred)
+	const VOL_STEPS_STUDIO = phone ? 7 : 11;
 
 	const tex = (opts) => regl.texture(Object.assign({ width: 4, height: 4, min: 'linear', mag: 'linear', wrap: 'clamp' }, opts || {}));
 	const fbo = () => regl.framebuffer({ color: tex(), depth: false });
@@ -310,9 +313,10 @@ module.exports = (regl, quality) => {
 			vec2 t = hitBox(eye, rd, ${box(STUDIO_BOX)});
 			t.y = min(t.y, len);
 			if (t.y > t.x) {
-				float st = (t.y - t.x) / float(N);
+				const int NS = ${VOL_STEPS_STUDIO};
+				float st = (t.y - t.x) / float(NS);
 				float acc = 0.0;
-				for (int i = 0; i < N; i++) {
+				for (int i = 0; i < NS; i++) {
 					vec3 p = eye + rd * (t.x + (float(i) + jit) * st);
 					acc += studioSun(p) * air(p);
 				}
@@ -329,7 +333,8 @@ module.exports = (regl, quality) => {
 		time: regl.context('time'),
 		night: () => env.night,
 		strength: () => volStrength,
-		strength5: () => volStrength5
+		strength5: () => volStrength5,
+		studioBake: () => studio.bakedSun(regl)
 	});
 
 	// how strong each lit volume is this frame: nothing for the ones the
