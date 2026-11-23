@@ -110,6 +110,8 @@ const PZ = (z) => POOL.z1 - (z - 5.6) / 11.0 * (POOL.z1 - POOL.z0);
 // (VENUS.z is where she stands in the room; NZ is the same, seen from the far wall)
 const VENUS = { x: W / 2, z: 1.0, plinth: NICHE.floor + 0.26, height: 2.75, yaw: 0.35, file: 'res/nymph.bin' };
 const NZ = L - VENUS.z;
+// the middle of her head (worked out from res/nymph.bin as she stands)
+const NYMPH_HEAD = [7.83, 3.45, 1.15];
 
 // the sun: the direction towards it. Low (about 18 degrees), from the
 // window wall (x = 0) and a little from behind the red door's end, so long
@@ -447,7 +449,7 @@ const K = {
 	MARBLE: 8, WOOD: 9, GESSO: 10, PAINT: 11, POT: 12, SHADE: 13, BULB: 14, NICHE: 15,
 	JAR: 16, SOIL: 17, BRUSH: 18, TRAVERTINE: 19, CLOTH: 20,
 	WMARBLE: 21, REDDOOR: 22, REDPANEL: 23, DARKWOOD: 24, BRASS: 25, BRACT: 26, KEYHOLE: 27,
-	ROCK: 28, OLDSTONE: 29, HOLLOW: 30, FLAME: 31
+	ROCK: 28, OLDSTONE: 29, HOLLOW: 30, FLAME: 31, CFLAME: 32
 };
 
 function Geo() {
@@ -1132,12 +1134,12 @@ function nymphR(y, a) {
 }
 // two canes of a climbing rose, coming up from the niche's floor and
 // winding round her: [start angle, turns, top height, sense, seed]
-const NYMPH_CANES = [[-2.5, 1.35, 1.95, 1, 1.3], [2.2, 0.95, 1.25, -1, 4.1]];
+const NYMPH_CANES = [[-2.5, 2.1, 2.3, 1, 1.3], [2.2, 1.6, 1.55, -1, 4.1]];
 // a cane's path, in the room's own metres, from foot to tip
 function nymphCane(c) {
 	const [a0, turns, top, sense, seed] = NYMPH_CANES[c];
 	const pts = [];
-	const N = 90;
+	const N = 140;
 	let rs = null;
 	for (let i = 0; i <= N; i++) {
 		const t = i / N;
@@ -1146,8 +1148,8 @@ function nymphCane(c) {
 		const need = nymphR(y, a) + 0.035;
 		// follow her outline, but softly (never inwards of it)
 		rs = rs === null ? need : Math.max(need, rs * 0.75 + need * 0.25);
-		const r = rs + 0.012 * Math.sin(t * 37 + seed);
-		pts.push([VENUS.x + Math.sin(a) * r, VENUS.plinth + y + 0.01 * Math.sin(t * 23 + seed * 2), VENUS.z - 0.05 + Math.cos(a) * r, a, t]);
+		const r = rs + 0.018 * Math.sin(t * 37 + seed) + 0.01 * Math.sin(t * 71 + seed * 3);
+		pts.push([VENUS.x + Math.sin(a) * r, VENUS.plinth + y + 0.025 * Math.sin(t * 23 + seed * 2), VENUS.z - 0.05 + Math.cos(a) * r, a, t]);
 	}
 	return pts;
 }
@@ -1157,7 +1159,7 @@ function buildVineStems(g) {
 	// the rose's canes round the nymph, thinning towards their tips
 	for (let c = 0; c < NYMPH_CANES.length; c++) {
 		const pts = nymphCane(c);
-		for (let i = 0; i < pts.length - 1; i++) g.beam(pts[i], pts[i + 1], 0.019 * (1 - pts[i][4] * 0.5), K.DARKWOOD);
+		for (let i = 0; i < pts.length - 1; i++) g.beam(pts[i], pts[i + 1], 0.013 * (1 - pts[i][4] * 0.45), K.DARKWOOD);
 	}
 	for (const [kind, c, seed] of VINE) {
 		const [u0, u1] = vineRange(kind);
@@ -1682,7 +1684,6 @@ function buildRoom() {
 
 	// --- the rotunda where the pool ends
 	buildRotunda(g);
-	buildGrave(g);
 
 	// --- the pool: a curb of old weathered stone round dark water
 	{
@@ -1899,11 +1900,14 @@ function buildStudio(g) {
 		g.lathe(x, z, [[0.0, y - 0.2], [0.022, y - 0.19], [0.022, y - 0.06], [0.0, y - 0.055]], K.GESSO, 10);
 		g.lathe(x, z, [[0.0, y - 0.055], [0.014, y - 0.035], [0.0, y + 0.02]], K.FLAME, 8);
 	}
-	// --- pendant lamps hanging from the trusses (lit at night)
-	for (const p of LAMPS) {
-		g.beam([p[0], H, p[2]], [p[0], p[1] + 0.05, p[2]], 0.008, K.STEEL);
-		g.lathe(p[0], p[2], [[0.04, p[1] + 0.06], [0.06, p[1] + 0.02], [0.16, p[1] - 0.09], [0.29, p[1] - 0.22], [0.33, p[1] - 0.28], [0.32, p[1] - 0.285]], K.SHADE, 32);
-		g.lathe(p[0], p[2], [[0.0, p[1] - 0.25], [0.06, p[1] - 0.2], [0.0, p[1] - 0.12]], K.BULB, 12);
+	// --- the hanging candles: a thread up to the roof, the taper with its
+	// wax run down from the lip, the wick, and the flame (lit by night)
+	for (const [x, y, z, len] of HCANDLES) {
+		const top = y + len, r = 0.017;
+		g.beam([x, top + 0.02, z], [x, roofY(x) - 0.05, z], 0.0018, K.STEEL);
+		g.lathe(x, z, [[0.0, y], [r * 0.8, y + 0.004], [r, y + 0.02], [r, top - 0.02], [r * 1.12, top - 0.008], [r * 0.9, top], [0.0, top - 0.004]], K.GESSO, 10);
+		g.beam([x, top - 0.004, z], [x, top + 0.014, z], 0.0016, K.STEEL);
+		g.lathe(x, z, [[0.0, top + 0.008], [0.011, top + 0.026], [0.008, top + 0.05], [0.0, top + 0.085]], K.CFLAME, 8);
 	}
 }
 
@@ -1912,6 +1916,40 @@ const LAMPS = [[4.2, 4.6, 7.33], [11.8, 4.6, 7.33], [4.2, 4.6, 16.5], [11.8, 4.6
 // each, day and night: the door's wall never sees the sun, and these keep
 // its red alive in the shade
 const LANTERNS = [-1, 1].map((sx) => [W / 2 + sx * (1.95 / 2 + 0.62), 2.95, L - 0.34]);
+// THE HANGING CANDLES (after his references): long white tapers on
+// threads from the roof, in loose drifts at different heights, unlit by
+// day; by night they and the moon are the only light. Each drift lights the
+// room as one flickering flame at its middle (CANDLE_LIGHTS), and the
+// rotunda's ring and cloth throw their shadows from it.
+// [x, z, y of the middle, how many]
+const CANDLE_DRIFTS = [[8.0, 3.4, 5.3, 7], [5.0, 7.4, 4.8, 8], [10.9, 9.6, 5.0, 8], [6.2, 12.2, 4.6, 7], [3.4, 17.6, 4.8, 7], [12.6, 18.8, 4.8, 7], [8.6, 24.0, 5.0, 8], [3.0, 23.8, 4.6, 6]];
+const HCANDLES = (() => {
+	const out = [];
+	let sd = 911;
+	const rnd = () => { sd = (sd * 16807) % 2147483647; return (sd - 1) / 2147483646; };
+	CANDLE_DRIFTS.forEach(([cx, cz, cy, n], d) => {
+		for (let k = 0, tries = 0; k < n && tries < 400; tries++) {
+			const a = rnd() * 2 * PI, r = 0.25 + 1.25 * Math.sqrt(rnd());
+			const x = cx + Math.cos(a) * r, z = cz + Math.sin(a) * r;
+			const len = 0.24 + 0.16 * rnd();
+			const y = cy + (rnd() - 0.5) * 2.4;         // the candle's foot
+			const rr = Math.hypot(x - ROT.cx, z - ROT.cz);
+			if (rr < 3.4 && y < ROT.top + 0.5) continue;
+			if (x < 0.8 || x > W - 0.8 || z < 2.2 || z > L - 0.9) continue;
+			if (out.some((c) => Math.hypot(c[0] - x, c[2] - z) < 0.22)) continue;
+			out.push([x, y, z, len, d]);
+			k++;
+		}
+	});
+	return out;
+})();
+// where each drift's light is: the middle of its flames
+const CANDLE_LIGHTS = CANDLE_DRIFTS.map((dr, d) => {
+	const cs = HCANDLES.filter((c) => c[4] === d);
+	const m = [0, 0, 0];
+	for (const c of cs) { m[0] += c[0]; m[1] += c[1] + c[3] + 0.05; m[2] += c[2]; }
+	return [m[0] / cs.length, m[1] / cs.length, m[2] / cs.length, cs.length];
+});
 const PLANTS = [[POOL.x0 - 1.0, POOL.z0 - 1.0, 1.0], [POOL.x1 + 1.0, POOL.z0 - 1.0, 0.95], [POOL.x0 - 1.0, POOL.z1 + 1.0, 1.15], [POOL.x1 + 1.0, POOL.z1 + 1.0, 1.1], [0.9, 1.3, 1.25], [W - 0.9, L - 1.2, 1.3]];
 
 // ------------------------------------------------------------------
@@ -2187,14 +2225,14 @@ function buildGreenery() {
 	// the canes round the nymph: leaves all along, and dark roses where
 	// they come round to the front (three on the long cane, three on the other)
 	{
-		const BLOOMS = [[0.3, 0.5, 0.7, 0.93], [0.42, 0.72, 0.96]];
+		const BLOOMS = [[0.28, 0.47, 0.66, 0.84, 0.97], [0.5, 0.78, 0.96]];
 		for (let c = 0; c < NYMPH_CANES.length; c++) {
 			const pts = nymphCane(c);
 			for (let i = 3; i < pts.length; i++) {
 				const [x, y, z, a, t] = pts[i];
 				const out = [Math.sin(a), 0, Math.cos(a)];
 				const p = [x + out[0] * 0.025, y, z + out[2] * 0.025];
-				for (let l = 0; l < 2; l++) roseLeaf(madd(p, [rnd() - 0.5, (rnd() - 0.5) * 0.6, rnd() - 0.5], 0.07), out, UP, 0.06 + 0.04 * rnd() * (1 - t * 0.3), 0.35 + 0.4 * rnd());
+				if (i % 2 === 0) for (let l = 0; l < 2; l++) roseLeaf(madd(p, [rnd() - 0.5, (rnd() - 0.5) * 0.6, rnd() - 0.5], 0.05), out, UP, 0.045 + 0.03 * rnd() * (1 - t * 0.3), 0.35 + 0.4 * rnd());
 			}
 			for (const tb of BLOOMS[c]) {
 				const i = Math.round(tb * (pts.length - 1));
@@ -2202,8 +2240,8 @@ function buildGreenery() {
 				const out = [Math.sin(a), 0, Math.cos(a)];
 				// facing out, a little up and towards the pool
 				const f = norm([out[0] * 0.8, 0.35, out[2] * 0.8 + 0.45]);
-				roses.push({ at: [x + out[0] * 0.08, y + 0.03, z + out[2] * 0.08], f, size: 0.22 + 0.05 * rnd(), spin: rnd() * 2 * PI });
-				for (let l = 0; l < 3; l++) roseLeaf(madd([x, y, z], out, 0.04 + 0.03 * rnd()), out, UP, 0.06 + 0.03 * rnd(), 0.6 + 0.4 * rnd());
+				roses.push({ at: [x + out[0] * 0.05, y + 0.02, z + out[2] * 0.05], f, size: 0.12 + 0.035 * rnd(), spin: rnd() * 2 * PI });
+				for (let l = 0; l < 2; l++) roseLeaf(madd([x, y, z], out, 0.03 + 0.02 * rnd()), out, UP, 0.045 + 0.02 * rnd(), 0.6 + 0.4 * rnd());
 			}
 		}
 	}
@@ -2429,6 +2467,41 @@ const LIGHT = `
 	// the light reaching a point: sun through the openings, the sky
 	// through the glass, light bounced off the sunlit floor, and at night
 	// the pendant lamps. Returns diffuse light; spec gets the sun's glint.
+	uniform float candleT;
+	// a candle's flame: a steady breath, quick tremors, and now and then a
+	// gutter when a draught finds it
+	float candleFlicker(float s) {
+		float t = candleT;
+		float f = 0.78 + 0.1 * sin(t * 7.3 + s) * sin(t * 3.1 + s * 1.9) + 0.06 * sin(t * 17.9 + s * 3.1) + 0.05 * sin(t * 29.3 + s * 5.7);
+		float gut = smoothstep(0.92, 1.0, sin(t * 0.83 + s * 2.3) * sin(t * 1.37 + s));
+		return f * (1.0 - 0.45 * gut);
+	}
+	// what stands between a point and a candle: the rotunda's ring (but for
+	// its arches) and its cloth
+	vec3 candleShade(vec3 p, vec3 lp) {
+		vec3 D = lp - p;
+		vec2 c = p.xz - vec2(${f(ROT.cx)}, ${f(ROT.cz)});
+		float a = dot(D.xz, D.xz);
+		if (a < 1e-6) return vec3(1.0);
+		float t1, t2;
+		vec3 k = vec3(1.0);
+		if (rotHit(c, D.xz, a, ${f((ROT.ri + ROT.ro) / 2)}, t1, t2) > 0.0) {
+			if (t1 > 0.002 && t1 < 0.998) { vec3 h = p + D * t1; if (h.y < ${f(ROT.top - 0.2)} && rotOpen(h, ${f((ROT.ri + ROT.ro) / 2)}) < 0.5) return vec3(0.0); }
+			if (t2 > 0.002 && t2 < 0.998) { vec3 h = p + D * t2; if (h.y < ${f(ROT.top - 0.2)} && rotOpen(h, ${f((ROT.ri + ROT.ro) / 2)}) < 0.5) return vec3(0.0); }
+		}
+		if (rotHit(c, D.xz, a, ${f(ROT.cloth + 0.15)}, t1, t2) > 0.0) {
+			for (int i = 0; i < 2; i++) {
+				float t = i == 0 ? t1 : t2;
+				if (t > 0.002 && t < 0.998) {
+					vec3 h = p + D * t;
+					float an = atan(h.x - ${f(ROT.cx)}, h.z - ${f(ROT.cz)});
+					bool gap = ${f(ROT.cloth + 0.15)} * abs(sin(an)) < ${f(ROT.gap)};
+					if (h.y < ${f(ROT.top)} && !gap) k *= vec3(0.75, 0.22, 0.2);
+				}
+			}
+		}
+		return k;
+	}
 	vec3 studioLight(vec3 pw, vec3 N, vec3 V, float gloss, out vec3 spec, out float sunVis) {
 		vec3 p = pw - vec3(${f(O[0])}, ${f(O[1])}, ${f(O[2])});
 		float vis = studioSun(pw + N * 0.03);
@@ -2438,6 +2511,19 @@ const LIGHT = `
 		vec3 col = sunC * vis * lam;
 		vec3 Hh = normalize(STUDIO_SUN + V);
 		spec = sunC * vis * pow(max(dot(N, Hh), 0.0), mix(16.0, 400.0, gloss)) * mix(0.04, 1.0, gloss) * (lam > 0.0 ? 1.0 : 0.0);
+		// by day a shaft from the glass roof finds the nymph's face
+		{
+			const vec3 FL = vec3(0.62, 0.62, 0.48);
+			vec3 hc = p - vec3(${f(NYMPH_HEAD[0])}, ${f(NYMPH_HEAD[1])}, ${f(NYMPH_HEAD[2])});
+			vec3 Ls = normalize(FL);
+			float off = length(hc - Ls * dot(hc, Ls));
+			float beam = (1.0 - smoothstep(0.22, 0.5, off)) * (1.0 - night) * step(-0.6, dot(hc, Ls));
+			if (beam > 0.0) {
+				float fl = max(dot(N, Ls), 0.0);
+				col += sunC * 0.55 * beam * fl;
+				spec += sunC * 0.4 * beam * pow(max(dot(N, normalize(Ls + V)), 0.0), mix(16.0, 400.0, gloss)) * gloss * (fl > 0.0 ? 1.0 : 0.0);
+			}
+		}
 
 		// skylight: the roof is glass, the walls are full of windows
 		float upF = 0.5 + 0.5 * N.y;
@@ -2468,31 +2554,22 @@ const LIGHT = `
 				spec += vec3(1.0, 0.65, 0.35) * w * pow(max(dot(N, normalize(Ld + V)), 0.0), mix(16.0, 300.0, gloss)) * gloss * 0.6;
 			}`).join('')}
 		}
-		// the candles on the grave
-		if (abs(p.z - ${f(GRAVE.cz)}) < 4.5 && abs(p.x - ${f(GRAVE.cx)}) < 4.5) {
-			${GRAVE_CANDLES.map(([x, z, h]) => toW([x, GRAVE.top + h + 0.05, z])).map((l, i) => `
+		// the hanging candles (by night): each drift a flickering flame, the
+		// rotunda's ring putting its arches' shadows round the room and its
+		// cloth staining what lies beyond it red
+		float nk = smoothstep(0.35, 0.8, night);
+		if (nk > 0.01) {
+			${CANDLE_LIGHTS.map((l, i) => `
 			{
-				vec3 d = vec3(${f(l[0])}, ${f(l[1])}, ${f(l[2])}) - pw;
+				float fl = candleFlicker(${f(i * 7.31 + 1.7)});
+				vec3 lp = vec3(${f(l[0])}, ${f(l[1])}, ${f(l[2])}) + vec3(sin(candleT * ${f(2.1 + i * 0.37)} + ${f(i)}), 0.0, cos(candleT * ${f(1.7 + i * 0.29)} + ${f(i * 2.0)})) * 0.035 * (1.2 - fl);
+				vec3 d = lp - p;
 				float dd = dot(d, d);
 				vec3 Ld = d * inversesqrt(dd);
-				float fl = 1.0;
-				float w = mix(0.2, 0.32, night) * fl / (0.04 + dd * 2.6);
-				col += vec3(1.0, 0.55, 0.24) * w * (max(dot(N, Ld), 0.0) * 0.9 + 0.1);
-				spec += vec3(1.0, 0.6, 0.3) * w * pow(max(dot(N, normalize(Ld + V)), 0.0), mix(16.0, 300.0, gloss)) * gloss * 0.5;
-			}`).join('')}
-		}
-		// the lamps (by night)
-		if (night > 0.01) {
-			${LAMPS_W.map((l) => `
-			{
-				vec3 d = vec3(${f(l[0])}, ${f(l[1])}, ${f(l[2])}) - pw;
-				float dd = dot(d, d);
-				vec3 Ld = d * inversesqrt(dd);
-				// the shade throws the light downwards
-				float cone = smoothstep(0.05, 0.55, Ld.y);
-				float w = night * 6.5 * cone / (1.0 + dd * 0.9);
-				col += vec3(1.0, 0.66, 0.36) * w * (max(dot(N, Ld), 0.0) * 0.85 + 0.15);
-				spec += vec3(1.0, 0.7, 0.4) * w * pow(max(dot(N, normalize(Ld + V)), 0.0), mix(16.0, 300.0, gloss)) * gloss;
+				vec3 sh = candleShade(p + N * 0.02, lp);
+				vec3 w = sh * (nk * ${f(1.6 + 0.3 * l[3])} * fl / (0.6 + dd * 0.42));
+				col += vec3(1.0, 0.56, 0.24) * w * (max(dot(N, Ld), 0.0) * 0.88 + 0.12);
+				spec += vec3(1.0, 0.62, 0.3) * w * pow(max(dot(N, normalize(Ld + V)), 0.0), mix(16.0, 300.0, gloss)) * gloss;
 			}`).join('')}
 		}
 		return col;
@@ -2837,6 +2914,17 @@ const FRAG = `
 			// grey-green lichen in blotches
 			float lich = smoothstep(0.58, 0.72, fbm3(p * 9.0 + 4.0));
 			base = mix(base, vec3(0.14, 0.15, 0.11), lich * 0.55);
+			// moss: soft cushions where rain and dust settle, on what faces up
+			// (her shoulders, hair, the tops of her knees and arms, the folds)
+			// and thicker down towards the damp base, with a velvety edge
+			float up = smoothstep(0.15, 0.75, N.y);
+			float mn = fbm3(p * 5.0 + 11.0), mf = fbm3(p * 23.0 + 3.0);
+			float lowm = 1.0 - smoothstep(${f(VENUS.plinth + 0.2)}, ${f(VENUS.plinth + 1.6)}, p.y);
+			float moss = smoothstep(0.5, 0.4, mn - up * 0.12 - lowm * 0.1) * (0.12 + 0.88 * up * up + 0.3 * lowm);
+			moss = clamp(moss * (0.75 + 0.5 * mf), 0.0, 1.0);
+			vec3 mossC = mix(vec3(0.12, 0.15, 0.06), vec3(0.25, 0.29, 0.11), mf);
+			base = mix(base, mossC, moss * 0.8);
+			N = normalize(N + (vec3(mf, 0.0, mn) - 0.5) * moss * 0.6);
 			base *= mix(0.62, 1.0, smoothstep(-0.7, 0.35, N.y));
 			float foot = 1.0 - smoothstep(${f(VENUS.plinth)}, ${f(VENUS.plinth + 0.7)}, p.y);
 			base = mix(base, base * vec3(0.55, 0.62, 0.48), foot * smoothstep(0.4, 0.7, fbm3(p * 6.0)));
@@ -2872,6 +2960,14 @@ const FRAG = `
 		} else if (is(${K.FLAME}.0)) {
 			float fl = 0.85 + 0.15 * sin(time * 9.0 + p.x * 3.0) * sin(time * 5.3 + 1.0);
 			gl_FragColor = vec4(sqrt(vec3(1.0, 0.62, 0.28) * 4.0 * fl), 1.0);
+			return;
+		} else if (is(${K.CFLAME}.0)) {
+			// a hanging candle's flame: out by day; by night bright at its
+			// root, flickering with its own drift's breath
+			float nk = smoothstep(0.35, 0.8, night);
+			if (nk < 0.02) discard;
+			float fl = 0.75 + 0.25 * sin(time * 11.0 + p.x * 37.0 + p.z * 13.0) * sin(time * 6.1 + p.z * 29.0);
+			gl_FragColor = vec4(sqrt(vec3(1.0, 0.7, 0.34) * 10.0 * fl * nk), 1.0);
 			return;
 		} else if (is(${K.BULB}.0)) {
 			vec3 glow = mix(vec3(0.75, 0.70, 0.62) * 0.35, vec3(1.0, 0.75, 0.45) * 3.5, night);

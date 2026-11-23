@@ -235,6 +235,7 @@ const context = regl({
 		night: () => env.night,
 		// the studio's sun through its windows and roof, worked out once
 		studioBake: () => require('./studio').bakedSun(regl),
+		candleT: regl.context('time'),
 		time: regl.context('time')
 	}
 });
