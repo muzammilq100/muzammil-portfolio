@@ -27,6 +27,8 @@ Pushing to `master` builds the site and publishes it to Cloudflare Pages and Git
 - `src/painting.js` – the paintings (canvas weave, varnish, light pool) and their gilded frames.
 - `src/mesh.js` – the architecture's materials and light (marble, plaster, the floor).
 - `src/tour.js` – the cinematic tour; `src/fps.js` – free walking.
+- `src/studiotour.js` – the studio's tour (?studio): a petal of bougainvillea leads the camera, scroll by scroll: it falls from the roof past the nymph's face and her roses, skims the pool, circles half the rotunda, and settles on the grave inside it while the wind works the cloth.
+- `src/studio.js` – the painter's studio (a leaded glass roof hung with bougainvillea, rough stone slab walls with arched windows on one side, bougainvillea and green vines climbing between them, ivy and dark red climbing roses on the others, a flagstone floor with grass and weeds in its joints; the red Gothic door through to the piano room, and facing it an old stone niche with the nymph, res/nymph.bin, inside, and a weathered stone lily pool running from the niche back towards the door). Not joined to the gallery yet: open the site with `?studio` (add `&night` for night) to look round it; a tap turns day to night.
 - `src/listview.js` – all paintings as a plain list (`#list`, and the fallback without 3D).
 - `source/` – source files that are not published (e.g. the Blender wall model).
 
@@ -38,6 +40,20 @@ The two statues are real 3D scans, slimmed down for the web and stored in `res/v
 
 - Venus de Milo, scan by SMK (Statens Museum for Kunst), via Scan the World / MyMiniFactory
 - Michelangelo's David, scan via Scan the World / MyMiniFactory
+
+## The studio pond: credits
+
+- Koi model: "Koi Fish" by SDPM Esare (https://sketchfab.com/3d-models/koi-fish-3e1b80c3653f43349252aab3b4fb1d86), licensed under CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/). Straightened along its spine and repacked as `res/koi.bin` and `res/koi.webp`; recoloured in the shader for the yamabuki and orange koi.
+- Lily pad and petal textures: "Water lily" by ivanzubak on TurboSquid (free), in `res/pond/`.
+- Gravel: Gravel030 from ambientCG (CC0), in `res/pond/gravel.jpg`.
+- Stone: "Coral Stone Wall" by Dimitrios Savva (the rough slab walls) and "Large Sandstone Blocks 01" by Rob Tuytel (the niche and the pool), both from Poly Haven (https://polyhaven.com, CC0), in `res/studio/` (colour, and the normal map with the hollows packed in its blue).
+- Floor: "Grassy Cobblestone" by Dario Barresi and Charlotte Baglioni, from Poly Haven (CC0), in `res/studio/floor_*`.
+- The visitor's rose in the Conservatory of Unsaid Things: "Red rose" by Lassi Kaukonen (https://sketchfab.com/3d-models/red-rose-74520e87c3ed46898668c83356dd9cfa), CC BY 4.0; simplified and repacked as `res/conservatory/flower.bin` and `res/conservatory/flower.webp`.
+- Grave: the photographed ledger grave and headstone he supplied (gravestone_lowpoly.obj with its texture), levelled, scaled and repacked as `res/studio/grave.bin` and `res/studio/grave.webp`.
+- Cloth: the folds of the rotunda's red netting follow a draped-cloth simulation he supplied (Nylon_Canvas.glb, a CLO export); only the fold profile round its hem is used, in `src/studio.js` (CLOTH_FOLD).
+- Rose: the climbing roses' blooms are based on "Pink Rose" (https://sketchfab.com/3d-models/pink-rose-60514b3b9bf244dea1ea8f3c8f6c6124) by mtaesiri (https://sketchfab.com/mtaesiri), licensed under CC BY 4.0 (http://creativecommons.org/licenses/by/4.0/); simplified and recoloured dark red, in `res/studio/rose.bin` and `rose_col.webp`.
+- Vine leaves: the vines' broad leaves are based on "Grape vines" (https://sketchfab.com/3d-models/grape-vines-c735dedcc9c24171adf670d0deea9682) by tribeimmersive (https://sketchfab.com/tribeimmersive), licensed under CC BY-NC-SA 4.0 (http://creativecommons.org/licenses/by-nc-sa/4.0/): eight leaves cut from the scan with their curl, in `res/studio/vleaves.webp` (and their heights in `src/studio.js`). That licence allows no commercial use, and these adapted leaves are shared under the same licence.
+- Plants: ivy leaves (LeafSet017), lobed leaves (LeafSet029), rose leaves (LeafSet024), grass blades (Foliage001) and daisies (FlowerSet001) from ambientCG (https://ambientcg.com, CC0), cut out and packed into `res/studio/plants.webp` with a dark red rose petal painted for it; each rose is built from those petals in rings.
 
 ## The street outside
 
@@ -71,3 +87,7 @@ Where it lives:
 - `src/fardoor.js` – the corridor's far door, built as two hinged leaves so the gust can throw them open.
 
 The overall darkness and the strength of the effects are set in `LOOK` at the top of `src/post.js`; each shot's own exposure, depth of field and letterbox are in `SHOTS` in `src/tour.js`.
+
+## The Conservatory of Unsaid Things
+
+Behind "Love me like I am Already Dead" (src/conservatory.js): a way in under its story asks a question, and the right answer offers "Bring a flower while it still matters". The camera goes into the red of the painting and out of the red of the conservatory's door, rises to the bougainvillea, and the petal's tour (src/studiotour.js) begins; at the end the visitor lays a rose on the grave. The room (src/studio.js) and its tour are built into their own file, `dist/conservatory.js`, and nothing of it, nor any of its pictures, is fetched until a visitor answers. `?studio` opens the room on its own.

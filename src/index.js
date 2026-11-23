@@ -193,6 +193,12 @@ const drawFireflies = require('./fireflies')(regl, quality);
 const drawLanterns = require('./lanterns')(regl);
 const drawConfessional = require('./confessional')(regl);
 const drawStairHall = require('./stairhall')(regl);
+// the Conservatory of Unsaid Things (studio.js), behind "Love me like I am
+// Already Dead": fetched only when a visitor is let in (conservatory.js)
+const conservatory = require('./conservatory');
+conservatory.init({ regl, post });
+const drawStudio = (o) => { const d = conservatory.draw; if (d) d(o); };
+drawStudio.reflect = (fn, n) => { const d = conservatory.draw; if (d) d.reflect(fn, n); };
 
 // the cinematic tour the visit opens with (see tour.js)
 const tour = require('./tour')({
@@ -231,6 +237,9 @@ const context = regl({
 		mirrorOn: () => (useReflexion ? 1.0 : 0.0),
 		// 0 by day, 1 at night (see env.js)
 		night: () => env.night,
+		// the studio's sun through its windows and roof, worked out once
+		studioBake: () => conservatory.bake(),
+		candleT: regl.context('time'),
 		time: regl.context('time')
 	}
 });
@@ -1167,6 +1176,9 @@ function applyAboutZoom(time) {
    over, the view glides from the tour's last shot into their own.
 =========================================================== */
 
+// ?studio in the address: the conservatory on its own (conservatory.js)
+const STUDIO_PREVIEW = conservatory.PREVIEW;
+
 const FREE_LOOK = { fade: 0, fadeColor: [0, 0, 0], letterbox: 0, focus: 6, aperture: 0, exposure: 1, shafts: 1, vignette: 0 };
 let leafNow = null;
 let walkerNow = false;
@@ -1223,6 +1235,17 @@ function setCamera(time) {
 
 	// the operator's hand on the tour's camera (see cine.js)
 	if (c && t) c = cine.apply(c, time);
+
+	// the Conservatory of Unsaid Things: while a visit lasts (or on
+	// ?studio) its camera and look are the ones used (conservatory.js)
+	if (!(/tourdebug/.test(location.search) && window.__camOverride)) {
+		const sc = conservatory.update(time, c, look);
+		if (sc) {
+			studioMoving = sc.moving !== false;
+			c = sc;
+			look = sc.look;
+		}
+	}
 
 	if (c) {
 		lookAtRolled(camView, c.eye, c.target, c.roll || 0);
@@ -1319,6 +1342,11 @@ function updateDust(time) {
 
 let lastFrame = 0;
 let skipFrame = false;
+// the studio is held to 30 frames a second (24 when nothing moves): its
+// light and water are soft and slow, and the machine stays cool
+let capTicks = 0, lastDrawn = 0;
+let studioMoving = true;
+const NOCAP = /[?&]nocap\b/.test(location.search);
 
 regl.frame(
 	function ({ time }) {
@@ -1329,6 +1357,15 @@ regl.frame(
 			lastFrame = 0;
 			return;
 		}
+
+		capTicks++;
+		if (cull.zone === 'studio' && !NOCAP && lastDrawn > 0 && time > lastDrawn) {
+			const iv = (studioMoving || !env.settled) ? 1 / 30 : 1 / 24;
+			if (time - lastDrawn < iv - 0.006) return;
+		}
+		lastDrawn = time;
+		const ticks = Math.max(1, capTicks);
+		capTicks = 0;
 
 		stats.begin();
 
@@ -1350,7 +1387,7 @@ regl.frame(
 		// when there is room (quality.js)
 		const frameDt = time - lastFrame;
 		lastFrame = time;
-		quality.frame(resting ? frameDt / 2 : frameDt);
+		quality.frame(resting ? frameDt / 2 : frameDt / ticks);
 		useReflexion = quality.reflection;
 
 
@@ -1393,8 +1430,13 @@ regl.frame(
 
 							// the room upside down beneath the polished floor
 							// (only the rooms whose reflection is in view)
-							reflexion(
+							// in the studio the reflection is drawn into a smaller
+							// picture of its own, and not every frame (studio.js)
+							if (cull.zone === 'studio' && drawStudio.reflect) drawStudio.reflect(() => reflexion(() => drawStudio({ reflected: true })), studioMoving ? 2 : 4);
+							else reflexion(
 								() => {
+									if (cull.room('studio', true)) drawStudio({ reflected: true });
+									if (cull.zone === 'studio') return;
 									drawMap();
 									drawStatues({ reflected: true });
 									drawLanterns();
@@ -1418,6 +1460,8 @@ regl.frame(
 							);
 						}
 
+						if (cull.room('studio')) drawStudio();
+						if (cull.zone !== 'studio') {
 						drawMap();
 						drawStatues();
 						drawLanterns();
@@ -1450,6 +1494,7 @@ regl.frame(
 						// glass last, over everything
 						drawGlass();
 						drawFarDoor.glass();
+						}
 					}
 				);
 			}

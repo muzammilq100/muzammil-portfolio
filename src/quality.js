@@ -41,12 +41,16 @@ const isPhone =
 	touchOnly;
 
 const dpr = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
+const studioPage = typeof location !== 'undefined' && /[?&]studio\b/.test(location.search);
 
 const Q = {
 	isPhone,
 
 	// fixed at start-up
-	pixelRatio: isPhone ? Math.min(dpr, 1.5) : Math.min(dpr, 2),
+	// (the painter's studio is heavy, and soft and dusty anyway: fewer pixels)
+	pixelRatio: studioPage
+		? (isPhone ? Math.min(dpr, 1.25) : Math.min(dpr, 1.5))
+		: (isPhone ? Math.min(dpr, 1.5) : Math.min(dpr, 2)),
 
 	// can be stepped down while running
 	reflection: !isPhone,

@@ -1580,6 +1580,10 @@ module.exports = function createTour(opts) {
 				vb.addEventListener('click', (e) => { e.stopPropagation(); visit.open(p); });
 				card.warm = () => visit.warm(p);
 			}
+			// "Love me like I am Already Dead": the way into the
+			// Conservatory of Unsaid Things (conservatory.js)
+			const cb = require('./conservatory').button(p);
+			if (cb) { row.appendChild(cb); row.hidden = false; }
 			// (letters grouped by word, so a line never breaks inside a word)
 			let n = 0;
 			title.innerHTML = t.split(' ').map((word) =>
@@ -1888,7 +1892,7 @@ module.exports = function createTour(opts) {
 	}, { passive: false });
 
 	window.addEventListener('keydown', (e) => {
-		if (!active || exiting || document.body.classList.contains('visiting')) return;
+		if (!active || exiting || document.body.classList.contains('visiting') || document.body.classList.contains('in-conservatory') || document.body.classList.contains('cons-asking')) return;
 		if (conf.active) {
 			// typing the note: the keys are the visitor's, not the tour's
 			e.stopImmediatePropagation();

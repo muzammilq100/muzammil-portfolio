@@ -38,6 +38,25 @@ const BUNDLE = {
 	logLevel: 'warning'
 };
 
+// the Conservatory of Unsaid Things (src/studio.js and its tour) is a file
+// of its own, conservatory.js, fetched only when a visitor is let in
+// (src/conservatory.js); app.js learns its version to fetch the right one
+const ROOM = {
+	entryPoints: [path.join(ROOT, 'src/conservatory-room.js')],
+	bundle: true,
+	minify: true,
+	format: 'iife',
+	target: 'es2018',
+	outfile: path.join(DIST, 'conservatory.js'),
+	legalComments: 'none',
+	logLevel: 'warning'
+};
+async function buildRoom(opts) {
+	await esbuild.build({ ...ROOM, ...(opts || {}) });
+	const v = crypto.createHash('sha1').update(fs.readFileSync(ROOM.outfile)).digest('hex').slice(0, 10);
+	return { '__ROOM_V__': JSON.stringify(v) };
+}
+
 function copyDir(from, to, filter = () => true) {
 	if (!fs.existsSync(from)) return;
 	fs.mkdirSync(to, { recursive: true });
@@ -81,15 +100,18 @@ async function main() {
 	copyAssets();
 
 	if (!serve) {
-		await esbuild.build(BUNDLE);
+		const define = await buildRoom();
+		await esbuild.build({ ...BUNDLE, define });
 		writeHtml();
 		const kb = (f) => (fs.statSync(path.join(DIST, f)).size / 1024).toFixed(0) + ' KB';
-		console.log('Built dist/ (app.js ' + kb('app.js') + ')');
+		console.log('Built dist/ (app.js ' + kb('app.js') + ', conservatory.js ' + kb('conservatory.js') + ')');
 		return;
 	}
 
+	const define = await buildRoom({ minify: false });
 	const ctx = await esbuild.context({
 		...BUNDLE,
+		define,
 		minify: false,
 		sourcemap: true,
 		plugins: [{ name: 'html', setup(b) { b.onEnd(() => { try { writeHtml(); } catch (e) { console.error(e); } }); } }]
