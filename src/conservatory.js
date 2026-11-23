@@ -16,6 +16,8 @@
  *   What are they?
  *
  * Answered ("flowers"), it offers "Bring a flower while it still matters".
+ * A wrong answer gets no hint and no second try: the way in goes, and the
+ * gallery's tour carries on.
  * The camera goes into the painting, into the red of its cloth, and comes
  * out of the red of the conservatory's door; it rises to the bougainvillea
  * and the petal's tour begins (studiotour.js). When the petal has settled
@@ -194,8 +196,9 @@ function ensureRoom() {
 // ---------------------------------------------------------------
 // the way in, under the painting's story
 // ---------------------------------------------------------------
+let refused = false;      // a wrong answer: the way in is gone for this visit
 function button(p) {
-	if (!p || p.slug !== SLUG || PREVIEW) return null;
+	if (!p || p.slug !== SLUG || PREVIEW || refused) return null;
 	const b = el('button', 'cons-btn', DOOR_SVG + '<span>The Conservatory of Unsaid Things</span>');
 	b.type = 'button';
 	b.setAttribute('aria-label', 'The Conservatory of Unsaid Things: answer its question to go in');
@@ -205,7 +208,7 @@ function button(p) {
 }
 
 function ask(p) {
-	if (phase !== 'idle') return;
+	if (phase !== 'idle' || refused) return;
 	document.body.classList.add('cons-asking');
 	const wrap = el('div', 'cons-ask');
 	wrap.setAttribute('role', 'dialog');
@@ -224,7 +227,6 @@ function ask(p) {
 	requestAnimationFrame(() => wrap.classList.add('on'));
 	const input = card.querySelector('.cons-in');
 	const msg = card.querySelector('.cons-msg');
-	let tries = 0;
 	const close = () => {
 		wrap.classList.remove('on');
 		document.body.classList.remove('cons-asking');
@@ -253,13 +255,15 @@ function ask(p) {
 			setTimeout(() => { const f = card.querySelector('.cons-flower'); if (f) f.focus(); }, 50);
 			return;
 		}
-		tries++;
-		card.classList.remove('cons-shake');
-		void card.offsetWidth;
-		card.classList.add('cons-shake');
-		msg.textContent = tries >= 2 ? 'They are brought in bunches, when it is already too late.' : 'Not quite.';
+		// no hints, no second try: the room is not for them, and the
+		// gallery's tour goes on
+		refused = true;
+		input.disabled = true;
+		card.querySelector('.cons-go').disabled = true;
+		msg.textContent = 'Not this time.';
 		msg.classList.add('on');
-		input.select();
+		document.querySelectorAll('.cons-btn').forEach((b) => b.remove());
+		setTimeout(close, 1800);
 	});
 }
 

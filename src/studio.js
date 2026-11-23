@@ -1890,8 +1890,8 @@ function buildStudio(g) {
 	}
 	// --- the lanterns by the red door: a bracket from the wall, an iron cage
 	// with a little roof, and the candle's flame inside
-	for (const [x, y, z] of LANTERNS) {
-		g.beam([x, y + 0.42, L], [x, y + 0.42, z - 0.02], 0.016, K.STEEL);
+	for (const [x, y, z, wz] of [...LANTERNS.map((l) => [...l, L]), ...NYMPH_LANTERNS.map((l) => [...l, L - NICHE.face])]) {
+		g.beam([x, y + 0.42, wz], [x, y + 0.42, z + Math.sign(wz - z) * 0.02], 0.016, K.STEEL);
 		g.beam([x, y + 0.42, z], [x, y + 0.26, z], 0.01, K.STEEL);
 		for (const [dx, dz] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) g.beam([x + dx * 0.085, y - 0.2, z + dz * 0.085], [x + dx * 0.085, y + 0.16, z + dz * 0.085], 0.009, K.STEEL);
 		g.box(x - 0.1, y - 0.24, z - 0.1, x + 0.1, y - 0.2, z + 0.1, K.STEEL);
@@ -1915,6 +1915,9 @@ const LAMPS = [[4.2, 4.6, 7.33], [11.8, 4.6, 7.33], [4.2, 4.6, 16.5], [11.8, 4.6
 // each, day and night: the door's wall never sees the sun, and these keep
 // its red alive in the shade
 const LANTERNS = [-1, 1].map((sx) => [W / 2 + sx * (1.95 / 2 + 0.62), 2.95, L - 0.34]);
+// and two on the niche's piers, either side of the nymph, their candles
+// flickering on her and on the old stone
+const NYMPH_LANTERNS = [-1, 1].map((sx) => [W / 2 + sx * (NICHE.hw + NICHE.pier / 2), 2.7, L - NICHE.face + 0.34]);
 // THE HANGING CANDLES (after his references): long white tapers on
 // threads from the roof, in loose drifts at different heights, unlit by
 // day; by night they and the moon are the only light. Each drift lights the
@@ -1924,7 +1927,7 @@ const LANTERNS = [-1, 1].map((sx) => [W / 2 + sx * (1.95 / 2 + 0.62), 2.95, L - 
 // (they keep clear of a ring round the rotunda, 4.6 to 7 m from its middle,
 // where the tour's camera circles it; one drift hangs inside the rotunda,
 // over the grave, through its open top)
-const CANDLE_DRIFTS = [[8.0, 3.6, 5.4, 12], [4.6, 6.8, 5.0, 12], [11.2, 7.4, 5.2, 12], [8.0, 9.8, 5.7, 10], [2.4, 11.6, 4.8, 11], [13.8, 12.2, 5.0, 11], [ROT.cx, ROT.cz, 4.9, 10], [2.8, 24.4, 4.8, 11], [13.2, 24.6, 5.0, 11], [8.0, 25.9, 5.8, 9]];
+const CANDLE_DRIFTS = [[8.0, 3.6, 5.4, 12], [4.6, 6.8, 5.0, 12], [11.2, 7.4, 5.2, 12], [8.0, 9.8, 5.7, 10], [2.4, 11.6, 4.8, 11], [13.8, 12.2, 5.0, 11], [ROT.cx, ROT.cz, 3.7, 5], [2.8, 24.4, 4.8, 11], [13.2, 24.6, 5.0, 11], [8.0, 25.9, 5.8, 9]];
 const GRAVE_DRIFT = 6;
 // the way the camera comes in from the gallery (studiotour.js, INTRO): from
 // before the door, up over the rotunda and down the pool, under the
@@ -1949,10 +1952,10 @@ const HCANDLES = (() => {
 	CANDLE_DRIFTS.forEach(([cx, cz, cy, n], d) => {
 		for (let k = 0, tries = 0; k < n && tries < 400; tries++) {
 			const inside = d === GRAVE_DRIFT;
-			const a = rnd() * 2 * PI, r = inside ? 0.15 + 0.95 * Math.sqrt(rnd()) : 0.25 + 1.35 * Math.sqrt(rnd());
+			const a = rnd() * 2 * PI, r = inside ? 0.35 + 0.6 * Math.sqrt(rnd()) : 0.25 + 1.35 * Math.sqrt(rnd());
 			const x = cx + Math.cos(a) * r, z = cz + Math.sin(a) * r;
 			const len = 0.26 + 0.18 * rnd();
-			const y = cy + (rnd() - 0.5) * (inside ? 1.8 : 2.6);         // the candle's foot
+			const y = cy + (rnd() - 0.5) * (inside ? 0.9 : 2.6);         // the candle's foot
 			const rr = Math.hypot(x - ROT.cx, z - ROT.cz);
 			if (!inside && rr < 7.0 && (rr > 4.4 || y < ROT.top + 0.5)) continue;
 			if (x < 0.8 || x > W - 0.8 || z < 2.2 || z > L - 0.9) continue;
@@ -2583,8 +2586,23 @@ const LIGHT = `
 				vec3 d = vec3(${f(l[0])}, ${f(l[1] - 0.06)}, ${f(l[2])}) - pw;
 				float dd = dot(d, d);
 				vec3 Ld = d * inversesqrt(dd);
-				float w = mix(1.6, 2.4, night) / (0.25 + dd * 1.8);
+				float w = mix(1.6, 2.4, night) * candleFlicker(${f(l[0] * 3.1)}) / (0.25 + dd * 1.8);
 				col += vec3(1.0, 0.6, 0.3) * w * (max(dot(N, Ld), 0.0) * 0.9 + 0.1);
+				spec += vec3(1.0, 0.65, 0.35) * w * pow(max(dot(N, normalize(Ld + V)), 0.0), mix(16.0, 300.0, gloss)) * gloss * 0.6;
+			}`).join('')}
+		}
+		// the lanterns either side of the nymph: candlelight that breathes
+		// and gutters on her, the niche and the head of the pool
+		if (p.z < 9.0) {
+			${NYMPH_LANTERNS.map((l) => toW(l)).map((l, i) => `
+			{
+				float fl = candleFlicker(${f(11.3 + i * 4.7)});
+				vec3 lp = vec3(${f(l[0])}, ${f(l[1] - 0.06)}, ${f(l[2])}) + vec3(sin(candleT * ${f(2.3 + i * 0.4)}), 0.0, cos(candleT * ${f(1.9 + i * 0.3)})) * 0.02 * (1.2 - fl);
+				vec3 d = lp - pw;
+				float dd = dot(d, d);
+				vec3 Ld = d * inversesqrt(dd);
+				float w = mix(0.9, 2.3, night) * fl / (0.3 + dd * 1.1);
+				col += vec3(1.0, 0.58, 0.28) * w * (max(dot(N, Ld), 0.0) * 0.9 + 0.1);
 				spec += vec3(1.0, 0.65, 0.35) * w * pow(max(dot(N, normalize(Ld + V)), 0.0), mix(16.0, 300.0, gloss)) * gloss * 0.6;
 			}`).join('')}
 		}
@@ -2601,7 +2619,7 @@ const LIGHT = `
 				float dd = dot(d, d);
 				vec3 Ld = d * inversesqrt(dd);
 				vec3 sh = candleShade(p + N * 0.02, lp);
-				vec3 w = sh * (nk * ${f(1.4 + 0.3 * l[3])} * fl / (0.4 + dd * 0.9));
+				vec3 w = sh * (nk * ${f(i === GRAVE_DRIFT ? 4.6 : 1.4 + 0.3 * l[3])} * fl / (0.4 + dd * 0.9));
 				col += vec3(1.0, 0.56, 0.24) * w * (max(dot(N, Ld), 0.0) * 0.88 + 0.12);
 				spec += vec3(1.0, 0.62, 0.3) * w * pow(max(dot(N, normalize(Ld + V)), 0.0), mix(16.0, 300.0, gloss)) * gloss;
 			}`).join('')}
@@ -4841,7 +4859,7 @@ let ACTIVE = null;
 const GUIDE = { vis: false, model: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1], ang: 0, size: 0.09, flex: 0, flutter: 0, floating: false };
 // the visitor's flower (see drawFlower): where it comes to lie on the
 // ledger, its bloom towards the headstone, a little across the grave
-const FLOWER = { k: -1, glow: 0, at: [GRAVE.cx - 0.16, GRAVE.top - 0.004, GRAVE.cz - 0.1], yaw: -0.3 };
+const FLOWER = { k: -1, glow: 0, at: [GRAVE.cx + 0.06, GRAVE.top - 0.004, GRAVE.cz - 0.1], yaw: 0.0 };
 function setFlower(k, glow) { FLOWER.k = k; FLOWER.glow = glow || 0; }
 // its model matrix at k: lowered from a hand's height, tilting down from
 // held to lying, turning a little as it settles
