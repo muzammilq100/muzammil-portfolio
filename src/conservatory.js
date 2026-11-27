@@ -38,7 +38,9 @@ const hash = (s) => {
 	for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
 	return h >>> 0;
 };
-const PREVIEW = /[?&]studio\b/.test(location.search);
+// ?redroom: the red room (redroom.js) shown the same way, on its own
+const RED_ROOM = /[?&]redroom\b/.test(location.search);
+const PREVIEW = RED_ROOM || /[?&]studio\b/.test(location.search);
 // the red of the painting's cloth and of the door: where the cut is hidden
 const RED = [0.32, 0.02, 0.05];
 // where in the painting the camera goes in: a fold of its red cloth
@@ -146,12 +148,15 @@ let roomFile = null;
 function loadRoom() {
 	if (!roomFile) {
 		roomFile = new Promise((ok, fail) => {
-			if (window.__conservatoryRoom) { ok(window.__conservatoryRoom); return; }
+			const key = RED_ROOM ? '__redRoom' : '__conservatoryRoom';
+			if (window[key]) { ok(window[key]); return; }
 			const s = document.createElement('script');
-			/* global __ROOM_V__ */
-			s.src = 'conservatory.js?v=' + (typeof __ROOM_V__ !== 'undefined' ? __ROOM_V__ : Date.now());
+			/* global __ROOM_V__, __RED_V__ */
+			s.src = RED_ROOM
+				? 'redroom.js?v=' + (typeof __RED_V__ !== 'undefined' ? __RED_V__ : Date.now())
+				: 'conservatory.js?v=' + (typeof __ROOM_V__ !== 'undefined' ? __ROOM_V__ : Date.now());
 			s.async = true;
-			s.onload = () => (window.__conservatoryRoom ? ok(window.__conservatoryRoom) : fail(new Error('The conservatory did not load')));
+			s.onload = () => (window[key] ? ok(window[key]) : fail(new Error('The room did not load')));
 			s.onerror = () => { roomFile = null; fail(new Error('The conservatory could not be fetched')); };
 			document.head.appendChild(s);
 		});
@@ -424,6 +429,8 @@ module.exports = {
 	// the room's draw (null until it has come)
 	get draw() { return draw; },
 	get active() { return phase !== 'idle' || PREVIEW; },
+	// the red room keeps its floor's mirror whatever the device
+	get alwaysMirror() { return RED_ROOM && !!draw; },
 	// the room's baked sun, for the shaders that share its light
 	bake() { return room ? room.studio.bakedSun(regl) : dummy; }
 };
@@ -435,6 +442,8 @@ function startPreview() {
 	st.textContent = '.tour, #museum-mobile-controls, .painting-plaque { display: none !important; } .st-ui { position: fixed; top: 18px; right: 18px; z-index: 30; width: 42px; padding: 0; font-size: 20px; letter-spacing: 0; }';
 	document.head.appendChild(st);
 	ensureRoom().then(() => { roomTour = room.tour({}); }).catch((e) => console.error(e));
+	// (the red room has no day and night)
+	if (RED_ROOM) return;
 	const b = document.createElement('button');
 	b.type = 'button';
 	b.className = 'st-ui';

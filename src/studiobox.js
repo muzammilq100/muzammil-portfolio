@@ -17,7 +17,8 @@ const RIDGE = 11.6;            // the glass roof's ridge
 module.exports = {
 	O, W, L, RIDGE,
 	// what the camera can be in to be in the room
-	BOX: [O[0] - 0.8, 0, O[2] - 0.8, O[0] + W + 0.8, RIDGE + 0.5, O[2] + L + 0.8],
+	// (reaching back along the red room's corridor, which stands here too)
+	BOX: [O[0] - 0.8, 0, O[2] - 11.5, O[0] + W + 0.8, RIDGE + 0.5, O[2] + L + 0.8],
 	// the room's air, for its light shafts
 	AIR_BOX: [O[0], 0, O[2], O[0] + W, RIDGE, O[2] + L]
 };

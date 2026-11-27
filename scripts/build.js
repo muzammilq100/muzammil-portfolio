@@ -51,10 +51,15 @@ const ROOM = {
 	legalComments: 'none',
 	logLevel: 'warning'
 };
+// the red room (src/redroom.js and its look-round), likewise a file of its
+// own, redroom.js, fetched only on ?redroom
+const RED = { ...ROOM, entryPoints: [path.join(ROOT, 'src/redroom-room.js')], outfile: path.join(DIST, 'redroom.js') };
 async function buildRoom(opts) {
 	await esbuild.build({ ...ROOM, ...(opts || {}) });
+	await esbuild.build({ ...RED, ...(opts || {}) });
 	const v = crypto.createHash('sha1').update(fs.readFileSync(ROOM.outfile)).digest('hex').slice(0, 10);
-	return { '__ROOM_V__': JSON.stringify(v) };
+	const r = crypto.createHash('sha1').update(fs.readFileSync(RED.outfile)).digest('hex').slice(0, 10);
+	return { '__ROOM_V__': JSON.stringify(v), '__RED_V__': JSON.stringify(r) };
 }
 
 function copyDir(from, to, filter = () => true) {

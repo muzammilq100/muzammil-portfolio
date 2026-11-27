@@ -41,7 +41,7 @@ const isPhone =
 	touchOnly;
 
 const dpr = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
-const studioPage = typeof location !== 'undefined' && /[?&]studio\b/.test(location.search);
+const studioPage = typeof location !== 'undefined' && /[?&](studio|redroom)\b/.test(location.search);
 
 const Q = {
 	isPhone,

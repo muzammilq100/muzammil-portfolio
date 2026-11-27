@@ -1389,6 +1389,9 @@ regl.frame(
 		lastFrame = time;
 		quality.frame(resting ? frameDt / 2 : frameDt / ticks);
 		useReflexion = quality.reflection;
+		// (the red room's wet floor is the room: its mirror stays, even on
+		// phones; it is only the room itself, at half size)
+		if (conservatory.alwaysMirror) useReflexion = true;
 
 
 		fps.tick({

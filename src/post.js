@@ -324,10 +324,26 @@ module.exports = (regl, quality) => {
 				float acc = 0.0;
 				for (int i = 0; i < NS; i++) {
 					vec3 p = eye + rd * (t.x + (float(i) + jit) * st);
+					#ifdef STUDIO_AIR_EVEN
+					acc += studioSun(p) * (0.75 + 0.25 * air(p));
+					#else
 					acc += studioSun(p) * air(p);
+					#endif
 				}
+				#ifdef STUDIO_SUN2
+				// (a room lit from both sides: the red room, redroom.js)
+				float ph = 0.5 * (phase(dot(rd, STUDIO_SUN), 0.4) + phase(dot(rd, STUDIO_SUN2), 0.4)) + 0.05;
+				#else
 				float ph = phase(dot(rd, STUDIO_SUN), 0.6) + 0.04;
+				#endif
+				#ifdef SHAFT_TINT
+				// (a soft ceiling: a deep colour must not run past what the
+				// picture can hold, or it bleaches)
+				float sv = acc * st * ph * strength5;
+				sum += SHAFT_TINT * sv / (1.0 + sv * 0.8);
+				#else
 				sum += mix(vec3(1.0, 0.84, 0.62), vec3(0.62, 0.74, 1.0) * 1.15, night) * acc * st * ph * strength5;
+				#endif
 			}
 		}
 
@@ -615,7 +631,7 @@ module.exports = (regl, quality) => {
 			blurPass({ out: half[1], src: half[0], dir: [1, 0], size: sz(half[0]) });
 			blurPass({ out: half[0], src: half[1], dir: [0, 1], size: sz(half[0]) });
 
-			downPass({ out: quarter[0], src: half[0], size: sz(half[0]), threshold: 0.42 });
+			downPass({ out: quarter[0], src: half[0], size: sz(half[0]), threshold: (cull.zone === 'studio' && studio && studio.POST && studio.POST.threshold) || 0.42 });
 			blurPass({ out: quarter[1], src: quarter[0], dir: [1, 0], size: sz(quarter[0]) });
 			blurPass({ out: quarter[0], src: quarter[1], dir: [0, 1], size: sz(quarter[0]) });
 
