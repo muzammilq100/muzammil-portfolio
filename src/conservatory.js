@@ -179,6 +179,87 @@ function loadRoom(w) {
 	return roomFiles[w];
 }
 
+// WARMING THE WAY IN. Each room's pictures and models are fetched quietly
+// as soon as its painting's story comes up (into the browser's cache, at
+// low priority, two at a time), so that by the time the visitor has
+// answered, little is left to come. The conservatory is built while its
+// question is open (the screen is still then, so the work is not felt).
+const ASSETS = {
+	cons: ['res/pond/lilypad.webp', 'res/pond/petals.webp', 'res/studio/rock_col.webp', 'res/studio/rock_nrm.webp',
+		'res/studio/oldstone_col.webp', 'res/studio/oldstone_nrm.webp', 'res/studio/floor_col.webp', 'res/studio/floor_nrm.webp',
+		'res/nymph.bin', 'res/studio/grave.webp', 'res/studio/grave.bin', 'res/conservatory/flower.webp', 'res/conservatory/flower.bin',
+		'res/conservatory/rose_lo.bin', 'res/tree/leaves.webp', 'res/studio/plants.webp', 'res/studio/vleaves.webp', 'res/studio/rose_col.webp',
+		'res/studio/rose.bin', 'res/pond/gravel.jpg', 'res/koi.webp', 'res/koi.bin'],
+	red: ['res/redroom/memories.webp', 'res/redroom/polaroids.webp', 'res/redroom/print.webp', 'res/redroom/woman_all.bin', 'res/redroom/woman_0.webp',
+		'res/redroom/veil.bin', 'res/redroom/tv_crt.bin', 'res/redroom/tv_old.bin', 'res/redroom/tv_sony.bin', 'res/redroom/proj_body.bin', 'res/redroom/proj_0.webp',
+		'res/redroom/enlarger_all.bin', 'res/redroom/enlarger_0.webp', 'res/redroom/camera_all.bin', 'res/redroom/rose_all.bin', 'res/redroom/rose_0.webp']
+};
+const warmed = {};
+function warm(w) {
+	if (warmed[w] || PREVIEW || typeof fetch === 'undefined') return;
+	warmed[w] = true;
+	const go = () => {
+		loadRoom(w).catch(() => { /* fetched again when needed */ });
+		const list = ASSETS[w].slice();
+		const next = () => {
+			const u = list.shift();
+			if (!u) return;
+			let req;
+			try { req = fetch(u, { priority: 'low' }); } catch (e) { req = fetch(u); }
+			req.then((r) => r.blob()).catch(() => { /* never mind */ }).finally(next);
+		};
+		next(); next();
+	};
+	if (window.requestIdleCallback) window.requestIdleCallback(go, { timeout: 1500 }); else setTimeout(go, 300);
+}
+// the room built ahead (not yet the one in use)
+function prebuild(w) {
+	return loadRoom(w).then((r) => {
+		mods[w] = r;
+		if (!draws[w]) {
+			const t0 = performance.now();
+			draws[w] = r.studio(regl);
+			if (/tourdebug/.test(location.search)) console.log('room built in ' + Math.round(performance.now() - t0) + ' ms');
+		}
+		return r;
+	});
+}
+
+// THE ROSES LEFT BEFORE: every rose laid on the grave stays there for the
+// visitors who come after (functions/api/roses.js keeps them on the site's
+// server). Where there is no server (the GitHub Pages copy), or it cannot
+// be reached, the visitor at least finds their own roses again (kept in
+// this browser).
+const ROSES_API = 'api/roses';
+const LOCAL_ROSES = 'cons-roses-v1', ROSE_DAY = 'cons-rose-day';
+const localRoses = () => { try { const l = JSON.parse(localStorage.getItem(LOCAL_ROSES)); return Array.isArray(l) ? l : []; } catch (e) { return []; } };
+function loadRoses() {
+	return fetch(ROSES_API, { cache: 'no-store' })
+		.then((r) => { if (!r.ok) throw new Error('no roses'); return r.json(); })
+		.then((d) => ({ first: d.first || 0, roses: Array.isArray(d.roses) ? d.roses : [], shared: true }))
+		.catch(() => ({ first: 0, roses: localRoses(), shared: false }));
+}
+// the roses on the grave as they are now (the newest of them hidden while
+// the visitor's own lies there, drawn apart)
+function showRoses(animate, hide) {
+	return loadRoses().then((d) => { const m = mods.cons; if (m) m.studio.setRoses(d.roses, d.first, hide || 0, animate); return d; });
+}
+// the visitor's own, once it lies on the grave: added to them (one a day),
+// and the oldest of the fresh ones begins to wilt
+function addRose() {
+	const day = new Date().toISOString().slice(0, 10);
+	let last = null;
+	try { last = localStorage.getItem(ROSE_DAY); } catch (e) { /* private */ }
+	if (last === day && !/tourdebug/.test(location.search)) return;
+	try { localStorage.setItem(ROSE_DAY, day); } catch (e) { /* private */ }
+	const s = Math.random();
+	const keepLocal = () => { try { const l = localRoses(); l.push({ t: Date.now(), s }); localStorage.setItem(LOCAL_ROSES, JSON.stringify(l.slice(-300))); return l; } catch (e) { return [{ t: Date.now(), s }]; } };
+	fetch(ROSES_API, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ s }) })
+		.then((r) => { if (!r.ok) throw new Error('not kept'); return r.json(); })
+		.then((d) => { if (!Array.isArray(d.roses)) throw new Error('not kept'); const m = mods.cons; if (m) m.studio.setRoses(d.roses, d.first || 0, d.added ? 1 : 0, !!d.added); })
+		.catch(() => { const l = keepLocal(); const m = mods.cons; if (m) m.studio.setRoses(l, 0, 1, true); });
+}
+
 let regl = null, post = null;
 let room = null;        // { studio, tour } from the room's file
 let draw = null;        // the room's draw (studio.js), once made
@@ -199,6 +280,7 @@ let phaseAt = 0, now = 0;
 let start = null;       // the gallery's camera when the visitor went in
 let into = null;        // the point in the painting the camera goes into
 let lastLook = null;
+let builtAt = null;     // when the room was ready behind the red
 let ui = null, note = null, nameCard = null;
 let noted = false;
 
@@ -217,7 +299,11 @@ function ensureRoom(w) {
 	w = w || which;
 	return loadRoom(w).then((r) => {
 		mods[w] = r;
-		if (!draws[w]) draws[w] = r.studio(regl);
+		if (!draws[w]) {
+			const t0 = performance.now();
+			draws[w] = r.studio(regl);
+			if (/tourdebug/.test(location.search)) console.log('room built in ' + Math.round(performance.now() - t0) + ' ms');
+		}
 		// (a room that arrives late, after the visitor chose the other one,
 		// is kept but not put in use)
 		if (w === which) useRoom(w);
@@ -230,6 +316,8 @@ function ensureRoom(w) {
 // ---------------------------------------------------------------
 let refused = false;      // a wrong answer: the way in is gone for this visit
 function button(p) {
+	if (p && p.slug === SLUG) warm('cons');
+	if (p && p.slug === RED_SLUG) warm('red');
 	if (p && p.slug === RED_SLUG && !PREVIEW) return redButton(p);
 	if (!p || p.slug !== SLUG || PREVIEW || refused) return null;
 	const b = el('button', 'cons-btn', DOOR_SVG + '<span>The Conservatory of Unsaid Things</span>');
@@ -268,6 +356,8 @@ function redButton(p) {
 function ask(p) {
 	if (phase !== 'idle' || refused) return;
 	document.body.classList.add('cons-asking');
+	// (built while they think; a frame later, so the card is up first)
+	setTimeout(() => { prebuild('cons').catch((err) => console.error(err)); }, 120);
 	const wrap = el('div', 'cons-ask');
 	wrap.setAttribute('role', 'dialog');
 	wrap.setAttribute('aria-label', 'The Conservatory of Unsaid Things');
@@ -304,7 +394,7 @@ function ask(p) {
 			// let in: the room starts on its way now
 			which = 'cons';
 			useRoom('cons');
-			ensureRoom('cons').catch((err) => console.error(err));
+			ensureRoom('cons').then(() => showRoses(false, 0)).catch((err) => console.error(err));
 			card.innerHTML = `
 				<button type="button" class="cons-x" aria-label="Close">×</button>
 				<span class="cons-kicker">The Conservatory of Unsaid Things</span>
@@ -342,6 +432,7 @@ function enter(p) {
 	into = { at: [c[0] + across[0] * du - n[0] * 0.04, c[1] + dv, c[2] + across[2] * du], n };
 	start = null;
 	noted = false;
+	builtAt = null;
 	document.body.classList.add('in-conservatory');
 	setPhase('zoom');
 	buildUi();
@@ -388,6 +479,8 @@ function showNote() {
 	note.querySelector('button').addEventListener('click', (e) => {
 		e.stopPropagation();
 		if (roomTour) roomTour.placeFlower();
+		// (once it lies still on the stone)
+		setTimeout(() => { if (phase === 'room' && which === 'cons') addRose(); }, 6500);
 		note.classList.remove('on');
 		setTimeout(() => { if (note) { note.remove(); note = null; } }, 1300);
 	});
@@ -449,14 +542,36 @@ function update(time, cam, look) {
 		const end = [into.at[0] + into.n[0] * 0.09, into.at[1], into.at[2] + into.n[2] * 0.09];
 		const eye = mix3(start.eye, end, mix(e, 1, e2 * 0.6));
 		const target = mix3(start.target, into.at, smooth(k * 1.6));
-		const L = Object.assign({}, LOOK0, lastLook, { fade: smooth((k - 0.72) / 0.28), fadeColor: which === 'red' ? [0, 0, 0] : RED, aperture: 0, letterbox: (lastLook && lastLook.letterbox) || 0 });
+		const lb0 = (lastLook && lastLook.letterbox) || 0;
+		const L = Object.assign({}, LOOK0, lastLook, { fade: smooth((k - 0.72) / 0.28), fadeColor: which === 'red' ? [0, 0, 0] : RED, aperture: 0, letterbox: which === 'red' ? lb0 : mix(lb0, 0.55, smooth(k)) });
 		if (k >= 1) setPhase('wait');
 		return { eye, target, fov: mix(start.fov, 26, e), roll: mix(start.roll, 0, e), look: L, moving: true };
 	}
 	if (phase === 'wait') {
 		// all red, while the room arrives
 		// (only the room chosen: never another one still in memory)
-		const ok = room && draw && room === mods[which] && draw === draws[which] && room.studio.ready() && t > (which === 'red' ? 0.9 : 0.35);
+		const have = room && draw && room === mods[which] && draw === draws[which];
+		// THE CONSERVATORY: as soon as it is built the camera is moved, still
+		// behind the red, to where its way in begins, close on the red door,
+		// so the room is already being drawn (and the graphics chip has
+		// learnt it) when the red lifts. It waits there for the last of the
+		// room's pictures, but never long: anything later comes in as the
+		// camera draws back.
+		if (have && which !== 'red' && room.tour.introStart) {
+			if (builtAt === null) builtAt = now;
+			const sinceBuilt = now - builtAt;
+			if ((room.studio.ready() && sinceBuilt > 0.6) || sinceBuilt > 3.0) {
+				roomTour = room.tour({ intro: true, onLanded: showNote, onFlowerSettled: () => {} });
+				if (nameCard) setTimeout(() => { if (nameCard && phase === 'room') nameCard.classList.add('on'); setTimeout(() => { if (nameCard) nameCard.classList.remove('on'); }, 5200); }, 2600);
+				builtAt = null;
+				setPhase('room');
+			}
+			const s0 = room.tour.introStart();
+			// (the red breathes a little, so it is never a frozen screen)
+			const br = 0.92 + 0.08 * Math.sin(now * 2.1);
+			return { eye: s0.eye, target: s0.target, fov: s0.fov, roll: 0, look: Object.assign({}, LOOK0, { letterbox: 0.55, fade: 1, fadeColor: [RED[0] * br, RED[1] * br, RED[2] * br] }), moving: true };
+		}
+		const ok = have && room.studio.ready() && t > (which === 'red' ? 0.9 : 0.35);
 		if (ok) {
 			roomTour = which === 'red'
 				? room.tour({ onExpel: expel })
@@ -465,8 +580,9 @@ function update(time, cam, look) {
 			setPhase('room');
 		}
 		const end = [into.at[0] + into.n[0] * 0.09, into.at[1], into.at[2] + into.n[2] * 0.09];
-		// (her veil's black; the conservatory's red)
-		return { eye: end, target: into.at, fov: 26, roll: 0, look: Object.assign({}, LOOK0, lastLook, { fade: 1, fadeColor: which === 'red' ? [0, 0, 0] : RED }), moving: false };
+		// (her veil's black; the conservatory's red, breathing)
+		const br = which === 'red' ? 1 : 0.92 + 0.08 * Math.sin(now * 2.1);
+		return { eye: end, target: into.at, fov: 26, roll: 0, look: Object.assign({}, LOOK0, lastLook, { fade: 1, fadeColor: which === 'red' ? [0, 0, 0] : [RED[0] * br, RED[1] * br, RED[2] * br], letterbox: which === 'red' ? (lastLook && lastLook.letterbox) || 0 : 0.55 }), moving: which !== 'red' };
 	}
 	if (phase === 'room' || phase === 'leave') {
 		const sc = roomTour.update(time);
@@ -498,7 +614,7 @@ function update(time, cam, look) {
 }
 
 // (tests: go into either room straight away)
-if (typeof window !== 'undefined' && /tourdebug/.test(location.search)) window.__consDebug = { go(p, w) { which = w; useRoom(w); ensureRoom(w).catch((e) => console.error(e)); enter(p); }, leave };
+if (typeof window !== 'undefined' && /tourdebug/.test(location.search)) window.__consDebug = { go(p, w) { which = w; useRoom(w); ensureRoom(w).then(() => { if (w === 'cons') showRoses(false, 0); }).catch((e) => console.error(e)); enter(p); }, leave, roses(n, hide, animate) { const l = []; for (let i = 0; i < n; i++) l.push({ t: i, s: (i * 0.618) % 1 }); if (mods.cons) mods.cons.studio.setRoses(l, 0, hide || 0, !!animate); }, place() { if (roomTour) roomTour.placeFlower(); } };
 
 module.exports = {
 	SLUG,
@@ -531,7 +647,7 @@ function startPreview() {
 	const st = document.createElement('style');
 	st.textContent = '.tour, #museum-mobile-controls, .painting-plaque { display: none !important; } .st-ui { position: fixed; top: 18px; right: 18px; z-index: 30; width: 42px; padding: 0; font-size: 20px; letter-spacing: 0; }';
 	document.head.appendChild(st);
-	ensureRoom().then(() => { roomTour = room.tour({}); }).catch((e) => console.error(e));
+	ensureRoom().then(() => { roomTour = room.tour({}); if (!RED_ROOM) showRoses(false, 0); }).catch((e) => console.error(e));
 	// (the red room has no day and night)
 	if (RED_ROOM) return;
 	const b = document.createElement('button');

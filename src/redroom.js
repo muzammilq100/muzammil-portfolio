@@ -80,6 +80,12 @@ const WARN_WORD = 'LEAVEHERBE';
 const SPOTK = { k: 0 };
 
 const WARN = { s: 0, n: 0, glitch: 0, freeze: false, frozenAt: null };
+// THE CABLE'S HEARTBEAT (set by redtour.js): phase counts beats, period is
+// the time between them (shorter as the camera comes near her)
+const PULSE = { phase: 0, period: 1.2 };
+// the projector's changes (a new clip, a still, the next still): a click
+// for each, heard through redtour.js
+const ROOM_EV = { click: null };
 // where the camera is (room metres, from the tour): she is not drawn for a
 // camera in front of her, or beside her, so her face is never seen
 const VIEWER = { eye: null };
@@ -191,6 +197,8 @@ TV.letters = (() => {
 // the second, the chemistry: gallon jugs and canisters (Poly Haven, CC0).
 // Over both, prints hang to dry on lines strung between the shafts, on
 // pegs, curling, stirring; a red tube on the wall above lights them.
+// the box of photographic paper on the dry bench (see the darkroom)
+const PAPERBOX = { x0: 0.3, x1: 0.56, z0: 12.38, z1: 12.7, h: 0.055 };
 const DARK = (() => {
 	const D = { top: 0.92, depth: 0.78 };
 	D.a = [SHAFTS[0] + 0.7, SHAFTS[1] - 0.55];     // the sink bench, along z
@@ -204,8 +212,9 @@ const DARK = (() => {
 	// the bulb over the developer, and the tube over the lines
 	D.bulb = [D.TXc + 0.02, 1.39, D.trays[0] + 0.05];
 	D.tube = { x: 0.07, y: 3.05, z0: D.b[0] + 0.2, z1: D.b[1] - 0.2 };
-	// a small wooden shelf on the wall beside the trays, an old camera on it
-	D.shelf = { y: 1.5, d: 0.3, z0: D.trays[2] + 0.42, z1: D.trays[2] + 1.12 };
+	// the old camera, set down on the tiles of the sink beside the developer
+	// (where his photograph is coming up), its strap trailing
+	D.cam = { x: 0.43, y: D.basin.floor, z: D.trays[0] - D.TZ / 2 - 0.3 };
 	// the drying lines: [x out from the wall, height, from z, to z, sag]
 	D.lines = [
 		[0.32, 2.74, SHAFTS[0], SHAFTS[1], 0.12], [0.74, 2.52, SHAFTS[0], SHAFTS[1], 0.17], [1.1, 2.62, SHAFTS[0], SHAFTS[1], 0.2],
@@ -300,7 +309,7 @@ const vaultY = (x) => { const u = x <= W / 2 ? x : W - x; return H + Math.sqrt(M
 // ------------------------------------------------------------------
 // GEOMETRY
 // ------------------------------------------------------------------
-const K = { FLOOR: 0, WALL: 1, REVEAL: 2, GLASS: 3, VAULT: 4, TRIM: 5, VOID: 6, TUBE: 7, CABLE: 8, TILE: 9, STEEL: 10, PEG: 11, CONC: 12, CFLOOR: 13, DOOR: 14 };
+const K = { FLOOR: 0, WALL: 1, REVEAL: 2, GLASS: 3, VAULT: 4, TRIM: 5, VOID: 6, TUBE: 7, CABLE: 8, TILE: 9, STEEL: 10, PEG: 11, CONC: 12, CFLOOR: 13, DOOR: 14, MAINCABLE: 15 };
 
 function Geo() {
 	const pos = [], nrm = [], kind = [], uv = [], idx = [];
@@ -340,7 +349,7 @@ function Geo() {
 }
 
 // a round tube along a line of points (parallel-transported rings)
-function tube(g, pts, r, sides, k) {
+function tube(g, pts, r, sides, k, along) {
 	let prev = null, nrm = null;
 	const ring = [];
 	for (let i = 0; i < pts.length; i++) {
@@ -357,7 +366,7 @@ function tube(g, pts, r, sides, k) {
 		for (let s = 0; s < sides; s++) {
 			const an = s / sides * Math.PI * 2, c = Math.cos(an), sn = Math.sin(an);
 			const n = [nrm[0] * c + bi[0] * sn, nrm[1] * c + bi[1] * sn, nrm[2] * c + bi[2] * sn];
-			cur.push(g.v([pts[i][0] + n[0] * r, pts[i][1] + n[1] * r, pts[i][2] + n[2] * r], n, k, [i, s]));
+			cur.push(g.v([pts[i][0] + n[0] * r, pts[i][1] + n[1] * r, pts[i][2] + n[2] * r], n, k, [along ? along[i] : i, s]));
 		}
 		if (prev) for (let s = 0; s < sides; s++) {
 			const s2 = (s + 1) % sides;
@@ -588,10 +597,26 @@ function build() {
 				}
 			}
 		}
-		// the camera's shelf, on two brackets
-		const sh = DARK.shelf;
-		g.box(0.0, sh.y - 0.03, sh.z0, sh.d, sh.y, sh.z1, K.TRIM);
-		for (const z of [sh.z0 + 0.08, sh.z1 - 0.08]) g.box(0.0, sh.y - 0.2, z - 0.012, 0.022, sh.y - 0.03, z + 0.012, K.TRIM), g.box(0.0, sh.y - 0.06, z - 0.012, sh.d * 0.7, sh.y - 0.03, z + 0.012, K.TRIM);
+		// a dial thermometer standing in the stop bath, leaning on the tray's rim
+		{
+			const z = D.trays[1] + 0.12, x = D.TXc + D.TX / 2 - 0.03;
+			tube(g, [[x - 0.12, D.liquid - 0.02, z - 0.02], [x + 0.02, D.liquid + 0.13, z + 0.02]], 0.0035, 6, K.STEEL);
+			const c = [x + 0.03, D.liquid + 0.145, z + 0.024], ax = [0.62, 0.66, 0.42];
+			tube(g, [[c[0] - ax[0] * 0.008, c[1] - ax[1] * 0.008, c[2] - ax[2] * 0.008], [c[0] + ax[0] * 0.012, c[1] + ax[1] * 0.012, c[2] + ax[2] * 0.012]], 0.026, 14, K.STEEL);
+		}
+		// on the dry bench: a roll of tape on its side, and the box the
+		// photographic paper came in, its lid off and leaning against it
+		{
+			const T0 = D.top;
+			tube(g, [[0.62, T0 + 0.042, 12.02], [0.62, T0 + 0.042, 12.045]], 0.042, 16, K.PEG);
+			tube(g, [[0.62, T0 + 0.042, 12.018], [0.62, T0 + 0.042, 12.047]], 0.024, 12, K.TRIM);
+			const bx = PAPERBOX;
+			g.box(bx.x0, T0, bx.z0, bx.x1, T0 + bx.h, bx.z1, K.TRIM);
+			g.box(bx.x0 + 0.004, T0 + bx.h, bx.z0 + 0.004, bx.x1 - 0.004, T0 + bx.h + 0.001, bx.z1 - 0.004, K.VOID);
+			// the lid, propped on its edge against the box's side
+			const lz = bx.z1 + 0.012;
+			g.quad([bx.x0 - 0.01, T0, lz + 0.05], [bx.x1 + 0.01, T0, lz + 0.05], [bx.x1 + 0.01, T0 + 0.24, lz], [bx.x0 - 0.01, T0 + 0.24, lz], [0, 0.2, 0.98], K.TRIM);
+		}
 		// the red tube over the lines, on two clips
 		const tb = DARK.tube;
 		tube(g, [[tb.x + 0.02, tb.y, tb.z0], [tb.x + 0.02, tb.y, (tb.z0 + tb.z1) / 2], [tb.x + 0.02, tb.y, tb.z1]], 0.035, 10, K.TUBE);
@@ -615,7 +640,13 @@ function build() {
 		tube(g, [[x, y, z - 0.05], [x + 0.05, y - 0.02, z + 0.15], [x + 0.1, Math.max(0.02, y * 0.4), z + 0.35], [x * 0.6 + gx * 0.4, 0.018, z + 0.6], [gx, 0.018, gz]], 0.012, 6, K.CABLE);
 	});
 	// the cable, and the socket it is plugged into
-	tube(g, CABLE.path, CABLE.r, 16, K.CABLE);
+	{
+		// (the main cable carries its length along it, for its heartbeat)
+		const P = CABLE.path, along = [0];
+		for (let i = 1; i < P.length; i++) along.push(along[i - 1] + Math.hypot(P[i][0] - P[i - 1][0], P[i][1] - P[i - 1][1], P[i][2] - P[i - 1][2]));
+		CABLE.length = along[along.length - 1];
+		tube(g, CABLE.path, CABLE.r, 16, K.MAINCABLE, along);
+	}
 	{
 		const [sx, sy, sz] = CABLE.socket;
 		g.box(sx, sy - 0.07, sz - 0.07, sx + 0.018, sy + 0.07, sz + 0.07, K.STEEL);
@@ -659,8 +690,8 @@ function buildPolaroids() {
 	const NU = 3, NV = 4;
 	// one card: centre c, its across (ax) and up (ay) directions and the way
 	// it faces (n); hang: [pivot x, y, z, swing]
-	const card = (c, ax, ay, n, sc, tile, hang, curl, style) => {
-		const w = POL.w * sc, h = POL.h * sc, base = pos.length / 3;
+	const card = (c, ax, ay, n, sc, tile, hang, curl, style, dims) => {
+		const w = dims ? dims[0] : POL.w * sc, h = dims ? dims[1] : POL.h * sc, base = pos.length / 3;
 		for (let j = 0; j <= NV; j++) for (let i = 0; i <= NU; i++) {
 			const u = i / NU, v = j / NV;
 			const du = (u - 0.5) * w, dv = (v - 0.5) * h;
@@ -743,6 +774,49 @@ function buildPolaroids() {
 			card([sx + dx, TBL.top + 0.002 + i * 0.0012, sz + dz], [Math.cos(a), 0, Math.sin(a)], [Math.sin(a), 0, -Math.cos(a)], up, 0.26, nextPic(), none, 0.006);
 			k++;
 		});
+	}
+	// THE DARKROOM'S MESS on paper: prints left lying in the wet at the
+	// sink's far end, a contact sheet, strips of negatives (lying about, and
+	// hung to dry from the low line over the dry bench), rings left by wet
+	// jugs and mugs on the tiles, and a sheet of paper out of its box.
+	// (styles: 1 a print, 2 a strip of negatives, 3 a contact sheet, 4 a
+	// stain, 5 blank paper)
+	{
+		const up = [0, 1, 0];
+		const flat = (x, y, z, a, w, h, tile, style, curl) => {
+			card([x, y, z], [Math.cos(a), 0, Math.sin(a)], [Math.sin(a), 0, -Math.cos(a)], up, 1, tile, none, curl || 0, style, [w, h]);
+			k++;
+		};
+		const fl = DARK.basin.floor + 0.002, T = DARK.top + 0.0015;
+		// in the sink past the fixer: wet prints, overlapping, one face down
+		flat(0.36, fl, 4.78, 0.25, 0.2, 0.25, nextPic(), 1, 0.003);
+		flat(0.44, fl + 0.0012, 5.02, -0.4, 0.2, 0.25, nextPic(), 1, 0.004);
+		flat(0.3, fl + 0.0024, 5.3, 1.3, 0.2, 0.25, nextPic(), 5, 0.006);
+		flat(0.47, fl, 5.62, 0.1, 0.2, 0.25, nextPic(), 3, 0.002);
+		flat(0.33, fl + 0.0012, 5.95, -1.0, 0.2, 0.25, nextPic(), 1, 0.005);
+		// a strip of negatives curling on the rim of the developer
+		flat(0.6, fl + 0.003, DARK.trays[0] - 0.4, 0.2, 0.036, 0.22, nextPic(), 2, 0.01);
+		// on the dry bench: a contact sheet, strips of negatives, a sheet of
+		// paper out of the box
+		flat(0.55, T + 0.0005, 9.24, 0.35, 0.2, 0.25, nextPic(), 3, 0.004);
+		flat(0.5, T + 0.001, 11.88, 1.35, 0.036, 0.23, nextPic(), 2, 0.012);
+		flat(0.45, T + 0.0017, 11.97, 1.55, 0.036, 0.23, nextPic(), 2, 0.009);
+		flat(0.36, T + 0.001, 12.08, -0.25, 0.2, 0.25, nextPic(), 5, 0.004);
+		flat(0.43, PAPERBOX.h + T + 0.0012, (PAPERBOX.z0 + PAPERBOX.z1) / 2, 0.06, 0.2, 0.25, nextPic(), 5, 0.002);
+		// rings and drips on the tiles, where wet things stood
+		for (const [x, z, r, a] of [[0.56, 9.38, 0.11, 0.3], [0.2, 9.9, 0.1, 1.1], [0.47, 10.95, 0.16, 2.0], [0.3, 12.0, 0.12, 0.7], [0.5, 8.7, 0.14, 2.4], [0.5, 6.3, 0.18, 1.9]]) {
+			const y = (z < DARK.a[1] ? fl : T) + 0.0004;
+			flat(x, y, z, a, r, r, nextPic(), 4, 0);
+		}
+		// strips of negatives hung to dry from the low line over the bench
+		const ln = DARK.lines[6];
+		for (const u of [0.42, 0.47, 0.53, 0.66]) {
+			const p = darkLineAt(ln, u), hgt = 0.2 + rnd() * 0.06;
+			const [ax, ay] = rot([0, 0, -1], [0, 1, 0], (rnd() - 0.5) * 0.12);
+			card([p[0] + 0.003, p[1] - 0.012 - hgt / 2, p[2]], ax, ay, [1, 0, 0], 1, nextPic(), [p[0], p[1], p[2], -(0.03 + rnd() * 0.04)], 0.008, 2, [0.036, hgt]);
+			pegs.push(p);
+			k++;
+		}
 	}
 	return { pos, nrm, uv, pic, piv, idx, sty, pegs, count: k };
 }
@@ -1156,10 +1230,35 @@ const FRAG = `
 
 	${SHADE}
 
+	// THE CABLE'S HEARTBEAT: light running along it from the socket to the
+	// televisions, beat by beat (lub, dub), the current showing through the
+	// rubber with a crackle. phase counts the beats, period is the time
+	// between them (redtour.js)
+	uniform float pulsePhase, pulsePeriod;
+	vec3 cablePulse(float s, vec3 N, vec3 V) {
+		const float SPEED = 7.5;
+		float g = 0.0;
+		float b0 = floor(pulsePhase);
+		for (int j = 0; j < 7; j++) {
+			float age = (pulsePhase - (b0 - float(j))) * pulsePeriod;
+			float d = s - age * SPEED;
+			float lub = exp(-d * d / 0.3);
+			float dd = d + 0.24 * SPEED;
+			float dub = exp(-dd * dd / 0.24) * 0.65;
+			float wake = d < 0.0 ? exp(d * 0.6) * 0.16 : 0.0;
+			g += (lub + dub + wake) * exp(-age * 0.05);
+		}
+		g *= 0.7 + 0.3 * rhash(vec2(floor(time * 37.0), floor(s * 9.0)));
+		float face = max(0.0, dot(N, V));
+		return (vec3(1.0, 0.16, 0.07) * 0.9 + vec3(1.0, 0.65, 0.45) * 0.6 * g) * g * (0.4 + 0.6 * face);
+	}
+
 	void main() {
 		vec3 lp = v_pos - RO;
 		vec3 N = normalize(v_nrm);
 		int k = int(v_kind + 0.5);
+		bool mainCable = k == 15;
+		if (mainCable) k = 8;
 		bool flr = k == 0 || k == 13;
 		if (yScale < 0.0 && flr) discard;
 		// (the reflection is only of what stands above the floor)
@@ -1251,6 +1350,7 @@ const FRAG = `
 				// black rubber: dull, but its round back catches a red line
 				float fr = pow(1.0 - max(0.0, dot(N, V)), 2.5);
 				col += (amb * 0.5 + lit * 0.2) * fr * 0.5 + amb * 0.05 * pow(max(0.0, dot(reflect(-V, N), normalize(vec3(0.0, 1.0, 0.3)))), 8.0);
+				if (mainCable) col += cablePulse(v_uv.x, N, V);
 			}
 			if (k == 9 || k == 10) {
 				// glazed tiles and steel: the bulb and the tube shine in them
@@ -1340,18 +1440,32 @@ const FRAG = `
 
 // the televisions: their cases (each set's own textures, in the room's red),
 // and their screens: snow, and his memories coming through it
+// HER BREATH (in her model's units): her shoulders rise a little and her
+// back widens as she breathes in; the chair stays still (its vertices are
+// flagged 0, hers -1, in woman_all.bin). Shared by her veil.
+const BREATHE = `
+	vec3 breathe(vec3 p, float b) {
+		float up = smoothstep(0.3, 0.62, p.y);
+		vec2 r = p.xz - vec2(0.035, -0.07);
+		float chest = exp(-pow((p.y - 0.6) / 0.1, 2.0));
+		vec3 d = vec3(0.0, 0.006 * b * up, 0.0);
+		d.xz += normalize(r + vec2(1e-4)) * 0.0045 * b * chest;
+		return p + d;
+	}`;
 const TV_VERT = `
 	precision highp float;
 	uniform mat4 proj, view, model;
-	uniform float yScale;
+	uniform float yScale, breath;
 	attribute vec3 position, normal;
 	attribute vec2 uv;
 	attribute float flag;
 	varying vec3 v_pos, v_nrm, v_eye;
 	varying vec2 v_uv;
 	varying float v_flag;
+	${BREATHE}
 	void main() {
-		vec4 w = model * vec4(position, 1.0);
+		vec3 bp = (breath > 0.0 && flag < -0.5) ? breathe(position, breath) : position;
+		vec4 w = model * vec4(bp, 1.0);
 		v_pos = w.xyz;
 		v_nrm = mat3(model) * normal;
 		v_uv = uv; v_flag = flag;
@@ -1525,20 +1639,43 @@ const TV_FRAG = `
 				lit += film(vec2(0.5)) * 1.4 * max(0.0, dot(N, Lp)) * (0.7 + 0.3 * rnoise(v_uv * 40.0));
 			}
 			if (emit < 0.0) {
-				// cloth: a fine weave and soft folds instead of a smooth
-				// cast surface; the spot wraps round it
-				float wv = rnoise(v_pos.xy * 260.0 + v_pos.z * 90.0) * 0.6 + rnoise(v_pos.zy * 70.0) * 0.4;
-				alb *= 0.78 + 0.4 * wv;
-				vec3 Ls; float ks = spotAt(lp, Ls);
-				lit += vec3(1.0, 0.9, 0.78) * ks * max(0.0, dot(N, Ls) * 0.6 + 0.4) * 0.35;
-				// the bentwood chair's red lacquer: warmed towards a deep
-				// red-orange in the spot, with a soft gleam along its bends
+				col = vec3(0.0);
+				// the bentwood chair's red lacquer (found by its colour)
 				float lac = smoothstep(1.4, 2.2, alb.r / max(alb.g, 0.002)) * smoothstep(0.0015, 0.008, alb.r);
+				// (the chair stops below her shoulders: red there is only the
+				// scan's flecks)
+				lac *= 1.0 - smoothstep(0.86, 0.92, lp.y);
+				// HER CLOTHES: black crepe, not a cast. The scan's colour gives
+				// only the depth of the folds (its red flecks are lost); the
+				// crêpe's crinkle breaks up the light, the fibres catch it at
+				// a grazing angle (a soft sheen round every fold) and the spot
+				// glints in the weave. Above her shoulders, under the veil, it
+				// is her hair: darker, with a faint sheen running down it.
+				float tl = dot(tx.rgb, vec3(0.299, 0.587, 0.114));
+				vec2 cq = v_pos.xy * 210.0 + v_pos.zy * 170.0;
+				float cr = rnoise(cq) - 0.5, cr2 = rnoise(cq * 2.3 + 5.0) - 0.5;
+				vec3 Nc = normalize(N + (vec3(cr, cr2, cr * 0.7 - cr2 * 0.4) * 0.5 + vec3(rnoise(v_pos.zy * 40.0) - 0.5, 0.0, rnoise(v_pos.xy * 40.0) - 0.5) * 0.35) * (1.0 - lac));
+				float hair = smoothstep(1.0, 1.08, lp.y) * (1.0 - lac);
+				vec3 cloth = vec3(0.016, 0.012, 0.014) * (0.6 + 1.6 * clamp(tl * 9.0, 0.0, 1.0));
+				cloth *= mix(1.0, 0.55, hair);
+				alb = mix(alb, cloth, 1.0 - lac);
+				vec3 Ls; float ks = spotAt(lp, Ls);
+				float wrap = max(0.0, dot(Nc, Ls) * 0.6 + 0.4);
+				lit += vec3(1.0, 0.9, 0.78) * ks * wrap * 0.35;
+				float NV = max(0.0, dot(Nc, V));
+				float sheen = pow(1.0 - NV, 3.0);
+				vec3 Hs = normalize(Ls + V);
+				float glint = pow(max(0.0, dot(Nc, Hs)), 28.0) * step(0.62, rnoise(cq * 0.7));
+				// (hair: a sheen along its fall rather than across it)
+				float strand = 0.5 + 0.5 * sin(v_pos.x * 900.0 + rnoise(v_pos.xy * 60.0) * 6.0);
+				col += (1.0 - lac) * (
+					vec3(1.0, 0.9, 0.8) * min(ks, 1.2) * (sheen * 0.05 + glint * 0.03 + hair * strand * pow(max(0.0, dot(Nc, Hs)), 8.0) * 0.04)
+					+ amb * sheen * 0.1 + vec3(0.02, 0.0015, 0.0015) * sheen);
 				alb = mix(alb, alb * vec3(2.2, 2.0, 1.2) + vec3(0.06, 0.012, 0.004), lac);
 				lit += vec3(1.0, 0.85, 0.7) * ks * max(0.0, dot(N, Ls)) * 1.2 * lac;
-				col = vec3(0.0) + pow(max(0.0, dot(N, normalize(Ls + V))), 20.0) * ks * 0.12 * lac * vec3(1.0, 0.7, 0.5);
+				col += pow(max(0.0, dot(N, normalize(Ls + V))), 20.0) * ks * 0.12 * lac * vec3(1.0, 0.7, 0.5);
 			}
-			col = (emit < 0.0 ? col : vec3(0.0)) + alb * (amb + lit) + spotSheen(lp, N, V);
+			col = (emit < 0.0 ? col : vec3(0.0)) + alb * (amb + lit) + spotSheen(lp, N, V) * (emit < 0.0 ? 0.45 : 1.0);
 			// worn plastic and veneer: a red sheen along the edges, as in
 			// the reference, where the room's light rims every set
 			col += (amb * 0.9 + lit * 0.3 + vec3(0.25, 0.02, 0.02)) * fr * 0.45;
@@ -1625,9 +1762,65 @@ const POL_FRAG = `
 		float grime = rnoise(v_uv * vec2(9.0, 11.0) + v_pic * 3.1);
 		vec3 alb = vec3(0.82, 0.78, 0.72) * (0.82 + 0.18 * grime);
 		vec2 u = v_uv;
+		if (v_style > 3.5 && v_style < 4.5) {
+			// a stain: the ring a wet jug or mug left, and drips beside it
+			vec2 c = u - 0.5;
+			float r = length(c * vec2(1.0, 1.0 + 0.1 * sin(v_pic)));
+			float wob = rnoise(vec2(atan(c.y, c.x) * 3.0 + v_pic, v_pic)) * 0.05;
+			// (never a whole ring: broken arcs, as a wet base leaves them)
+			float arc = smoothstep(0.35, 0.65, rnoise(vec2(atan(c.y, c.x) * 1.6 + v_pic * 3.0, v_pic)));
+			float ring = smoothstep(0.03, 0.0, abs(r - 0.36 - wob)) * 0.8 * arc + smoothstep(0.38, 0.15, r) * 0.1 * rnoise(u * 7.0 + v_pic);
+			float drip = smoothstep(0.08, 0.0, length(c - vec2(0.38, -0.2) * (0.6 + 0.4 * fract(v_pic * 0.37))));
+			float a = max(ring, drip * 0.8) * (0.6 + 0.4 * rnoise(u * 18.0 + v_pic));
+			if (a < 0.12) discard;
+			vec3 lp = v_pos - RO;
+			vec3 N = vec3(0.0, 1.0, 0.0), V = normalize(v_eye - v_pos);
+			vec3 amb = ambient(lp, N) + bounce(lp, N);
+			// dried chemistry: brown, a little glossy where still wet
+			vec3 col = vec3(0.16, 0.1, 0.05) * amb * 0.8 + amb * 0.25 * pow(1.0 - max(0.0, dot(N, V)), 4.0);
+			gl_FragColor = vec4(col, 1.0);
+			return;
+		}
+		if (v_style > 1.5 && v_style < 2.5) {
+			// a strip of negatives: the film's dark base, its sprocket holes
+			// (holes: nothing there), the frames' pictures in reverse
+			vec2 q = vec2(u.x, u.y * 6.0);
+			float hx = min(u.x, 1.0 - u.x);
+			vec2 hq = vec2(hx, fract(q.y * 4.0));
+			if (hx < 0.13 && hx > 0.04 && hq.y > 0.3 && hq.y < 0.7) discard;
+			vec3 film = vec3(0.32, 0.27, 0.22);
+			float fy = fract(q.y), fi = floor(q.y);
+			if (hx > 0.17 && fy > 0.05 && fy < 0.95) {
+				float k = mod(v_pic + fi * 7.0, 55.0);
+				vec2 tile = vec2(mod(k, 8.0), floor(k / 8.0));
+				vec2 pu = vec2((u.x - 0.17) / 0.66, (fy - 0.05) / 0.9);
+				vec3 ph = texture2D(polTex, (tile + clamp(pu.yx, 0.01, 0.99)) / 8.0).rgb;
+				film = (vec3(0.9) - ph * 0.85) * vec3(0.55, 0.47, 0.38) + 0.04;
+			}
+			alb = film * 0.55;
+		} else if (v_style > 2.5 && v_style < 3.5) {
+			// a contact sheet: the roll printed whole, frame by frame, in rows
+			vec2 g = vec2(u.x * 4.0, u.y * 7.0);
+			vec2 cell = floor(g), fq = fract(g);
+			bool inside = u.x > 0.05 && u.x < 0.95 && u.y > 0.04 && u.y < 0.96;
+			alb = vec3(0.84, 0.81, 0.76) * (0.85 + 0.15 * grime);
+			if (inside) {
+				alb = vec3(0.05);
+				if (fq.x > 0.08 && fq.x < 0.92 && fq.y > 0.12 && fq.y < 0.88) {
+					float k = mod(v_pic + cell.x + cell.y * 4.0, 55.0);
+					vec2 tile = vec2(mod(k, 8.0), floor(k / 8.0));
+					vec2 pu = vec2((fq.x - 0.08) / 0.84, 1.0 - (fq.y - 0.12) / 0.76);
+					vec3 ph = texture2D(polTex, (tile + clamp(pu, 0.01, 0.99)) / 8.0).rgb;
+					alb = vec3(dot(ph, vec3(0.3, 0.59, 0.11))) * 0.8 + 0.02;
+				}
+			}
+		} else if (v_style > 4.5) {
+			// blank photographic paper, its glossy face up
+			alb = vec3(0.86, 0.84, 0.8) * (0.9 + 0.1 * grime);
+		}
 		// a polaroid's frame, or a darkroom print's thin even border
 		vec4 fr4 = v_style > 0.5 ? vec4(0.06, 0.94, 0.05, 0.95) : vec4(0.065, 0.935, 0.235, 0.94);
-		bool inPic = !back && u.x > fr4.x && u.x < fr4.y && u.y > fr4.z && u.y < fr4.w;
+		bool inPic = !back && v_style < 1.5 && u.x > fr4.x && u.x < fr4.y && u.y > fr4.z && u.y < fr4.w;
 		if (inPic) {
 			vec2 pu = vec2((u.x - fr4.x) / (fr4.y - fr4.x), 1.0 - (u.y - fr4.z) / (fr4.w - fr4.z));
 			vec2 tile = vec2(mod(v_pic, 8.0), floor(v_pic / 8.0));
@@ -1888,6 +2081,13 @@ module.exports = function (regl) {
 			film_.clip = c;
 		}
 		const still = now < film_.stillUntil;
+		// what is on the gate: this clip, or this still (the stills change
+		// every 3.4 s of the film's clock, see film()); every change, a click
+		const gate = WARN.freeze ? film_.gate : (still ? 's' + Math.floor(regl.now() / 3.4) : 'c' + c);
+		if (gate !== film_.gate) {
+			if (film_.gate !== undefined && ROOM_EV.click) ROOM_EV.click(still ? 1 : 0);
+			film_.gate = gate;
+		}
 		if (WARN.freeze || still) { if (!v.paused) v.pause(); } else if (v.paused) v.play().catch(() => {});
 		film_.on = still ? 0 : 1;
 		if (!still) { try { vidTexR.subimage(v); } catch (e) { film_.on = 0; } }
@@ -1919,6 +2119,8 @@ module.exports = function (regl) {
 			return t;
 		},
 		spotK: () => SPOTK.k,
+		pulsePhase: () => PULSE.phase,
+		pulsePeriod: () => PULSE.period,
 		warnS: () => WARN.s,
 		warnN: () => WARN.n,
 		glitchK: () => WARN.glitch
@@ -1994,6 +2196,7 @@ module.exports = function (regl) {
 			seed: regl.prop('seed'),
 			dark: regl.prop('dark'),
 			emit: (ctx, p) => p.emit || 0,
+			breath: (ctx, p) => p.breath || 0,
 			order: (ctx, p) => (p.order === undefined ? -1 : p.order),
 			slot: (ctx, p) => p.slot || 0,
 			letterTex: () => letterTex,
@@ -2077,6 +2280,15 @@ module.exports = function (regl) {
 	const K_ = PROJ.tableK;
 	const tableM = [K_, 0, 0, 0, 0, K_, 0, 0, 0, 0, K_, 0, O[0] + W / 2, O[1], O[2] + 15.0, 1];
 	const props = {};
+	// her breath: in (a little quicker), out (slower), now and then a deeper
+	// one, a sigh
+	let breathNow = 0;
+	const breathAt = (t) => {
+		const ph = t / 4.6, n = Math.floor(ph), fr = ph - n;
+		const h = Math.sin(n * 91.7) * 43758.5453, deep = (h - Math.floor(h)) > 0.78 ? 1.7 : 1.0;
+		const sm = (x) => { x = Math.max(0, Math.min(1, x)); return x * x * (3 - 2 * x); };
+		return (fr < 0.38 ? sm(fr / 0.38) : 1 - sm((fr - 0.38) / 0.5)) * deep;
+	};
 	const pTex = ['res/redroom/proj_0.webp'];
 	loadPart('res/redroom/proj_body.bin', pTex).then((m) => { props.body = m; }).catch((e) => console.error(e));
 	loadPart('res/redroom/proj_feed.bin', pTex).then((m) => { props.feed = m; }).catch((e) => console.error(e));
@@ -2210,7 +2422,31 @@ module.exports = function (regl) {
 	loadPart('res/redroom/woman_all.bin', ['res/redroom/woman_0.webp']).then((m) => { props.woman = m; }).catch((e) => console.error(e));
 	const womanM = mul(at(WOMAN.x, 0, WOMAN.z, WOMAN.yaw), scl(WOMAN.k));
 	TABLE_PROPS.push(['woman', womanM, 2.6]);
-	TABLE_PROPS.push(['camera', at(0.15, DARK.shelf.y, (DARK.shelf.z0 + DARK.shelf.z1) / 2, PI2 - 0.4), 1.7]);
+	TABLE_PROPS.push(['camera', at(DARK.cam.x, DARK.cam.y, DARK.cam.z, PI2 + 0.35), 1.7]);
+	// THE DARKROOM'S CLUTTER (his downloads; Sketchfab, see the readme): on
+	// the dry bench the enlarger, its column to the wall, and round it the
+	// mess of someone who works late: a bundle of letters, a mug, books
+	// stacked and one left open, an ashtray. [model, where, how dark, part]
+	loadPart('res/redroom/enlarger_all.bin', ['res/redroom/enlarger_0.webp']).then((m) => { props.enlarger = m; }).catch((e) => console.error(e));
+	loadPart('res/redroom/letters_all.bin', ['res/redroom/letters_0.webp']).then((m) => { props.letters = m; }).catch((e) => console.error(e));
+	loadPart('res/redroom/cup_all.bin', ['res/redroom/cup_0.webp']).then((m) => { props.cup = m; }).catch((e) => console.error(e));
+	loadPart('res/redroom/ashtray_all.bin', ['res/redroom/ashtray_0.webp']).then((m) => { props.ashtray = m; }).catch((e) => console.error(e));
+	loadPart('res/redroom/books_all.bin', ['res/redroom/books_0.webp']).then((m) => { props.books = m; }).catch((e) => console.error(e));
+	{
+		const T = DARK.top;
+		TABLE_PROPS.push(
+			['enlarger', at(0.39, T, 10.45, Math.PI - 0.04), 1.25],
+			['letters', at(0.45, T + 0.001, 9.72, 0.55), 1.0],
+			['cup', at(0.19, T, 9.66, 2.3), 1.3],
+			// the stack of books, an open one beside it
+			['books', at(0.2, T, 11.08, 0.15), 1.3, 0],
+			['books', at(0.53, T, 11.16, -0.45), 1.3, 5],
+			// two more lying one on the other, askew
+			['books', at(0.22, T, 11.72, 1.45), 1.3, 6],
+			['books', at(0.24, T + 0.058, 11.75, 1.8), 1.3, 7],
+			['ashtray', at(0.6, T, 11.62, 0.7), 1.2]
+		);
+	}
 	const drawDark = () => {
 		const batch = [];
 		for (const [name, model] of DARK_PROPS) {
@@ -2219,14 +2455,15 @@ module.exports = function (regl) {
 			m.parts.forEach((p, i) => batch.push({ vb: m.vb, el: m.el, offset: p.offset, count: p.count, tex: p.tex, model, seed: 0, dark: name === 'jug' || name === 'can' ? 0.85 : 0.7, emit: name === 'bulb' && p.mat === 0 ? 1.6 : 0 }));
 		}
 		const hide = herHidden();
-		for (const [name, model, dk] of TABLE_PROPS) {
+		for (const [name, model, dk, part] of TABLE_PROPS) {
 			const m = props[name];
 			if (!m || (hide && name === 'woman')) continue;
-			for (const p of m.parts) batch.push({ vb: m.vb, el: m.el, offset: p.offset, count: p.count, tex: p.tex, model, seed: 0, dark: dk, emit: name === 'woman' ? -1 : 0 });
+			m.parts.forEach((p, i) => { if (part === undefined || part === i) batch.push({ vb: m.vb, el: m.el, offset: p.offset, count: p.count, tex: p.tex, model, seed: 0, dark: dk, emit: name === 'woman' ? -1 : 0, breath: name === 'woman' ? breathNow : 0 }); });
 		}
 		if (batch.length) tvCmd(batch);
 		flameDraw();
 		if (props.woman && !hide) laceDraw();
+		if (props.woman && veil.n && !hide) veilDraw();
 		if (SPOTK.k > 0.001 && !reflectedNow) { spotConeDraw(); moteDraw(); }
 		liqDraw();
 		pegDraw();
@@ -2303,6 +2540,126 @@ module.exports = function (regl) {
 		count: lacePos.length / 3,
 		cull: { enable: false },
 		uniforms: { ...SHARED, model: () => womanM, tvLight: () => tvLight }
+	});
+
+	// ---- HER VEIL: sheer black net, pinned at her crown and falling to her
+	// shoulders, a band of lace at its scalloped hem. Its drape was worked
+	// out once as cloth over her (res/redroom/veil.bin: a circle of net let
+	// fall on her head, scripts in the readme); here it breathes with her,
+	// gathers into soft folds where it hangs free, and stirs in the draught
+	// from the projector. Face on it is thin enough to see her shape
+	// through; where it turns away it thickens to black. ----------------
+	const veil = { n: 0, vb: null, el: null };
+	fetch('res/redroom/veil.bin').then((r) => r.arrayBuffer()).then((buf) => {
+		const hd = new Uint32Array(buf, 0, 4);
+		const nV = hd[0], nI = hd[1], nS = hd[2];
+		const vOff = 16 + nS * 12;
+		veil.vb = regl.buffer(new Float32Array(buf, vOff, nV * 9));
+		veil.el = regl.elements({ data: new Uint16Array(buf.slice(vOff + nV * 36, vOff + nV * 36 + nI * 2)), type: 'uint16' });
+		veil.n = nI;
+	}).catch((e) => console.error('Her veil did not load', e));
+	const veilDraw = regl({
+		vert: `
+			precision highp float;
+			uniform mat4 proj, view, model;
+			uniform float yScale, time, breath;
+			attribute vec3 position, normal;
+			attribute vec2 uv;
+			varying vec3 v_pos, v_nrm, v_eye;
+			varying vec2 v_uv;
+			varying float v_fold;
+			${BREATHE}
+			void main() {
+				vec3 p = position;
+				vec3 n = normalize(normal);
+				float u = uv.x * 6.28318, v = uv.y;
+				// where it hangs free of her head, it gathers into folds...
+				float free = smoothstep(0.42, 1.0, v);
+				float fold = sin(u * 13.0 + sin(u * 3.0) * 1.6) * 0.6 + sin(u * 22.0 + 1.7) * 0.28 + sin(u * 5.0 + 0.4) * 0.3;
+				// ...and the folds move: slow waves running round and down it
+				float wv = sin(time * 0.8 + u * 5.0 - v * 4.0) * 0.55 + sin(time * 1.31 + u * 9.0 + v * 3.0) * 0.3 + sin(time * 0.37 + u * 2.0) * 0.4;
+				p += n * free * (fold * 0.0075 + wv * 0.0042 * free);
+				// the draught: the hem swings a little, now this way, now that
+				float sway = sin(time * 0.55 + u * 0.5) * 0.6 + sin(time * 1.1 + 2.0) * 0.4;
+				p.x += sway * 0.004 * free * free;
+				p.z += cos(time * 0.47 + u) * 0.0025 * free * free;
+				p = breathe(p, breath);
+				v_fold = fold * free;
+				vec4 w = model * vec4(p, 1.0);
+				v_pos = w.xyz; v_uv = uv;
+				v_nrm = mat3(model) * n;
+				vec3 t = view[3].xyz;
+				v_eye = -vec3(dot(view[0].xyz, t), dot(view[1].xyz, t), dot(view[2].xyz, t));
+				v_eye.y *= yScale;
+				vec3 q = w.xyz; q.y *= yScale;
+				gl_Position = proj * view * vec4(q, 1.0);
+			}`,
+		frag: `
+			#extension GL_OES_standard_derivatives : enable
+			precision highp float;
+			uniform float time;
+			varying vec3 v_pos, v_nrm, v_eye;
+			varying vec2 v_uv;
+			varying float v_fold;
+			${COMMON}
+			${SHADE}
+			void main() {
+				float u = v_uv.x, v = v_uv.y;
+				// the scalloped hem
+				float sc = abs(sin(u * 3.14159 * 72.0));
+				float edge = 0.985 - 0.022 * (1.0 - sc);
+				if (v > edge) discard;
+				// the lace band: flowers in thread on a fine net, open between
+				float lace = smoothstep(0.83, 0.86, v);
+				if (lace > 0.0) {
+					vec2 p = vec2(u * 72.0, (v - 0.83) * 26.0);
+					float n = rfbm(p * 0.9 + 3.7);
+					float petals = abs(fract(n * 6.0) - 0.5);
+					float flower = smoothstep(0.3, 0.38, petals) * smoothstep(0.4, 0.56, n);
+					float scroll = smoothstep(0.06, 0.0, abs(fract(p.x * 0.5 + sin(p.y * 2.2) * 0.3) - 0.5) - 0.04 * sc);
+					float hemline = smoothstep(0.006, 0.0, abs(v - edge + 0.004)) + smoothstep(0.004, 0.0, abs(v - 0.845));
+					float thread = max(max(flower, scroll * 0.8), hemline);
+					if (thread < 0.45) discard;
+				}
+				vec3 lp = v_pos - RO;
+				vec3 N = normalize(v_nrm);
+				vec3 V = normalize(v_eye - v_pos);
+				if (dot(N, V) < 0.0) N = -N;
+				// a fine net: thread and hole, fading to its average where the
+				// mesh is finer than the screen can show
+				vec2 g = vec2(u * 1400.0, v * 420.0);
+				vec2 gq = abs(fract(g) - 0.5);
+				float fw = length(fwidth(g));
+				float net = mix(step(0.32, max(gq.x, gq.y)), 0.36, clamp(fw * 3.0, 0.0, 1.0));
+				float facing = abs(dot(N, V));
+				// thin face on, near black where it turns away or lies in a fold
+				float a = mix(0.97, 0.5 + 0.22 * net, smoothstep(0.1, 0.85, facing));
+				a = mix(a, 0.96, lace);
+				a = clamp(a + max(0.0, -v_fold) * 0.12, 0.0, 1.0);
+				vec3 amb = ambient(lp, N) + bounce(lp, N);
+				vec3 Ls; float ks = spotAt(lp, Ls);
+				// the spot shining through it from above and behind
+				float through = max(0.0, dot(-N, Ls)) * (1.0 - facing);
+				vec3 alb = vec3(0.009, 0.006, 0.007);
+				vec3 col = alb * (amb + vec3(1.0, 0.9, 0.8) * ks * max(0.0, dot(N, Ls) * 0.6 + 0.4) * 0.3)
+					+ spotSheen(lp, N, V) * 0.55
+					+ vec3(1.0, 0.86, 0.74) * ks * through * 0.03
+					+ amb * pow(1.0 - facing, 3.0) * 0.05
+					+ vec3(0.02, 0.0015, 0.0015) * (1.0 - facing);
+				float dist = length(v_eye - v_pos);
+				col = mix(col, vec3(0.06, 0.004, 0.005), (1.0 - exp(-dist * 0.035)) * 0.55);
+				gl_FragColor = vec4(col, a);
+			}`,
+		attributes: {
+			position: { buffer: () => veil.vb, stride: 36, offset: 0 },
+			normal: { buffer: () => veil.vb, stride: 36, offset: 12 },
+			uv: { buffer: () => veil.vb, stride: 36, offset: 24 }
+		},
+		elements: () => veil.el,
+		cull: { enable: false },
+		depth: { enable: true, mask: false },
+		blend: { enable: true, func: { srcRGB: 'src alpha', dstRGB: 'one minus src alpha', srcAlpha: 'one', dstAlpha: 'one minus src alpha' } },
+		uniforms: { ...SHARED, model: () => womanM, breath: () => breathNow, tvLight: () => tvLight }
 	});
 
 	// ---- the spot's cone in the haze: nested cones (each fainter at its own
@@ -2597,6 +2954,7 @@ module.exports = function (regl) {
 		reflectedNow = reflected;
 		// the snow's light flickers with the screens
 		const t = performance.now() / 1000;
+		breathNow = breathAt(t);
 		const fl = 0.8 + 0.12 * Math.sin(t * 47) * Math.sin(t * 3.1) + 0.08 * Math.sin(t * 23.0 + 1.3);
 		tvLight[0] = 0.8 * fl; tvLight[1] = 0.84 * fl; tvLight[2] = 0.95 * fl;
 		signNow = signFlicker(typeof window !== 'undefined' && window.__tvTime != null ? window.__tvTime : t);
@@ -2648,5 +3006,9 @@ Object.assign(module.exports, {
 	// the warning on the sets (see WARN)
 	setWarn(o) { Object.assign(WARN, o); },
 	// the camera's eye (world), or null
-	setViewer(e) { VIEWER.eye = e ? e.slice() : null; }
+	setViewer(e) { VIEWER.eye = e ? e.slice() : null; },
+	// the cable's heartbeat: beats so far, seconds between them
+	setPulse(phase, period) { PULSE.phase = phase; PULSE.period = period; },
+	// the projector's click (fn(still)), heard through the tour
+	onClick(fn) { ROOM_EV.click = fn; }
 });

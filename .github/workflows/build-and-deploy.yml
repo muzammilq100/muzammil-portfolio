@@ -33,6 +33,20 @@ jobs:
           folder: dist
           clean-exclude: preview
           token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Storage for the conservatory's roses (Workers KV)
+        if: ${{ env.CF_TOKEN != '' && env.CF_ACCOUNT != '' }}
+        run: |
+          API="https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT/storage/kv/namespaces"
+          ID=$(curl -fsS -H "Authorization: Bearer $CF_TOKEN" "$API?per_page=100" | jq -r '.result[] | select(.title=="muzammil-gallery-roses") | .id' | head -n 1 || true)
+          if [ -z "$ID" ]; then
+            ID=$(curl -fsS -X POST -H "Authorization: Bearer $CF_TOKEN" -H "Content-Type: application/json" --data '{"title":"muzammil-gallery-roses"}' "$API" | jq -r '.result.id' || true)
+          fi
+          if [ -n "$ID" ] && [ "$ID" != "null" ]; then
+            printf 'name = "muzammil-gallery"\npages_build_output_dir = "dist"\ncompatibility_date = "2024-09-23"\n\n[[kv_namespaces]]\nbinding = "ROSES"\nid = "%s"\n' "$ID" > wrangler.toml
+            echo "The roses are kept in KV namespace $ID"
+          else
+            echo "::warning::Could not set up storage for the roses (the Cloudflare token needs 'Workers KV Storage: Edit'). Each visitor will see only their own roses."
+          fi
       - name: Publish to Cloudflare Pages
         if: ${{ env.CF_TOKEN != '' && env.CF_ACCOUNT != '' }}
         env:

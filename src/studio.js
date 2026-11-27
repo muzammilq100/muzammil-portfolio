@@ -3592,6 +3592,215 @@ module.exports = function (regl) {
 		})
 		.catch((e) => console.error(e));
 
+	// THE ROSES LEFT BEFORE: every visitor's rose stays on the grave
+	// (conservatory.js keeps the list, on the site's server). The newest six
+	// are fresh; each one older than those is darker and has wilted, its
+	// head drooping and shrunk, a few of its petals fallen on the stone, the
+	// more so the older it is. A lighter copy of the rose (rose_lo.bin) is
+	// used for them, all of them in one buffer, rebuilt when the list
+	// changes; a change is shown over a few seconds (the new one wilting).
+	let rosePile = null;           // { cmd, n } once built
+	let roseLo = null;             // the light rose: { pos, uv, nrm, idx } (model space)
+	const PILE = { list: null, first: 0, hide: 0, from: 0, at: 0, dur: 4.5, pending: null };
+	sfetch('res/conservatory/rose_lo.bin')
+		.then((r) => { if (!r.ok) throw new Error('Could not load the roses'); return r.arrayBuffer(); })
+		.then((buf) => {
+			const dv = new DataView(buf);
+			const nV = dv.getUint32(4, true), nI = dv.getUint32(8, true);
+			let off = 12;
+			const pos = new Float32Array(buf.slice(off, off + nV * 12)); off += nV * 12;
+			const uv = new Uint16Array(buf.slice(off, off + nV * 4)); off += nV * 4;
+			const idx = new Uint16Array(buf.slice(off, off + nI * 2)); off += nI * 2;
+			const nr = new Int8Array(buf.slice(off, off + nV * 3));
+			roseLo = { pos, uv, idx, nr, nV, nI };
+			if (PILE.pending) { const q = PILE.pending; PILE.pending = null; buildPile(q.list, q.first, q.hide, false); }
+		})
+		.catch((e) => console.error(e));
+	const PILE_MAX = 48;
+	const FRESH = 6;
+	// how far gone the rose at position i (0 the oldest) of n is: 0 fresh;
+	// the first to go is already dark and drooping, and it goes on from there
+	const wiltOf = (i, n) => { const age = n - 1 - i; return age < FRESH ? 0 : Math.min(1, 0.5 + (age - FRESH) * 0.045); };
+	// where the k-th rose ever left lies: scattered over the ledger towards
+	// its foot, round the place the visitor's own will lie, heaping as they
+	// come round again
+	const roseSpot = (k, seed) => {
+		const rr = (x) => { const h = Math.sin(x * 12.9898 + seed * 78.233) * 43758.5453; return h - Math.floor(h); };
+		const lap = Math.floor(k / PILE_MAX), m = ((k % PILE_MAX) * 29) % PILE_MAX;
+		const a = m * 2.39996 + lap * 1.1 + rr(1) * 0.5;
+		const r = Math.sqrt((m + 0.6) / PILE_MAX);
+		let x = GRAVE.cx + Math.cos(a) * r * 0.34 + (rr(2) - 0.5) * 0.06;
+		let z = GRAVE.cz + 0.5 + Math.sin(a) * r * 0.55 + (rr(3) - 0.5) * 0.06;
+		const dx = x - FLOWER.at[0], dz = z - FLOWER.at[2], d = Math.hypot(dx, dz);
+		if (d < 0.16) { x = FLOWER.at[0] + dx / (d || 1) * 0.16; z = FLOWER.at[2] + dz / (d || 1) * 0.16; }
+		return { x, z, yaw: rr(4) * Math.PI * 2, roll: (rr(5) - 0.5) * 0.35, y: GRAVE.top - 0.002 + lap * 0.012 + (m % 3) * 0.006, k: 0.72 + rr(6) * 0.12 };
+	};
+	// one rose's vertex in its wilt w (model space), then placed
+	const wiltPoint = (x, y, z, w, out) => {
+		if (w > 0 && z < -0.08) {
+			// its head droops towards the stone (turned about the top of the
+			// stem), shrinks and slumps
+			const a = w * 0.55 * Math.min(1, (-0.08 - z) / 0.1);
+			const py = 0.06, pz = -0.08, c = Math.cos(a), s2 = Math.sin(a);
+			const yy = y - py, zz = z - pz;
+			y = py + yy * c + zz * s2; z = pz + zz * c - yy * s2;
+			const hc = [0, 0.05, -0.19], sh = 1 - 0.2 * w;
+			x = hc[0] + (x - hc[0]) * sh; y = hc[1] + (y - hc[1]) * sh * (1 - 0.15 * w); z = hc[2] + (z - hc[2]) * sh;
+		}
+		out[0] = x; out[1] = Math.max(0.002, y); out[2] = z;
+		return out;
+	};
+	function buildPile(list, first, hide, animate) {
+		if (!roseLo) { PILE.pending = { list, first, hide }; return; }
+		const n = list.length;
+		const shown = Math.min(PILE_MAX, n - hide);
+		const lo = Math.max(0, n - hide - shown);
+		const prevW = PILE.list ? (i) => { const j = i + (first - PILE.first); return j >= 0 && j < PILE.list.length ? wiltOf(j, PILE.list.length) : 0; } : null;
+		const R = roseLo, nV = R.nV, nI = R.nI;
+		const PET = 5;
+		const count = shown;
+		const totalV = count * (nV + PET * 4), totalI = count * (nI + PET * 6);
+		const posA = new Float32Array(totalV * 3), posB = new Float32Array(totalV * 3), nrm = new Float32Array(totalV * 3);
+		const uv = new Float32Array(totalV * 2), wA = new Float32Array(totalV), wB = new Float32Array(totalV);
+		const shape = new Float32Array(totalV * 2).fill(0.5);
+		const idx = new Uint32Array(totalI);
+		let v = 0, ii = 0;
+		const tmp = [0, 0, 0];
+		for (let q = 0; q < count; q++) {
+			const i = lo + q;
+			const k = first + i;
+			const sp = roseSpot(k, list[i].s || 0);
+			const w1 = wiltOf(i, n), w0 = animate && prevW ? prevW(i) : w1;
+			const cy = Math.cos(sp.yaw), sy = Math.sin(sp.yaw), cr = Math.cos(sp.roll), sr = Math.sin(sp.roll);
+			const place = (p, outArr, o) => {
+				// roll (about z, a little onto its side), yaw, scale, then where
+				let x = p[0] * cr - p[1] * sr, y = p[0] * sr + p[1] * cr; const z = p[2];
+				x *= sp.k; y *= sp.k; const zz = z * sp.k;
+				outArr[o] = O[0] + sp.x + x * cy + zz * sy; outArr[o + 1] = O[1] + sp.y + Math.max(0, y); outArr[o + 2] = O[2] + sp.z - x * sy + zz * cy;
+			};
+			const base = v;
+			for (let j = 0; j < nV; j++, v++) {
+				const px = R.pos[j * 3], py = R.pos[j * 3 + 1], pz = R.pos[j * 3 + 2];
+				place(wiltPoint(px, py, pz, w0, tmp), posA, v * 3);
+				place(wiltPoint(px, py, pz, w1, tmp), posB, v * 3);
+				const nx = R.nr[j * 3] / 127, ny = R.nr[j * 3 + 1] / 127, nz = R.nr[j * 3 + 2] / 127;
+				const rx = nx * cr - ny * sr, ry = nx * sr + ny * cr;
+				nrm[v * 3] = rx * cy + nz * sy; nrm[v * 3 + 1] = ry; nrm[v * 3 + 2] = -rx * sy + nz * cy;
+				uv[v * 2] = R.uv[j * 2] / 65535; uv[v * 2 + 1] = 1 - R.uv[j * 2 + 1] / 65535;
+				wA[v] = w0; wB[v] = w1;
+			}
+			for (let j = 0; j < nI; j++) idx[ii++] = base + R.idx[j];
+			// its fallen petals: small curled cards by its head, there only
+			// once it has wilted
+			const rr = (x) => { const h = Math.sin(x * 7.13 + k * 3.71) * 43758.5453; return h - Math.floor(h); };
+			for (let pp = 0; pp < PET; pp++) {
+				const hx = (rr(pp) - 0.5) * 0.2, hz = -0.19 * sp.k + (rr(pp + 9) - 0.5) * 0.2;
+				const ang = rr(pp + 3) * 6.283, sz = 0.011 + rr(pp + 5) * 0.008;
+				const pb = v;
+				for (let c = 0; c < 4; c++) {
+					const u = c === 1 || c === 2 ? 1 : 0, t = c >= 2 ? 1 : 0;
+					const lx = (u - 0.5) * sz * 2, lz = (t - 0.5) * sz * 2.4;
+					const cx2 = hx + lx * Math.cos(ang) - lz * Math.sin(ang), cz2 = hz + lx * Math.sin(ang) + lz * Math.cos(ang);
+					const wx = O[0] + sp.x + cx2 * cy + cz2 * sy, wz = O[2] + sp.z - cx2 * sy + cz2 * cy;
+					const wy = O[1] + GRAVE.top + 0.0015 + (u === t ? 0.004 : 0.0);
+					posA[v * 3] = wx; posA[v * 3 + 1] = wy - (w0 > 0 ? 0 : 0.03); posA[v * 3 + 2] = wz;
+					posB[v * 3] = wx; posB[v * 3 + 1] = wy - (w1 > 0 ? 0 : 0.03); posB[v * 3 + 2] = wz;
+					nrm[v * 3 + 1] = 1;
+					uv[v * 2] = 0.82 + u * 0.03; uv[v * 2 + 1] = 0.53 + t * 0.035;
+					shape[v * 2] = u; shape[v * 2 + 1] = t;
+					wA[v] = w0 > 0 ? -1 : -2; wB[v] = w1 > 0 ? -1 : -2;
+					v++;
+				}
+				idx[ii++] = pb; idx[ii++] = pb + 1; idx[ii++] = pb + 2; idx[ii++] = pb; idx[ii++] = pb + 2; idx[ii++] = pb + 3;
+			}
+		}
+		if (rosePile) { rosePile.bufs.forEach((b) => b.destroy()); }
+		const bufs = [regl.buffer(posA), regl.buffer(posB), regl.buffer(nrm), regl.buffer(uv), regl.buffer(wA), regl.buffer(wB), regl.buffer(shape)];
+		const el = regl.elements({ data: idx, type: 'uint32' });
+		bufs.push(el);
+		PILE.list = list; PILE.first = first; PILE.hide = hide;
+		PILE.at = animate ? null : -1;
+		rosePile = { bufs, el, count: ii };
+	}
+	const drawPile = regl({
+		vert: `
+			precision highp float;
+			uniform mat4 proj, view;
+			uniform float yScale, mixK;
+			attribute vec3 posA, posB, normal;
+			attribute vec2 uv;
+			attribute float wiltA, wiltB;
+			attribute vec2 shape;
+			varying vec3 v_pos, v_nrm, v_eye;
+			varying vec2 v_uv, v_shape;
+			varying float v_wilt, v_petal;
+			void main() {
+				v_shape = shape;
+				vec3 p = mix(posA, posB, mixK);
+				float w = mix(wiltA, wiltB, mixK);
+				v_petal = w < -0.5 ? 1.0 : 0.0;
+				// (a petal not yet fallen: under the stone)
+				v_wilt = w < -0.5 ? 0.75 : w;
+				v_pos = p; v_nrm = normal; v_uv = uv;
+				vec3 t = view[3].xyz;
+				v_eye = -vec3(dot(view[0].xyz, t), dot(view[1].xyz, t), dot(view[2].xyz, t));
+				v_eye.y *= yScale;
+				vec3 q = p; q.y *= yScale;
+				gl_Position = proj * view * vec4(q, 1.0);
+			}`,
+		frag: `
+			precision highp float;
+			uniform float night, time;
+			uniform sampler2D flowerTex;
+			varying vec3 v_pos, v_nrm, v_eye;
+			varying vec2 v_uv, v_shape;
+			varying float v_wilt, v_petal;
+			${LIGHT}
+			void main() {
+				if (v_petal > 0.5) {
+					// a petal: rounded, a little notched at its tip
+					vec2 q = (v_shape - 0.5) * vec2(2.0, 2.0);
+					float r = length(q * vec2(1.0, 0.85 + 0.25 * q.y));
+					if (r > 0.95 - 0.12 * smoothstep(0.6, 1.0, q.y) * (1.0 - abs(q.x) * 3.0)) discard;
+				}
+				vec3 V = normalize(v_eye - v_pos);
+				vec3 N = normalize(v_nrm);
+				if (dot(N, V) < 0.0) N = -N;
+				vec3 tc = texture2D(flowerTex, v_uv).rgb;
+				vec3 base = tc * tc * 1.5;
+				// wilting: the red darkening to the brown-black of a dried rose,
+				// the green going to straw
+				float w = v_wilt;
+				float l = dot(base, vec3(0.3, 0.55, 0.15));
+				vec3 dried = vec3(l) * vec3(1.25, 0.55, 0.42) + vec3(0.012, 0.004, 0.003);
+				base = mix(base, dried, 0.75 * w) * mix(1.0, 0.42, w);
+				vec3 spec; float sv;
+				vec3 light = studioLight(v_pos, N, V, 0.35, spec, sv);
+				float rim = pow(1.0 - max(dot(N, V), 0.0), 3.0);
+				vec3 col = base * (light + vec3(0.05, 0.03, 0.035)) + spec * 0.12 * (1.0 - 0.7 * w) + base * rim * 0.35 * (light + 0.2) * (1.0 - 0.5 * w);
+				col = studioAir(col, v_pos, v_eye);
+				gl_FragColor = vec4(sqrt(max(col, 0.0)), 1.0);
+			}`,
+		attributes: {
+			posA: () => rosePile.bufs[0], posB: () => rosePile.bufs[1], normal: () => rosePile.bufs[2],
+			uv: () => rosePile.bufs[3], wiltA: () => rosePile.bufs[4], wiltB: () => rosePile.bufs[5], shape: () => rosePile.bufs[6]
+		},
+		elements: () => rosePile.el,
+		count: () => rosePile.count,
+		uniforms: { flowerTex: () => flowerTex.tex, mixK: () => PILE.k === undefined ? 1 : PILE.k },
+		cull: { enable: false }
+	});
+	pileDraw = () => {
+		if (!rosePile) return;
+		const now = performance.now() / 1000;
+		if (PILE.at === null) PILE.at = now + 0.6;
+		PILE.k = PILE.at < 0 ? 1 : Math.max(0, Math.min(1, (now - PILE.at) / PILE.dur));
+		PILE.k = PILE.k * PILE.k * (3 - 2 * PILE.k);
+		drawPile();
+	};
+	setRosesImpl = (list, first, hide, animate) => buildPile(list || [], first || 0, hide || 0, !!animate);
+	if (ROSES_WAITING.a) { const a = ROSES_WAITING.a; ROSES_WAITING.a = null; setRosesImpl(...a); }
+
 	// the leaves: cut-out cards from the tree's leaf texture
 	const leafTex = loadTexture(regl, 'res/tree/leaves.webp');
 	const lv = buildLeaves();
@@ -4835,6 +5044,7 @@ module.exports = function (regl) {
 		if (drawVenus) drawVenus();
 		if (drawGrave) drawGrave();
 		if (drawFlower && FLOWER.k >= 0) { flowerPose(FLOWER.k, flowerModel); drawFlower(); }
+		if (pileDraw) pileDraw();
 		// (the reflection keeps the bougainvillea, the nymph and the cloth;
 		// the ivy, the roses, the weeds and the dust are left out of it)
 		drawLeaves();
@@ -4861,6 +5071,13 @@ const GUIDE = { vis: false, model: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0,
 // ledger, its bloom towards the headstone, a little across the grave
 const FLOWER = { k: -1, glow: 0, at: [GRAVE.cx + 0.06, GRAVE.top - 0.004, GRAVE.cz - 0.1], yaw: 0.0 };
 function setFlower(k, glow) { FLOWER.k = k; FLOWER.glow = glow || 0; }
+// the roses left before (see the pile, in the module): the list oldest
+// first ([{ t, s }]), the index of its first in all the roses ever left,
+// how many of the newest not to show (the visitor's own, shown apart), and
+// whether to show the change happening
+let pileDraw = null, setRosesImpl = null;
+const ROSES_WAITING = { a: null };
+function setRoses(list, first, hide, animate) { if (setRosesImpl) setRosesImpl(list, first, hide, animate); else ROSES_WAITING.a = [list, first, hide, animate]; }
 // its model matrix at k: lowered from a hand's height, tilting down from
 // held to lying, turning a little as it settles
 function flowerPose(k, m) {
@@ -4926,6 +5143,7 @@ module.exports.previewCam = previewCam;
 module.exports.setGuide = setGuide;
 module.exports.setWind = setWind;
 module.exports.setFlower = setFlower;
+module.exports.setRoses = setRoses;
 module.exports.INTRO_PATH = INTRO_PATH;
 // whether everything the room needs has come
 module.exports.ready = () => LOADS.pending <= 0;

@@ -480,3 +480,7 @@ module.exports = function createStudioTour(opts) {
 
 	return { update, tap, dispose, placeFlower, get scroll() { return scroll; }, END };
 };
+
+// where the way in begins (conservatory.js holds the camera here, behind
+// the red, while the room finishes arriving): close on the door
+module.exports.introStart = () => ({ eye: W3(INTRO.close), target: W3(INTRO.door), fov: 24, roll: 0 });

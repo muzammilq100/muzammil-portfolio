@@ -70,8 +70,10 @@ const BASE_KEYS = [
 	{ eye: [3.3, 1.55, 1.3], at: [0.3, 1.35, 5.2], fov: 50, dof: 0.05, p: { eye: [2.8, 1.6, 0.9], fov: 72 } },
 	// down into the developer: his photograph floating up in the black water
 	{ eye: [1.05, 1.5, tray - 0.42], at: [DARK.TXc - 0.02, DARK.liquid, tray + 0.04], fov: 34, dof: 0.2, p: { eye: [1.0, 1.55, tray - 0.45], fov: 52 } },
-	// the old camera on its shelf by the trays
-	{ eye: [0.62, 1.68, (DARK.shelf.z0 + DARK.shelf.z1) / 2 - 0.36], at: [0.14, 1.55, (DARK.shelf.z0 + DARK.shelf.z1) / 2], fov: 34, dof: 0.34, p: { fov: 48 } },
+	// the old camera, put down on the tiles beside the developer
+	{ eye: [0.95, 1.22, DARK.cam.z - 0.5], at: [DARK.cam.x - 0.02, DARK.cam.y + 0.04, DARK.cam.z + 0.06], fov: 34, dof: 0.34, p: { fov: 48 } },
+	// the dry bench: the enlarger and the mess round it
+	{ eye: [1.75, 1.45, 9.0], at: [0.35, 1.08, 10.8], fov: 46, dof: 0.12, p: { eye: [1.9, 1.5, 8.6], fov: 66 } },
 	// up to the prints drying on their lines
 	{ eye: [2.0, 1.6, 8.3], at: [0.4, 2.25, 11.3], fov: 50, dof: 0.12, p: { eye: [1.8, 1.6, 8.1], fov: 72 } },
 ];
@@ -175,7 +177,7 @@ function buildKeys() {
 // resists, a hiss under the snow, a tick for each letter, the spot's clunk,
 // and the tearing burst at the end
 function makeSound() {
-	let ac = null, hum = null, hiss = null, master = null;
+	let ac = null, hum = null, hiss = null, master = null, buzzG = null;
 	const noiseBuf = (sec) => {
 		const b = ac.createBuffer(1, Math.floor(ac.sampleRate * sec), ac.sampleRate);
 		const d = b.getChannelData(0);
@@ -244,7 +246,53 @@ function makeSound() {
 			const g2 = ac.createGain(); env(g2, t, 0.05, 0.18, 2.0);
 			o.connect(g2); g2.connect(master); o.start(t); o.stop(t + 2.2);
 		},
-		stop() { if (hum) hum.gain.value = 0; if (hiss) hiss.gain.value = 0; if (master) { try { master.disconnect(); } catch (e) { /* gone */ } } ac = null; hum = hiss = master = null; }
+		// the cable: a mains buzz always under it, louder near it; each beat
+		// a pulse of the same current, lub and dub, crackling
+		beat(k) {
+			if (!ac || k < 0.01) return;
+			const t = ac.currentTime;
+			[[0, 1], [0.24, 0.62]].forEach(([dt, a]) => {
+				const t0 = t + dt;
+				const bp = ac.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 340; bp.Q.value = 1.4;
+				const g = ac.createGain(); env(g, t0, 0.012, 0.22 * a * k, 0.16);
+				[100, 150.4, 200.9].forEach((fq, i) => { const o = ac.createOscillator(); o.type = i === 1 ? 'square' : 'sawtooth'; o.frequency.setValueAtTime(fq * 1.04, t0); o.frequency.exponentialRampToValueAtTime(fq, t0 + 0.12); o.connect(bp); o.start(t0); o.stop(t0 + 0.32); });
+				// the crackle
+				const ns = ac.createBufferSource(); ns.buffer = noiseBuf(0.18);
+				const hp = ac.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 2600;
+				const g2 = ac.createGain(); env(g2, t0, 0.004, 0.05 * a * k, 0.1);
+				ns.connect(hp); hp.connect(g2); g2.connect(master); ns.start(t0);
+				bp.connect(g); g.connect(master);
+			});
+		},
+		buzz(k) {
+			if (!ac) return;
+			if (!buzzG) {
+				buzzG = ac.createGain(); buzzG.gain.value = 0;
+				const bp = ac.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 260; bp.Q.value = 2.2;
+				[100, 100.7, 300.2].forEach((fq, i) => { const o = ac.createOscillator(); o.type = i === 2 ? 'square' : 'sawtooth'; o.frequency.value = fq; o.connect(bp); o.start(); });
+				bp.connect(buzzG); buzzG.connect(master);
+			}
+			buzzG.gain.setTargetAtTime(k * 0.03, ac.currentTime, 0.2);
+		},
+		// the projector: the shutter's snap and the claw pulling the next frame
+		// in, a hollow knock from the body (a still: the gate dropping, heavier)
+		click(k, still) {
+			if (!ac || k < 0.01) return;
+			const t = ac.currentTime;
+			const ns = ac.createBufferSource(); ns.buffer = noiseBuf(0.05);
+			const bp = ac.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = still ? 1900 : 3100; bp.Q.value = 2.5;
+			const g = ac.createGain(); env(g, t, 0.0008, 0.55 * k, 0.035);
+			ns.connect(bp); bp.connect(g); g.connect(master); ns.start(t);
+			const th = ac.createOscillator(); th.type = 'triangle'; th.frequency.setValueAtTime(still ? 210 : 340, t); th.frequency.exponentialRampToValueAtTime(still ? 90 : 160, t + 0.06);
+			const g2 = ac.createGain(); env(g2, t, 0.001, (still ? 0.32 : 0.2) * k, 0.08);
+			th.connect(g2); g2.connect(master); th.start(t); th.stop(t + 0.15);
+			// and a second, softer, as the claw lets go
+			const ns2 = ac.createBufferSource(); ns2.buffer = noiseBuf(0.03);
+			const bp2 = ac.createBiquadFilter(); bp2.type = 'bandpass'; bp2.frequency.value = 4200; bp2.Q.value = 3;
+			const g3 = ac.createGain(); env(g3, t + 0.055, 0.0008, 0.22 * k, 0.025);
+			ns2.connect(bp2); bp2.connect(g3); g3.connect(master); ns2.start(t + 0.055);
+		},
+		stop() { if (buzzG) buzzG.gain.value = 0; buzzG = null; if (hum) hum.gain.value = 0; if (hiss) hiss.gain.value = 0; if (master) { try { master.disconnect(); } catch (e) { /* gone */ } } ac = null; hum = hiss = master = null; }
 	};
 }
 
@@ -280,6 +328,9 @@ module.exports = function createRedTour(opts) {
 	// (0..1 the room resisting, 1..2 the letters, past 2.1 put out)
 	let press = 0, pressGoal = 0, lastN = 0, expelAt = null, spotOnAt = null, spotState = 0;
 	const sound = makeSound();
+	const pulse = { phase: 0, period: 1.2, beat: 0 };
+	let clickK = 0;
+	room.onClick((still) => sound.click(clickK, still));
 	const sub = document.createElement('div');
 	sub.className = 'red-sub';
 	sub.textContent = SUBTITLE;
@@ -405,6 +456,24 @@ module.exports = function createRedTour(opts) {
 		const fh = Math.sin(time * 13.0) * Math.sin(time * 5.3);
 		sk *= 1 - (p1 * 0.25 + p2 * 0.3) * (fh > 0.6 ? 1 : 0) - xk * (Math.sin(time * 60) > 0 ? 0.8 : 0);
 		room.setSpot(Math.max(0, sk));
+		// THE CABLE'S HEARTBEAT: slow far from her, quicker as the camera
+		// nears her; the buzz loudest close to the cable. The projector's
+		// clicks, loudest by the projector.
+		{
+			const er = eye, toHer = Math.hypot(er[0] - HER[0], er[2] - HER[2]);
+			const period = mix(0.68, 1.35, clamp01((toHer - 1.5) / 12));
+			pulse.phase += dt / pulse.period;
+			pulse.period = period;
+			let dc = 1e9;
+			const cp = room.ROOM.CABLE.path;
+			for (let q = 0; q < cp.length; q += 6) { const d = Math.hypot(er[0] - cp[q][0], er[1] - cp[q][1], er[2] - cp[q][2]); if (d < dc) dc = d; }
+			const nearC = 1 / (1 + dc * dc * 0.18);
+			if (Math.floor(pulse.phase) > pulse.beat) { pulse.beat = Math.floor(pulse.phase); sound.beat(nearC * (1 - xk)); }
+			sound.buzz((0.25 + nearC) * (1 - xk));
+			room.setPulse(pulse.phase, pulse.period);
+			const dp = Math.hypot(er[0] - PX, er[1] - PY, er[2] - PZ);
+			clickK = (1 - xk) / (1 + dp * dp * 0.05);
+		}
 		room.setWarn({ s: smooth((press - 0.12) / 0.45), n, glitch: smooth(xk * 1.6), freeze: press > 0.15 });
 		sub.style.opacity = String(smooth((press - 0.35) / 0.4) * (1 - smooth((xk - 0.1) / 0.3)) * (0.88 + 0.12 * Math.sin(time * 2.0)));
 		sound.set(smooth(p1) * (1 - xk) + p2 * 0.5, smooth((press - 0.12) / 0.45) * (1 - xk * 0.5));
@@ -446,6 +515,7 @@ module.exports = function createRedTour(opts) {
 		room.setWarn({ s: 0, n: 0, glitch: 0, freeze: false });
 		room.setSpot(0);
 		room.setViewer(null);
+		room.onClick(null);
 	}
 	if (/tourdebug/.test(location.search)) window.__redTourInfo = { END, REVEAL, STOPS };
 	return { update, tap: () => go(1), dispose, placeFlower() {}, startSound: () => sound.start(), get scroll() { return scroll; }, END, REVEAL };
