@@ -76,6 +76,8 @@ TV.stack = [
 	['crt', 0, -2.78, 3, 0.08], ['sony', 1, -2.68, 4, 0.1],
 	['old', 0, 2.50, -3, 0.08], ['sony', 1, 2.32, -4, 0.1]
 ];
+// where each screen's middle is, in the room (for the camera)
+const SCREEN_MID = { sony: [0, 0.194], crt: [0, 0.27], old: [0.0625, 0.2145] };
 // each set down on whatever is under it
 (() => {
 	const placed = [];
@@ -88,6 +90,10 @@ TV.stack = [
 		}
 		placed.push({ dx, row, w, top: base + m.h * TV.G * 0.99 });
 		t.base = base;
+		const sm = SCREEN_MID[t[0]], a = t[3] * Math.PI / 180;
+		t.screen = [W / 2 + dx + sm[0] * TV.G, base + sm[1] * TV.G, TV.z + t[4]];
+		t.facing = [-Math.sin(a), 0, -Math.cos(a)];
+		t.size = m.w * TV.G;
 	}
 })();
 
@@ -192,7 +198,7 @@ const CABLE = { r: 0.045 };
 // THE POLAROIDS: his photographs, blurred and darkened as if left in the
 // developer too long, pinned in drifts on the wall panels between the
 // windows. (The far wall is kept bare for the projector.)
-const POL = { w: 0.36, h: 0.435, n: 16, lines: [{ z: L - 1.7, y: 6.5, sag: 1.0 }, { z: L - 2.6, y: 5.3, sag: 0.8 }] };
+const POL = { spots: [], w: 0.36, h: 0.435, n: 36, lines: [{ z: L - 1.7, y: 6.5, sag: 1.0 }, { z: L - 2.6, y: 5.3, sag: 0.8 }] };
 
 // the light: from high outside each long wall, a little from the far end,
 // so every window's shape lies long on the floor towards the middle
@@ -487,6 +493,14 @@ function build() {
 		}
 	}
 
+	// the sets' own power cords, out of their backs and down to the floor,
+	// gathering behind the stack
+	TV.stack.forEach((t, i) => {
+		const m = TV.models[t[0]], G = TV.G;
+		const x = W / 2 + t[2], z = TV.z + t[4] + m.d * G * 0.85, y = t.base + 0.12 * G;
+		const gx = W / 2 + (i % 3 - 1) * 0.5, gz = TV.z + 2.3 + (i % 4) * 0.12;
+		tube(g, [[x, y, z - 0.05], [x + 0.05, y - 0.02, z + 0.15], [x + 0.1, Math.max(0.02, y * 0.4), z + 0.35], [x * 0.6 + gx * 0.4, 0.018, z + 0.6], [gx, 0.018, gz]], 0.012, 6, K.CABLE);
+	});
 	// the cable
 	tube(g, CABLE.path, CABLE.r, 9, K.CABLE);
 	// the safelight
@@ -555,7 +569,10 @@ function buildPolaroids() {
 			if (rnd() > dens(px, py)) continue;
 			const [ax, ay] = rot(along, [0, 1, 0], (rnd() - 0.5) * 0.5);
 			const c = place(px, py, 0.012 + 0.0016 * (layer++ % 9) + rnd() * 0.004);
-			card(c, ax, ay, n, 0.88 + rnd() * 0.3, Math.floor(rnd() * POL.n), none, (rnd() - 0.3) * 0.02);
+			const sc = 0.88 + rnd() * 0.3;
+			card(c, ax, ay, n, sc, Math.floor(rnd() * POL.n), none, (rnd() - 0.3) * 0.02);
+			// (where they are, for the camera to come close to some)
+			if (POL.spots.length < 400) POL.spots.push({ c, n, up: ay, size: POL.h * sc });
 			k++;
 		}
 	};
@@ -796,19 +813,21 @@ const SHADE = `
 		float t = projT;
 		float fr = floor(t * 18.0);
 		float shot = floor(t / 3.4);
-		float k = floor(rhash(vec2(shot, 4.7)) * 16.0);
+		float k = floor(rhash(vec2(shot, 4.7)) * 36.0);
 		float f = fract(t / 3.4);
 		uv += vec2(sin(t * 13.0) * 0.0015 + (rhash(vec2(fr, 1.0)) - 0.5) * 0.003, (rhash(vec2(fr, 2.0)) - 0.5) * 0.006);
-		// a worn, low print thrown out of focus: coarse, and soft
-		vec2 su = clamp((floor(uv * vec2(150.0, 112.0)) + 0.5) / vec2(150.0, 112.0), 0.01, 0.99);
-		vec2 tile = vec2(mod(k, 4.0), floor(k / 4.0));
-		float l = 0.0;
+		// an old print, only a touch soft: its colours faded, not gone
+		vec2 su = clamp(uv, 0.01, 0.99);
+		vec2 tile = vec2(mod(k, 6.0), floor(k / 6.0));
+		vec3 pc = vec3(0.0);
 		for (int i = 0; i < 5; i++) {
-			vec2 o = i == 0 ? vec2(0.0) : vec2(i == 1 ? 1.0 : (i == 2 ? -1.0 : 0.0), i == 3 ? 1.0 : (i == 4 ? -1.0 : 0.0)) * 0.012;
-			l += dot(texture2D(memTex, (tile + vec2(clamp(su.x + o.x, 0.005, 0.995), 1.0 - clamp(su.y + o.y, 0.005, 0.995))) / 4.0).rgb, vec3(0.3, 0.59, 0.11)) * (i == 0 ? 0.36 : 0.16);
+			vec2 o = i == 0 ? vec2(0.0) : vec2(i == 1 ? 1.0 : (i == 2 ? -1.0 : 0.0), i == 3 ? 1.0 : (i == 4 ? -1.0 : 0.0)) * 0.0028;
+			pc += texture2D(memTex, (tile + vec2(clamp(su.x + o.x, 0.005, 0.995), 1.0 - clamp(su.y + o.y, 0.005, 0.995))) / 6.0).rgb * (i == 0 ? 0.4 : 0.15);
 		}
-		l = clamp((l - 0.06) * 1.25, 0.0, 1.0);
-		l = pow(l, 1.2);
+		float l = dot(pc, vec3(0.3, 0.59, 0.11));
+		float l0 = clamp((l - 0.04) * 1.18, 0.0, 1.0);
+		vec3 pcol = mix(vec3(l0), pc * (l0 / max(l, 0.02)), 0.5);
+		l = pow(l0, 1.1);
 		// grain, dust and hairs, scratches running down the print
 		l += (rhash(floor(uv * vec2(260.0, 195.0)) + fr * 7.1) - 0.5) * 0.16;
 		l *= 1.0 - step(0.9975, rhash(floor(uv * vec2(70.0, 52.0)) + fr * 3.3)) * 0.9;
@@ -821,8 +840,9 @@ const SHADE = `
 		l = mix(l, 0.9 + 0.1 * rhash(vec2(fr, 6.0)), gap);
 		// the light falls off to the edges and corners of the frame
 		vec2 e = uv * (1.0 - uv);
-		l *= clamp(pow(e.x * e.y * 16.0, 0.45), 0.0, 1.0);
-		return vec3(1.0, 0.84, 0.62) * max(l, 0.0);
+		float vig = clamp(pow(e.x * e.y * 16.0, 0.45), 0.0, 1.0);
+		vec3 c = mix(vec3(l), pcol * (l / max(l0, 0.02)), 0.55 * (1.0 - gap));
+		return vec3(1.0, 0.86, 0.66) * max(c, 0.0) * vig;
 	}
 	// where a point in the room is in the projected picture (x, y in 0..1;
 	// z: how far along the beam, 0 at the lens, 1 at the wall)
@@ -831,7 +851,7 @@ const SHADE = `
 		vec3 d = lp - L0;
 		float s = (${f(L - 0.005)} - L0.z) / max(d.z, 1e-4);
 		vec3 h = L0 + d * s;
-		return vec3((h.x - ${f(PROJ.img.x - PROJ.img.w / 2)}) / ${f(PROJ.img.w)}, (h.y - ${f(PROJ.img.y - PROJ.img.h / 2)}) / ${f(PROJ.img.h)}, 1.0 / s);
+		return vec3(1.0 - (h.x - ${f(PROJ.img.x - PROJ.img.w / 2)}) / ${f(PROJ.img.w)}, (h.y - ${f(PROJ.img.y - PROJ.img.h / 2)}) / ${f(PROJ.img.h)}, 1.0 / s);
 	}
 	// the televisions stand in the beam's way: their shadows on the picture
 	uniform vec3 tvLo[12], tvHi[12];
@@ -1008,7 +1028,7 @@ const FRAG = `
 				if (pu.x > 0.0 && pu.x < 1.0 && pu.y > 0.0 && pu.y < 1.0) {
 					float sh = projShadow(lp);
 					vec3 pl = film(pu.xy) * sh;
-					col += alb * pl * 3.2 + pl * 0.06;
+					col += alb * pl * 4.4 + pl * 0.09;
 				}
 			}
 			if (k == 8) {
@@ -1031,6 +1051,17 @@ const FRAG = `
 			}
 
 			if (flr) {
+				// where the televisions stand, the floor is in their shadow
+				if (k == 0 && lp.z > ${f(TV.z - 1.5)}) {
+					float occ = 9.0;
+					for (int i = 0; i < 12; i++) {
+						vec2 c = (tvLo[i].xz + tvHi[i].xz) * 0.5, hs = (tvHi[i].xz - tvLo[i].xz) * 0.5;
+						vec2 q = max(abs(lp.xz - c) - hs, 0.0);
+						if (tvLo[i].y < 0.05) occ = min(occ, length(q));
+					}
+					float ao = 0.3 + 0.7 * smoothstep(0.0, 0.7, occ);
+					col *= ao;
+				}
 				// THE FLOOR: red lacquer, wet. Gloss varies across it, like a
 				// floor painted by hand and mopped: some of it a mirror, some
 				// of it satin; the reflection smears along the line of sight
@@ -1141,8 +1172,8 @@ const TV_FRAG = `
 		float h1 = rhash(vec2(seed * 13.0, seg + 3.1));
 		float fr = floor(sigTime * 24.0);
 		// what this moment is
-		float isMem = step(0.42, h0) * step(h0, 0.93);
-		float isDead = step(0.93, h0);
+		float isMem = step(0.3, h0) * step(h0, 0.95);
+		float isDead = step(0.95, h0);
 		// the cut: snow for a breath either side of it, and the odd stutter
 		float burst = 1.0 - smoothstep(0.0, 0.07, f) + smoothstep(0.95, 1.0, f);
 		burst = max(burst, step(0.985, rhash(vec2(fr, seed * 5.0))));
@@ -1166,18 +1197,18 @@ const TV_FRAG = `
 		jit += band * 0.05 * (rhash(vec2(fr, 2.0)) - 0.3);
 		q.x += jit;
 		vec2 mu = clamp(q + 0.5, 0.002, 0.998);
-		vec2 tile = vec2(mod(k, 4.0), floor(k / 4.0));
-		vec2 au = (tile + vec2(mu.x, 1.0 - mu.y)) / 4.0;
-		vec2 ca = vec2(0.006 + 0.01 * band, 0.0) / 4.0;
+		vec2 tile = vec2(mod(k, 6.0), floor(k / 6.0));
+		vec2 au = (tile + vec2(mu.x, 1.0 - mu.y)) / 6.0;
+		vec2 ca = vec2(0.004 + 0.01 * band, 0.0) / 6.0;
 		vec3 m = vec3(texture2D(memTex, au + ca).r, texture2D(memTex, au).g, texture2D(memTex, au - ca).b);
 		// drained and darkened, the shadows crushed
 		float l = lum(m);
-		l = pow(clamp(l * 1.1, 0.0, 1.0), 1.45);
+		l = pow(clamp(l * 1.12, 0.0, 1.0), 1.2);
 		vec3 mono = vec3(l);
 		// washed red, or cold and grey
 		float red = step(0.62, rhash(vec2(seg, 7.0 + seed)));
 		vec3 tint = mix(vec3(0.78, 0.86, 0.95), vec3(1.15, 0.28, 0.22), red);
-		m = mix(mono * tint, m * l * 1.2, 0.18);
+		m = mix(mono * tint, m * 1.05, 0.42);
 		// the odd frame in negative
 		if (rhash(vec2(fr, seed * 3.0)) > 0.992) m = vec3(0.9) - m;
 		// grain over it, and the snow showing through
@@ -1214,9 +1245,11 @@ const TV_FRAG = `
 		vec3 amb = ambient(lp, N) + bounce(lp, N);
 		vec3 col;
 		if (v_flag > 0.5) {
-			col = signal(v_uv) * 1.05;
-			// the curved glass catches the room
-			col += amb * 0.5 * (0.05 + fr);
+			// the tube's light, a little warmed and dimmed by the room
+			vec3 sg = signal(v_uv);
+			col = mix(sg, sg * vec3(1.0, 0.78, 0.74), 0.35) * 0.78;
+			// the curved glass catches the room: its red, the windows' glow
+			col += amb * 0.65 * (0.08 + fr) + vec3(0.05, 0.004, 0.004);
 		} else {
 			vec4 tx = texture2D(bodyTex, v_uv);
 			if (emit > 0.0) {
@@ -1230,6 +1263,12 @@ const TV_FRAG = `
 			vec3 lit = vec3(0.0);
 			float nl = max(0.0, dot(N, LDIR_L)) + max(0.0, dot(N, LDIR_R));
 			if (nl > 0.0) lit = redLightRough(lp + N * 0.05) * 1.6 * min(1.0, nl);
+			// the projector's light grazing the tops of the sets in its way
+			vec3 pu = projUV(lp);
+			if (pu.z > 0.0 && pu.x > 0.0 && pu.x < 1.0 && pu.y > 0.0 && pu.y < 1.0) {
+				vec3 Lp = normalize(vec3(${f(PROJ.lens[0])}, ${f(PROJ.lens[1])}, ${f(PROJ.lens[2])}) - lp);
+				lit += film(vec2(0.5)) * 1.4 * max(0.0, dot(N, Lp)) * (0.7 + 0.3 * rnoise(v_uv * 40.0));
+			}
 			col = alb * (amb + lit);
 			// worn plastic and veneer: a red sheen along the edges, as in
 			// the reference, where the room's light rims every set
@@ -1311,12 +1350,12 @@ const POL_FRAG = `
 		bool inPic = !back && u.x > fr4.x && u.x < fr4.y && u.y > fr4.z && u.y < fr4.w;
 		if (inPic) {
 			vec2 pu = vec2((u.x - fr4.x) / (fr4.y - fr4.x), 1.0 - (u.y - fr4.z) / (fr4.w - fr4.z));
-			vec2 tile = vec2(mod(v_pic, 4.0), floor(v_pic / 4.0));
-			vec3 ph = texture2D(polTex, (tile + clamp(pu, 0.01, 0.99)) / 4.0).rgb;
-			// burnt in at the edges, as if the chemistry ran out
+			vec2 tile = vec2(mod(v_pic, 6.0), floor(v_pic / 6.0));
+			vec3 ph = texture2D(polTex, (tile + clamp(pu, 0.01, 0.99)) / 6.0).rgb;
+			// burnt in a little at the edges, as if the chemistry ran out
 			vec2 e = pu * (1.0 - pu);
-			ph *= 0.45 + 0.55 * clamp(e.x * e.y * 14.0, 0.0, 1.0);
-			alb = ph * 0.75 + 0.012;
+			ph *= 0.62 + 0.38 * clamp(e.x * e.y * 18.0, 0.0, 1.0);
+			alb = ph * 0.85 + 0.012;
 		}
 		vec3 amb = ambient(lp, N) + bounce(lp, N);
 		float nl = max(0.0, dot(N, LDIR_L)) + max(0.0, dot(N, LDIR_R));
@@ -1363,10 +1402,14 @@ const BEAM_FRAG = `
 		vec3 fl = film(floor(uv * 4.0) / 4.0 + 0.125) * 0.35 + film(vec2(0.5)) * 0.65;
 		float smoke = rfbm(vec2(lp.x * 0.8 + time * 0.05, lp.y * 0.7 - lp.z * 0.12 + time * 0.03)) * rfbm(vec2(lp.z * 0.5 - time * 0.04, lp.y * 0.9));
 		float along = pu.z;
+		// soft at its edges, as a beam through smoke is
+		float lsc = v_layer < 0.5 ? 1.0 : (v_layer < 1.5 ? 0.8 : 0.58);
+		vec2 eg = (min(pu.xy, 1.0 - pu.xy) - (1.0 - lsc) * 0.5) / lsc;
+		float edge = smoothstep(0.0, 0.3, eg.x) * smoothstep(0.0, 0.3, eg.y);
 		// strong at the lens, thinning out towards the wall
 		float a = (0.25 + 2.2 * smoke) * (0.35 + 0.65 * exp(-along * 2.2)) * smoothstep(0.0, 0.04, along);
 		float dist = length(v_eye - v_pos);
-		gl_FragColor = vec4(fl * a * 0.022 * (1.0 + v_layer * 0.6) * (1.0 - exp(-dist * 0.8)), 1.0);
+		gl_FragColor = vec4(fl * a * edge * 0.05 * (1.0 + v_layer * 0.7) * (1.0 - exp(-dist * 0.8)), 1.0);
 	}`;
 
 
@@ -1424,10 +1467,11 @@ const LIQ_FRAG = `
 		vec2 under = tl + rf.xz * depth / max(0.2, -rf.y);
 		vec3 base = vec3(0.012, 0.009, 0.008);
 		vec3 lit = darkLight(vec3(lp.x, lp.y - depth, lp.z), vec3(0.0, 1.0, 0.0)) + ambient(lp, vec3(0.0, 1.0, 0.0)) * 0.6;
-		if (k != 1) {
+		if (k == 0) {
 			// the print, turned a little in the tray
-			float an = k == 0 ? 0.11 : -0.16;
-			vec2 off = k == 0 ? vec2(0.012, -0.03) : vec2(-0.02, 0.04);
+			// it floats: drifting a little, turning a little, never still
+			float an = 0.11 + 0.05 * sin(time * 0.23) + 0.02 * sin(time * 0.71 + 1.3);
+			vec2 off = vec2(0.012, -0.03) + vec2(sin(time * 0.17) * 0.014, sin(time * 0.13 + 2.0) * 0.018);
 			vec2 pq = under - off;
 			pq = vec2(cos(an) * pq.x - sin(an) * pq.y, sin(an) * pq.x + cos(an) * pq.y);
 			// (across the tray is the print's height; along it its width)
@@ -1447,14 +1491,15 @@ const LIQ_FRAG = `
 						float thr = dev * 1.35 - 0.1;
 						im = mix(1.0, im, smoothstep(thr, thr - 0.3, im));
 					} else {
-						im = texture2D(polTex, (vec2(2.0, 1.0) + vec2(iu.x, 1.0 - iu.y)) / 4.0).r;
+						im = texture2D(polTex, (vec2(2.0, 1.0) + vec2(iu.x, 1.0 - iu.y)) / 6.0).r;
 					}
 					paper *= mix(0.06, 1.0, im);
 				}
 				base = vec3(paper) * vec3(0.92, 0.9, 0.85);
 			}
 		}
-		// the liquid swallows light: what is under it is dim and warm
+		// the liquid swallows light: what is under it is dim and warm; the
+		// print rides just under the surface and its edge lifts a ripple
 		vec3 col = base * lit * vec3(0.62, 0.5, 0.42);
 		// and its surface is a black mirror: the bulb, and the room's red
 		float F = 0.03 + 0.97 * pow(1.0 - max(0.0, dot(n, V)), 5.0);
@@ -1588,7 +1633,7 @@ module.exports = function (regl) {
 	});
 	const tvModels = {};
 	let memTex = null;
-	const NMEM = 16;
+	const NMEM = 36;
 	const tvCmd = regl({
 		vert: TV_VERT,
 		frag: TV_FRAG,
@@ -1730,8 +1775,8 @@ module.exports = function (regl) {
 	});
 	// the lens: a hot point of light
 	const lensDraw = regl({
-		vert: `precision highp float; uniform mat4 proj, view; uniform float yScale, pxScale; attribute vec3 position; void main() { vec3 p = position; p.y *= yScale; vec4 v = view * vec4(p, 1.0); gl_Position = proj * v; gl_PointSize = clamp(pxScale * 0.09 / max(0.3, -v.z), 2.0, 90.0); }`,
-		frag: `precision highp float; uniform float time; void main() { vec2 d = gl_PointCoord - 0.5; float r = length(d); float a = exp(-r * r * 40.0) + 0.25 * exp(-r * r * 9.0); gl_FragColor = vec4(vec3(1.0, 0.82, 0.58) * a * (0.85 + 0.15 * sin(time * 37.0)), 1.0); }`,
+		vert: `precision highp float; uniform mat4 proj, view; uniform float yScale, pxScale; attribute vec3 position; void main() { vec3 p = position; p.y *= yScale; vec4 v = view * vec4(p, 1.0); gl_Position = proj * v; gl_PointSize = clamp(pxScale * 0.22 / max(0.3, -v.z), 4.0, 220.0); }`,
+		frag: `precision highp float; uniform float time; void main() { vec2 d = gl_PointCoord - 0.5; float r = length(d); float a = exp(-r * r * 160.0) * 1.6 + 0.35 * exp(-r * r * 30.0) + 0.12 * exp(-r * r * 8.0) + 0.5 * exp(-d.y * d.y * 2500.0) * exp(-abs(d.x) * 7.0); gl_FragColor = vec4(vec3(1.0, 0.84, 0.62) * a * (0.9 + 0.1 * sin(time * 37.0)), 1.0); }`,
 		attributes: { position: [O[0] + PROJ.lens[0], O[1] + PROJ.lens[1], O[2] + PROJ.lens[2] + 0.01] },
 		count: 1,
 		primitive: 'points',
@@ -1824,7 +1869,7 @@ module.exports = function (regl) {
 
 
 	// ---- sparks of dust turning in the beam, close by the projector --------
-	const SPARK_N = 900;
+	const SPARK_N = 220;
 	const sparkSeeds = [];
 	for (let i = 0; i < SPARK_N; i++) sparkSeeds.push(Math.random(), Math.random(), Math.random(), Math.random());
 	const sparkDraw = regl({
@@ -1852,7 +1897,7 @@ module.exports = function (regl) {
 				gl_Position = proj * v;
 				// they flash as they turn edge-on to the light
 				float tw = pow(0.5 + 0.5 * sin(time * (2.0 + 5.0 * seed.w) + seed.x * 60.0), 6.0);
-				v_b = (0.25 + 1.6 * tw) / (1.0 + along * 0.35);
+				v_b = (0.15 + 0.7 * tw) / (1.0 + along * 0.5);
 				gl_PointSize = clamp(pxScale * (0.006 + 0.008 * seed.w) / max(0.15, -v.z), 1.0, 7.0);
 			}`,
 		frag: `precision highp float; varying float v_b; void main() { vec2 d = gl_PointCoord - 0.5; float a = smoothstep(0.5, 0.0, length(d)); gl_FragColor = vec4(vec3(1.0, 0.84, 0.6) * v_b * a, 1.0); }`,
@@ -1919,7 +1964,7 @@ module.exports = function (regl) {
 let dummy = null;
 Object.assign(module.exports, {
 	O, W, L, H,
-	ROOM: { W, L, H, WIN, DOOR, ENT, SHAFTS, TV, DARK, PROJ, CABLE, winZ, vaultY },
+	ROOM: { W, L, H, WIN, DOOR, ENT, SHAFTS, TV, DARK, PROJ, CABLE, POL, winZ, vaultY },
 	POST: { threshold: 0.3 },
 	sunGLSL,
 	bakedSun(regl) { if (!dummy) dummy = regl.texture({ width: 1, height: 1, data: [0, 0, 0, 0] }); return dummy; },
