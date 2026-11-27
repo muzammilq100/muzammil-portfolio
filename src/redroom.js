@@ -949,7 +949,8 @@ const SHADE = `
 	// specked with dust, burnt at its edges; a new memory every few seconds,
 	// with a flash of bare light between
 	uniform sampler2D memTex;
-	uniform float projT, memRot;
+	uniform float projT, memRot, vidOn;
+	uniform sampler2D vidTex;
 	vec3 film(vec2 uv) {
 		float t = projT;
 		float fr = floor(t * 18.0);
@@ -966,7 +967,9 @@ const SHADE = `
 		vec3 pc = vec3(0.0);
 		for (int i = 0; i < 5; i++) {
 			vec2 o = i == 0 ? vec2(0.0) : vec2(i == 1 ? 1.0 : (i == 2 ? -1.0 : 0.0), i == 3 ? 1.0 : (i == 4 ? -1.0 : 0.0)) * 0.0042;
-			pc += texture2D(memTex, (tile + vec2(clamp(su.x + o.x, 0.005, 0.995), 1.0 - clamp(su.y + o.y, 0.005, 0.995))) / 8.0).rgb * (i == 0 ? 0.4 : 0.15);
+			vec2 q = vec2(clamp(su.x + o.x, 0.005, 0.995), 1.0 - clamp(su.y + o.y, 0.005, 0.995));
+			// (his clips, from the reel; between them a still or two)
+			pc += (vidOn > 0.5 ? texture2D(vidTex, q).rgb : texture2D(memTex, (tile + q) / 8.0).rgb) * (i == 0 ? 0.4 : 0.15);
 		}
 		float l = dot(pc, vec3(0.3, 0.59, 0.11));
 		float l0 = clamp((l - 0.04) * 1.18, 0.0, 1.0);
@@ -1855,6 +1858,40 @@ module.exports = function (regl) {
 	// the projector's film clock, the memories, and the televisions' boxes
 	// (for their shadows in the beam), shared by every shader that lights
 	let memTexShared = null;
+	// ---- the reel: his clips (res/redroom/reel.mp4, one after another,
+	// 400 x 300, no sound). After every two clips the projector stops on a
+	// still for a few seconds; while she is being approached it stops dead
+	const REEL_STARTS = [0, 3.417, 8.417, 12.333, 15.625, 19.25, 22.5, 25.958, 30.75, 33.417, 36.25, 40.125, 43.667];
+	const vidTexR = regl.texture({ width: 400, height: 300, min: 'linear', mag: 'linear', wrap: 'clamp' });
+	const film_ = { v: null, on: 0, ready: false, clip: -1, since: 0, stillUntil: 0 };
+	const reelUpdate = () => {
+		if (typeof document === 'undefined') return;
+		if (!film_.v) {
+			const v = document.createElement('video');
+			v.src = 'res/redroom/reel.mp4';
+			v.muted = true; v.loop = true; v.playsInline = true; v.preload = 'auto';
+			v.setAttribute('playsinline', ''); v.setAttribute('muted', '');
+			v.addEventListener('loadeddata', () => { film_.ready = true; });
+			const kick = () => { if (film_.v && film_.v.paused && !WARN.freeze && performance.now() / 1000 > film_.stillUntil) film_.v.play().catch(() => {}); };
+			window.addEventListener('pointerdown', kick, { passive: true });
+			window.addEventListener('touchend', kick, { passive: true });
+			film_.v = v;
+			v.play().catch(() => {});
+		}
+		const v = film_.v, now = performance.now() / 1000;
+		if (!film_.ready || v.readyState < 2) { film_.on = 0; return; }
+		// which clip is on
+		let c = 0;
+		for (let i = 0; i < REEL_STARTS.length; i++) if (v.currentTime >= REEL_STARTS[i] - 0.02) c = i;
+		if (c !== film_.clip) {
+			if (film_.clip >= 0 && ++film_.since >= 2) { film_.since = 0; film_.stillUntil = now + 3.4; }
+			film_.clip = c;
+		}
+		const still = now < film_.stillUntil;
+		if (WARN.freeze || still) { if (!v.paused) v.pause(); } else if (v.paused) v.play().catch(() => {});
+		film_.on = still ? 0 : 1;
+		if (!still) { try { vidTexR.subimage(v); } catch (e) { film_.on = 0; } }
+	};
 	const memDummy = regl.texture({ width: 1, height: 1, data: [0, 0, 0, 255] });
 	// the neon sign's flicker: mostly lit, now and then it stutters
 	let signNow = 1;
@@ -1868,6 +1905,8 @@ module.exports = function (regl) {
 	};
 	const SHARED = {
 		signK: () => signNow,
+		vidTex: () => vidTexR,
+		vidOn: () => film_.on,
 		// (which four of every fifty-two each screen draws from, turning on
 		// every twenty seconds or so)
 		memRot: (ctx) => Math.floor((typeof window !== 'undefined' && window.__tvTime != null ? window.__tvTime : ctx.time) / 21),
@@ -2554,6 +2593,7 @@ module.exports = function (regl) {
 	let reflectedNow = false;
 	const draw = (o) => {
 		const reflected = !!(o && o.reflected);
+		if (!reflected) reelUpdate();
 		reflectedNow = reflected;
 		// the snow's light flickers with the screens
 		const t = performance.now() / 1000;
