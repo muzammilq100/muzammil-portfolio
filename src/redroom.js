@@ -73,6 +73,14 @@ const TBL = (() => {
 })();
 // the window behind it starts just above its top
 WIN.lowSill = TBL.top + 0.06;
+
+// THE WOMAN from his painting "Private Eulogy": veiled in black from head
+// to foot, sitting on a red bentwood chair with a lace back, watching the
+// televisions. She sits beside the projector, nearer the sets, turned to
+// them, so that whichever way the camera comes it only ever finds her back
+// (res/redroom/woman_all.bin; model units: k to metres)
+const WOMAN = { x: W / 2 - 1.7, z: 17.55, k: 1.3 };
+WOMAN.yaw = Math.atan2(W / 2 - WOMAN.x, 21.2 - WOMAN.z);
 // the engaged shafts between them, carrying the vault's ribs
 const SHAFTS = [];
 for (let i = 0; i <= WIN.n; i++) SHAFTS.push(WIN.z0 + WIN.step * (i - 0.5));
@@ -1989,6 +1997,9 @@ module.exports = function (regl) {
 		}
 	}
 	for (const [x, z, a] of TBL.laid) TABLE_PROPS.push(['rose', mul(at(x, TBL.top + 0.002, z, a), scl(0.72)), 2.0]);
+	loadPart('res/redroom/woman_all.bin', ['res/redroom/woman_0.webp']).then((m) => { props.woman = m; }).catch((e) => console.error(e));
+	const womanM = mul(at(WOMAN.x, 0, WOMAN.z, WOMAN.yaw), scl(WOMAN.k));
+	TABLE_PROPS.push(['woman', womanM, 2.6]);
 	TABLE_PROPS.push(['camera', at(0.15, DARK.shelf.y, (DARK.shelf.z0 + DARK.shelf.z1) / 2, PI2 - 0.4), 1.7]);
 	const drawDark = () => {
 		const batch = [];
@@ -2004,10 +2015,83 @@ module.exports = function (regl) {
 		}
 		if (batch.length) tvCmd(batch);
 		flameDraw();
+		if (props.woman) laceDraw();
 		liqDraw();
 		pegDraw();
 	};
 
+
+	// ---- the lace in the back of her chair: a dark red floral lace, open
+	// where the threads are not, across the bentwood frame's arch ---------
+	const lacePos = [], laceUV = [];
+	{
+		// (in the model's units: the panel inside the frame, leaning back)
+		const x0 = -0.08, x1 = 0.205, y0 = 0.405, y1 = 0.615, z0 = -0.222, z1 = -0.276;
+		const NX = 8, NY = 8;
+		for (let j = 0; j < NY; j++) for (let i = 0; i < NX; i++) {
+			const q = (u, v) => [x0 + (x1 - x0) * u, y0 + (y1 - y0) * v, z0 + (z1 - z0) * v - 0.008];
+			const u0 = i / NX, u1 = (i + 1) / NX, v0 = j / NY, v1 = (j + 1) / NY;
+			for (const [u, v] of [[u0, v0], [u1, v0], [u1, v1], [u0, v0], [u1, v1], [u0, v1]]) { lacePos.push(...q(u, v)); laceUV.push(u, v); }
+		}
+	}
+	const laceDraw = regl({
+		vert: `
+			precision highp float;
+			uniform mat4 proj, view, model;
+			uniform float yScale;
+			attribute vec3 position;
+			attribute vec2 uv;
+			varying vec3 v_pos, v_eye;
+			varying vec2 v_uv;
+			void main() {
+				vec4 w = model * vec4(position, 1.0);
+				v_pos = w.xyz; v_uv = uv;
+				vec3 t = view[3].xyz;
+				v_eye = -vec3(dot(view[0].xyz, t), dot(view[1].xyz, t), dot(view[2].xyz, t));
+				v_eye.y *= yScale;
+				vec3 p = w.xyz; p.y *= yScale;
+				gl_Position = proj * view * vec4(p, 1.0);
+			}`,
+		frag: `
+			#extension GL_OES_standard_derivatives : enable
+			precision highp float;
+			uniform float time;
+			varying vec3 v_pos, v_eye;
+			varying vec2 v_uv;
+			${COMMON}
+			${SHADE}
+			void main() {
+				vec2 u = v_uv;
+				// the arch of the frame
+				vec2 a = vec2((u.x - 0.5) / 0.5, (u.y - 0.55) / 0.45);
+				if (u.y > 0.55 && dot(a, a) > 1.0) discard;
+				// flowers: rings of thread round the knots of a noise, on a
+				// fine net
+				vec2 p = vec2(u.x * 2.6, u.y * 2.0);
+				float n = rfbm(p * 2.2 + 3.7);
+				float petals = abs(fract(n * 6.0) - 0.5);
+				float flower = smoothstep(0.32, 0.4, petals) * smoothstep(0.42, 0.58, n);
+				vec2 g = fract(vec2(u.x * 44.0 + u.y * 22.0, u.y * 50.0 - u.x * 18.0));
+				float net = step(0.86, max(g.x, g.y));
+				float edge = smoothstep(0.05, 0.0, min(min(u.x, 1.0 - u.x), u.y)) + (u.y > 0.55 ? smoothstep(0.92, 1.0, length(a)) : 0.0);
+				float thread = max(max(flower, net * 0.9), edge);
+				if (thread < 0.5) discard;
+				vec3 lp = v_pos - RO;
+				vec3 N = normalize(cross(dFdx(v_pos), dFdy(v_pos)));
+				vec3 V = normalize(v_eye - v_pos);
+				if (dot(N, V) < 0.0) N = -N;
+				vec3 amb = ambient(lp, N) + bounce(lp, N);
+				vec3 lit = redLightRough(lp + N * 0.05) * 1.2;
+				vec3 col = vec3(0.6, 0.035, 0.04) * (amb + lit) * 1.5 + vec3(0.035, 0.002, 0.003);
+				float dist = length(v_eye - v_pos);
+				col = mix(col, vec3(0.06, 0.004, 0.005), (1.0 - exp(-dist * 0.035)) * 0.55);
+				gl_FragColor = vec4(col, 1.0);
+			}`,
+		attributes: { position: lacePos, uv: laceUV },
+		count: lacePos.length / 3,
+		cull: { enable: false },
+		uniforms: { ...SHARED, model: () => womanM, tvLight: () => tvLight }
+	});
 
 	// ---- the candles' flames: small, upright, never still -------------------
 	const flameDraw = regl({
@@ -2237,7 +2321,7 @@ module.exports = function (regl) {
 let dummy = null;
 Object.assign(module.exports, {
 	O, W, L, H,
-	ROOM: { W, L, H, WIN, DOOR, ENT, SHAFTS, TV, DARK, PROJ, CABLE, POL, TBL, winZ, vaultY },
+	ROOM: { W, L, H, WIN, DOOR, ENT, SHAFTS, TV, DARK, PROJ, CABLE, POL, TBL, WOMAN, winZ, vaultY },
 	POST: { threshold: 0.3 },
 	sunGLSL,
 	bakedSun(regl) { if (!dummy) dummy = regl.texture({ width: 1, height: 1, data: [0, 0, 0, 0] }); return dummy; },

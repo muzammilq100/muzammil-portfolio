@@ -20,7 +20,7 @@
 
 const room = require('./redroom');
 const { O } = room;
-const { W, L, TV, DARK, PROJ, TBL } = room.ROOM;
+const { W, L, TV, DARK, PROJ, TBL, WOMAN } = room.ROOM;
 
 const W3 = (p) => [p[0] + O[0], p[1] + O[1], p[2] + O[2]];
 const mix = (a, b, t) => a + (b - a) * t;
@@ -113,6 +113,11 @@ function buildKeys() {
 	K.push({ eye: [PX + 0.42, LENS[1] + 0.08, LENS[2] + 1.35], at: [PX, LENS[1], LENS[2]], fov: 36, dof: 0.35, p: { fov: 52 } });
 	// from behind it: the beam reaching over the televisions to the wall
 	K.push({ eye: [PX - 0.55, 1.75, PZ - 1.4], at: [W / 2, 5.0, L], fov: 50, dof: 0.06, p: { fov: 70 } });
+	// her: from behind, as in the painting, the sets glowing beyond her
+	{
+		const fx = Math.sin(WOMAN.yaw), fz = Math.cos(WOMAN.yaw);
+		K.push({ eye: [WOMAN.x - fx * 2.5 - fz * 0.2, 1.3, WOMAN.z - fz * 2.5 + fx * 0.2], at: [WOMAN.x + fx * 0.4, 0.85, WOMAN.z + fz * 0.4], fov: 40, dof: 0.22, p: { fov: 58 } });
+	}
 	// the televisions: all of them, then one by one, in no order
 	const sets = TV.stack;
 	K.push({ eye: [W / 2 + 1.4, 1.2, TV.z - 4.9], at: [W / 2, 1.75, TV.z], fov: 50, dof: 0.05, p: { fov: 70 } });
