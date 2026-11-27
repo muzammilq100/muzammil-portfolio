@@ -122,8 +122,9 @@ const DARK = (() => {
 	D.tube = { x: 0.07, y: 3.05, z0: D.b[0] + 0.2, z1: D.b[1] - 0.2 };
 	// the drying lines: [x out from the wall, height, from z, to z, sag]
 	D.lines = [
-		[0.5, 2.62, SHAFTS[0], SHAFTS[1], 0.14], [0.5, 2.62, SHAFTS[1], SHAFTS[2], 0.16],
-		[0.5, 2.08, SHAFTS[1], SHAFTS[2], 0.12]
+		[0.32, 2.74, SHAFTS[0], SHAFTS[1], 0.12], [0.74, 2.52, SHAFTS[0], SHAFTS[1], 0.17], [1.1, 2.62, SHAFTS[0], SHAFTS[1], 0.2],
+		[0.3, 2.76, SHAFTS[1], SHAFTS[2], 0.15], [0.68, 2.46, SHAFTS[1], SHAFTS[2], 0.19], [1.06, 2.66, SHAFTS[1], SHAFTS[2], 0.22],
+		[0.5, 1.98, SHAFTS[1], SHAFTS[2], 0.12]
 	];
 	return D;
 })();
@@ -156,27 +157,24 @@ const PROJ = (() => {
 // photographs (after his darkroom references)
 const SAFE = { x0: 4.2, x1: 11.8, y: 9.0, z: L - 0.16 };
 
-// THE CABLE: one thick black cable through the whole room, the line the
-// camera will follow. In by the door, across the floor to the left wall,
-// up a column, slung high across the room to a column on the right, down
-// it, along the floor and round in a loose loop to the televisions, where
-// it goes in at the back of the middle set. (Room metres; CABLE.r is its
-// radius; CABLE.path is the line through its middle.)
+// THE CABLE: one thick black cable through the room, the line the camera
+// follows. It is plugged into a socket low on the left wall at the end of
+// the darkroom, drops to the floor and crosses it in a long lazy S to the
+// right wall under the polaroids, runs along it and round in a loose loop
+// to the televisions, where it goes in at the back of the middle set.
+// (Room metres; CABLE.r is its radius; CABLE.path is the line through its
+// middle; CABLE.socket where it is plugged in; CABLE.run the stretch of
+// path across the floor, for the camera.)
 const CABLE = { r: 0.045 };
 (() => {
-	const r = CABLE.r, xl = 0.51, xr = W - 0.51;
-	const A = [xl, 5.5, SHAFTS[1]], B = [xr, 6.1, SHAFTS[2]];
-	const sling = [];
-	for (let i = 1; i < 14; i++) {
-		const t = i / 14;
-		sling.push([A[0] + (B[0] - A[0]) * t, A[1] + (B[1] - A[1]) * t - 2.0 * 4 * t * (1 - t), A[2] + (B[2] - A[2]) * t]);
-	}
+	// (the socket is low in the front of the darkroom's second bench)
+	const r = CABLE.r, d = DARK.depth, zs = DARK.b[1] - 0.22;
+	CABLE.socket = [d, 0.3, zs];
 	CABLE.ctrl = [
-		[W / 2 + 0.5, r, -1.3], [W / 2 + 0.2, r, 1.0], [7.2, r, 3.1], [4.7, r, 4.5], [2.5, r, 6.0], [1.0, r, 6.95], [0.72, r * 1.2, SHAFTS[1]],
-		[0.68, 0.3, SHAFTS[1]], [0.66, 0.53, SHAFTS[1]], [0.55, 0.62, SHAFTS[1]], [xl, 1.0, SHAFTS[1]], [xl, 3.2, SHAFTS[1]], A,
-		...sling,
-		B, [xr, 3.4, SHAFTS[2]], [xr, 1.0, SHAFTS[2]], [W - 0.55, 0.62, SHAFTS[2]], [W - 0.66, 0.53, SHAFTS[2]], [W - 0.68, 0.3, SHAFTS[2]],
-		[W - 0.75, r * 1.2, SHAFTS[2] + 0.25], [W - 1.1, r, 14.6], [W - 1.7, r, 16.2], [W - 2.5, r, 17.6], [12.9, r, 18.5], [11.5, r, 18.9],
+		[d + 0.1, 0.3, zs], [d + 0.2, 0.295, zs], [d + 0.3, 0.22, zs + 0.02], [d + 0.42, r, zs + 0.1], [d + 0.8, r, zs + 0.3],
+		[1.8, r, zs + 0.45], [3.4, r, zs + 0.1], [5.2, r, zs - 0.55], [7.2, r, zs - 0.95], [9.4, r, zs - 0.9],
+		[11.4, r, zs - 0.45], [13.2, r, zs + 0.1], [W - 1.15, r, zs + 0.55], [W - 0.85, r, zs + 1.05],
+		[W - 0.85, r, 15.2], [W - 1.1, r, 16.3], [W - 1.7, r, 17.2], [W - 2.5, r, 17.9], [12.9, r, 18.5], [11.5, r, 18.9],
 		[10.6, r, 19.5], [10.5, r, 20.3], [11.2, r, 20.5], [10.9, r, 19.95], [10.0, r * 2.2, 20.1], [9.3, r, 20.75], [9.5, r, 21.9], [8.6, r, 22.25], [8.1, 0.22, 21.95]
 	];
 	// a smooth line through them (Catmull-Rom), a point every few centimetres
@@ -193,6 +191,9 @@ const CABLE = { r: 0.045 };
 	// (lying on the floor it never sinks into it)
 	for (const q of out) if (q[1] < r && q[2] > -1.4) q[1] = r;
 	CABLE.path = out;
+	let a = out.findIndex((q) => q[1] <= r * 1.01);
+	let b = out.findIndex((q, i) => i > a && q[0] > W - 1.3);
+	CABLE.run = [a, b];
 })();
 
 // THE POLAROIDS: his photographs, blurred and darkened as if left in the
@@ -490,6 +491,7 @@ function build() {
 			const pts = [];
 			for (let i = 0; i <= 24; i++) { const u = i / 24; pts.push(darkLineAt(ln, u)); }
 			tube(g, pts, 0.0035, 5, K.CABLE);
+			for (const e of [pts[0], pts[24]]) tube(g, [[0.0, e[1] + 0.05, e[2]], [e[0] * 0.5, e[1] + 0.02, e[2]], [e[0] + 0.02, e[1], e[2]]], 0.007, 5, K.TRIM);
 		}
 	}
 
@@ -501,8 +503,15 @@ function build() {
 		const gx = W / 2 + (i % 3 - 1) * 0.5, gz = TV.z + 2.3 + (i % 4) * 0.12;
 		tube(g, [[x, y, z - 0.05], [x + 0.05, y - 0.02, z + 0.15], [x + 0.1, Math.max(0.02, y * 0.4), z + 0.35], [x * 0.6 + gx * 0.4, 0.018, z + 0.6], [gx, 0.018, gz]], 0.012, 6, K.CABLE);
 	});
-	// the cable
-	tube(g, CABLE.path, CABLE.r, 9, K.CABLE);
+	// the cable, and the socket it is plugged into
+	tube(g, CABLE.path, CABLE.r, 16, K.CABLE);
+	{
+		const [sx, sy, sz] = CABLE.socket;
+		g.box(sx, sy - 0.07, sz - 0.07, sx + 0.018, sy + 0.07, sz + 0.07, K.STEEL);
+		g.box(sx + 0.018, sy - 0.035, sz - 0.032, sx + 0.11, sy + 0.035, sz + 0.032, K.TRIM);
+		// its little pilot lamp, glowing
+		g.box(sx, sy + 0.042, sz + 0.035, sx + 0.03, sy + 0.058, sz + 0.051, K.TUBE);
+	}
 	// the safelight
 	g.box(SAFE.x0 - 0.08, SAFE.y - 0.07, L - 0.08, SAFE.x0 - 0.02, SAFE.y + 0.07, L, K.TRIM);
 	g.box(SAFE.x1 + 0.02, SAFE.y - 0.07, L - 0.08, SAFE.x1 + 0.08, SAFE.y + 0.07, L, K.TRIM);
@@ -817,11 +826,11 @@ const SHADE = `
 		float f = fract(t / 3.4);
 		uv += vec2(sin(t * 13.0) * 0.0015 + (rhash(vec2(fr, 1.0)) - 0.5) * 0.003, (rhash(vec2(fr, 2.0)) - 0.5) * 0.006);
 		// an old print, only a touch soft: its colours faded, not gone
-		vec2 su = clamp(uv, 0.01, 0.99);
+		vec2 su = clamp((floor(uv * vec2(210.0, 158.0)) + 0.5) / vec2(210.0, 158.0), 0.01, 0.99);
 		vec2 tile = vec2(mod(k, 6.0), floor(k / 6.0));
 		vec3 pc = vec3(0.0);
 		for (int i = 0; i < 5; i++) {
-			vec2 o = i == 0 ? vec2(0.0) : vec2(i == 1 ? 1.0 : (i == 2 ? -1.0 : 0.0), i == 3 ? 1.0 : (i == 4 ? -1.0 : 0.0)) * 0.0028;
+			vec2 o = i == 0 ? vec2(0.0) : vec2(i == 1 ? 1.0 : (i == 2 ? -1.0 : 0.0), i == 3 ? 1.0 : (i == 4 ? -1.0 : 0.0)) * 0.0065;
 			pc += texture2D(memTex, (tile + vec2(clamp(su.x + o.x, 0.005, 0.995), 1.0 - clamp(su.y + o.y, 0.005, 0.995))) / 6.0).rgb * (i == 0 ? 0.4 : 0.15);
 		}
 		float l = dot(pc, vec3(0.3, 0.59, 0.11));
@@ -841,7 +850,7 @@ const SHADE = `
 		// the light falls off to the edges and corners of the frame
 		vec2 e = uv * (1.0 - uv);
 		float vig = clamp(pow(e.x * e.y * 16.0, 0.45), 0.0, 1.0);
-		vec3 c = mix(vec3(l), pcol * (l / max(l0, 0.02)), 0.55 * (1.0 - gap));
+		vec3 c = mix(vec3(l), pcol * (l / max(l0, 0.02)), 0.28 * (1.0 - gap));
 		return vec3(1.0, 0.86, 0.66) * max(c, 0.0) * vig;
 	}
 	// where a point in the room is in the projected picture (x, y in 0..1;
@@ -1196,19 +1205,19 @@ const TV_FRAG = `
 		float band = smoothstep(0.06, 0.0, abs(fract(uv.y * 0.7 - t * 0.31) - 0.5));
 		jit += band * 0.05 * (rhash(vec2(fr, 2.0)) - 0.3);
 		q.x += jit;
-		vec2 mu = clamp(q + 0.5, 0.002, 0.998);
+		vec2 mu = clamp((floor((q + 0.5) * vec2(150.0, 112.0)) + 0.5) / vec2(150.0, 112.0), 0.002, 0.998);
 		vec2 tile = vec2(mod(k, 6.0), floor(k / 6.0));
 		vec2 au = (tile + vec2(mu.x, 1.0 - mu.y)) / 6.0;
 		vec2 ca = vec2(0.004 + 0.01 * band, 0.0) / 6.0;
 		vec3 m = vec3(texture2D(memTex, au + ca).r, texture2D(memTex, au).g, texture2D(memTex, au - ca).b);
 		// drained and darkened, the shadows crushed
 		float l = lum(m);
-		l = pow(clamp(l * 1.12, 0.0, 1.0), 1.2);
+		l = pow(clamp(l * 1.1, 0.0, 1.0), 1.3);
 		vec3 mono = vec3(l);
 		// washed red, or cold and grey
 		float red = step(0.62, rhash(vec2(seg, 7.0 + seed)));
 		vec3 tint = mix(vec3(0.78, 0.86, 0.95), vec3(1.15, 0.28, 0.22), red);
-		m = mix(mono * tint, m * 1.05, 0.42);
+		m = mix(mono * tint, mix(vec3(l), m, 0.5) * 1.05, 0.22);
 		// the odd frame in negative
 		if (rhash(vec2(fr, seed * 3.0)) > 0.992) m = vec3(0.9) - m;
 		// grain over it, and the snow showing through
@@ -1297,20 +1306,31 @@ const POL_VERT = `
 	void main() {
 		vec3 q = position, n = normal;
 		v_style = style;
+		vec3 t0 = view[3].xyz;
+		vec3 eye0 = -vec3(dot(view[0].xyz, t0), dot(view[1].xyz, t0), dot(view[2].xyz, t0));
+		eye0.y *= yScale;
+		// the air the camera stirs as it comes close
+		float prox = 1.0 + 2.4 * smoothstep(3.6, 0.7, length(eye0 - pivot.xyz));
 		if (pivot.w < 0.0) {
-			// a print on a darkroom line (the line runs along z)
-			float w = -pivot.w;
+			// a print on a darkroom line (the line runs along z): it swings
+			// out from the line and turns on its peg
+			float w = -pivot.w * prox;
 			float a = w * sin(time * 0.8 + pivot.z * 2.3) + w * 0.4 * sin(time * 2.1 + pivot.z * 5.1);
+			float tw = w * 1.6 * sin(time * 0.55 + pivot.z * 3.7) + w * 0.5 * sin(time * 1.3 + pivot.z * 1.9);
 			vec3 d = q - pivot.xyz;
 			float c = cos(a), s = sin(a);
 			d = vec3(d.x * c - d.y * s, d.x * s + d.y * c, d.z);
 			n = vec3(n.x * c - n.y * s, n.x * s + n.y * c, n.z);
+			c = cos(tw); s = sin(tw);
+			d = vec3(d.x * c - d.z * s, d.y, d.x * s + d.z * c);
+			n = vec3(n.x * c - n.z * s, n.y, n.x * s + n.z * c);
 			q = pivot.xyz + d;
 		}
 		if (pivot.w > 0.0) {
 			// stirring on its peg, in the room's slow air
-			float a = pivot.w * sin(time * 0.7 + pivot.x * 1.7) + pivot.w * 0.4 * sin(time * 1.9 + pivot.x * 4.1);
-			float r = pivot.w * 0.6 * sin(time * 0.5 + pivot.x * 2.3);
+			float pw = pivot.w * prox;
+			float a = pw * sin(time * 0.7 + pivot.x * 1.7) + pw * 0.4 * sin(time * 1.9 + pivot.x * 4.1);
+			float r = pw * 0.6 * sin(time * 0.5 + pivot.x * 2.3);
 			vec3 d = q - pivot.xyz;
 			float c = cos(a), s = sin(a);
 			d = vec3(d.x, d.y * c - d.z * s, d.y * s + d.z * c);
@@ -1403,13 +1423,15 @@ const BEAM_FRAG = `
 		float smoke = rfbm(vec2(lp.x * 0.8 + time * 0.05, lp.y * 0.7 - lp.z * 0.12 + time * 0.03)) * rfbm(vec2(lp.z * 0.5 - time * 0.04, lp.y * 0.9));
 		float along = pu.z;
 		// soft at its edges, as a beam through smoke is
-		float lsc = v_layer < 0.5 ? 1.0 : (v_layer < 1.5 ? 0.8 : 0.58);
-		vec2 eg = (min(pu.xy, 1.0 - pu.xy) - (1.0 - lsc) * 0.5) / lsc;
-		float edge = smoothstep(0.0, 0.3, eg.x) * smoothstep(0.0, 0.3, eg.y);
+		// (each layer is a smaller copy of the beam inside the last: the
+		// further in, the denser, so the light gathers to a core)
+		vec2 eg = min(pu.xy, 1.0 - pu.xy);
+		float edge = smoothstep(0.0, 0.5, min(eg.x, eg.y));
 		// strong at the lens, thinning out towards the wall
-		float a = (0.25 + 2.2 * smoke) * (0.35 + 0.65 * exp(-along * 2.2)) * smoothstep(0.0, 0.04, along);
+		fl = max(fl, vec3(0.3, 0.24, 0.17));
+		float a = (0.35 + 2.2 * smoke) * (0.3 + 0.7 * exp(-along * 2.4)) * smoothstep(0.0, 0.03, along) + 2.2 * exp(-along * 10.0) * (0.6 + 0.8 * smoke);
 		float dist = length(v_eye - v_pos);
-		gl_FragColor = vec4(fl * a * edge * 0.05 * (1.0 + v_layer * 0.7) * (1.0 - exp(-dist * 0.8)), 1.0);
+		gl_FragColor = vec4(fl * a * edge * 0.075 * smoothstep(0.25, 1.4, dist), 1.0);
 	}`;
 
 
@@ -1754,7 +1776,7 @@ module.exports = function (regl) {
 	const beamPos = [], beamLayer = [];
 	{
 		const Lw = [O[0] + PROJ.lens[0], O[1] + PROJ.lens[1], O[2] + PROJ.lens[2]];
-		[1.0, 0.8, 0.58].forEach((sc, li) => {
+		[0.96, 0.86, 0.76, 0.66, 0.56, 0.46, 0.36].forEach((sc, li) => {
 			const hw = PROJ.img.w / 2 * sc, hh = PROJ.img.h / 2 * sc;
 			const c = [[-hw, -hh], [hw, -hh], [hw, hh], [-hw, hh]].map(([x, y]) => [O[0] + PROJ.img.x + x, O[1] + PROJ.img.y + y, O[2] + L - 0.02]);
 			for (let i = 0; i < 4; i++) {
@@ -1909,6 +1931,66 @@ module.exports = function (regl) {
 		uniforms: { pxScale: (ctx) => ctx.viewportHeight * 1.2 }
 	});
 
+	// ---- smoke: curling up out of the lamp house and drifting through the
+	// light at the lens, lit where it crosses the beam
+	const SMOKE_N = 70;
+	const smokeSeeds = [];
+	for (let i = 0; i < SMOKE_N; i++) smokeSeeds.push(Math.random(), Math.random(), Math.random(), i < SMOKE_N * 0.6 ? 1 : 0);
+	const smokeDraw = regl({
+		vert: `
+			precision highp float;
+			uniform mat4 proj, view;
+			uniform float time, pxScale, yScale;
+			attribute vec4 seed;
+			varying float v_b, v_a, v_s;
+			void main() {
+				vec3 L0 = vec3(${f(O[0] + PROJ.lens[0])}, ${f(O[1] + PROJ.lens[1])}, ${f(O[2] + PROJ.lens[2])});
+				vec3 C = vec3(${f(O[0] + PROJ.img.x)}, ${f(O[1] + PROJ.img.y)}, ${f(O[2] + L)});
+				vec3 fw = normalize(C - L0);
+				float life = fract(time * (0.07 + 0.04 * seed.y) + seed.x);
+				vec3 p;
+				if (seed.w > 0.5) {
+					// at the lens, pulled forward into the beam
+					p = L0 + fw * (0.05 + life * 1.3) + vec3((seed.z - 0.5) * 0.16, life * 0.32 + (seed.y - 0.5) * 0.1, 0.0);
+				} else {
+					// up out of the lamp house's vents
+					p = L0 + vec3((seed.z - 0.5) * 0.12, 0.08 + life * 0.75, -0.32 + (seed.y - 0.5) * 0.12);
+				}
+				p.x += sin(time * 0.6 + seed.y * 20.0) * 0.06 * life;
+				p.z += cos(time * 0.4 + seed.z * 17.0) * 0.05 * life;
+				// how much of the beam's light it is in
+				vec3 d = p - L0;
+				float al = max(dot(d, fw), 0.0);
+				float perp = length(d - fw * al);
+				float rc = 0.04 + al * ${f(PROJ.img.h * 0.5)} / length(C - L0);
+				v_b = 0.12 + 1.4 * smoothstep(rc + 0.06, rc * 0.5, perp) * smoothstep(0.0, 0.06, al);
+				v_a = sin(3.14159 * life) * (0.5 + 0.5 * seed.y);
+				v_s = seed.x * 31.0 + seed.z * 7.0;
+				vec3 pw = p; pw.y *= yScale;
+				vec4 v = view * vec4(pw, 1.0);
+				gl_Position = proj * v;
+				gl_PointSize = clamp(pxScale * (0.14 + 0.36 * life) / max(0.2, -v.z), 2.0, 600.0);
+			}`,
+		frag: `
+			precision highp float;
+			uniform float time;
+			varying float v_b, v_a, v_s;
+			${COMMON}
+			void main() {
+				vec2 d = gl_PointCoord - 0.5;
+				float g = exp(-dot(d, d) * 9.0);
+				float n = rnoise(gl_PointCoord * 3.2 + v_s + time * 0.05) * 0.7 + rnoise(gl_PointCoord * 7.0 - v_s) * 0.3;
+				float a = g * smoothstep(0.2, 0.8, n) * v_a * 0.15;
+				gl_FragColor = vec4(mix(vec3(0.5, 0.06, 0.04), vec3(1.0, 0.86, 0.68), clamp(v_b - 0.12, 0.0, 1.0)) * v_b * a, 1.0);
+			}`,
+		attributes: { seed: smokeSeeds },
+		count: SMOKE_N,
+		primitive: 'points',
+		depth: { enable: true, mask: false },
+		blend: { enable: true, func: { src: 'one', dst: 'one' } },
+		uniforms: { pxScale: (ctx) => ctx.viewportHeight * 1.2 }
+	});
+
 	const DUST_N = 2200;
 	const seeds = [];
 	for (let i = 0; i < DUST_N; i++) seeds.push(Math.random(), Math.random(), Math.random(), Math.random());
@@ -1938,6 +2020,7 @@ module.exports = function (regl) {
 		drawProps(typeof window !== 'undefined' && window.__tvTime != null ? window.__tvTime : t);
 		if (memTexShared && !(typeof window !== 'undefined' && window.__noBeam)) beamDraw();
 		lensDraw();
+		if (!reflected && !(typeof window !== "undefined" && window.__noSmoke)) smokeDraw();
 		if (!reflected) sparkDraw();
 		if (!reflected) dust();
 	};

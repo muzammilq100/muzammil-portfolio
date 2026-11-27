@@ -48,12 +48,6 @@ const BASE_KEYS = [
 	{ eye: [1.05, 1.5, tray - 0.42], at: [DARK.TXc - 0.02, DARK.liquid, tray + 0.04], fov: 34, dof: 0.2, p: { eye: [1.0, 1.55, tray - 0.45], fov: 52 } },
 	// up to the prints drying on their lines
 	{ eye: [2.0, 1.6, 8.3], at: [0.4, 2.25, 11.3], fov: 50, dof: 0.12, p: { eye: [1.8, 1.6, 8.1], fov: 72 } },
-	// the cable, climbing the shaft
-	{ eye: [4.2, 1.7, 5.6], at: [0.5, 3.6, 7.6], fov: 58, dof: 0.04, p: { fov: 76 } },
-	// up with it as it is slung across the room
-	{ eye: [3.6, 5.4, 8.0], at: [10.5, 5.0, 11.6], fov: 56, dof: 0.04, p: { fov: 76 } },
-	// down the far side, the polaroids between the windows
-	{ eye: [11.6, 2.9, 10.6], at: [W, 3.3, 14.6], fov: 52, dof: 0.06, p: { fov: 72 } }
 ];
 
 // a smooth curve through points (Catmull-Rom), s from 0 to the last point
@@ -73,6 +67,21 @@ function spline(pts, s) {
 // drawing back between them; and the memories on the far wall
 function buildKeys() {
 	const K = BASE_KEYS.slice();
+	// the cable: where it is plugged in, low, close; then down on the floor
+	// with it, following it across the room to the polaroids' wall
+	const C = room.ROOM.CABLE, cp = C.path, zs = C.socket[2];
+	const sx = C.socket[0];
+	K.push({ eye: [sx + 1.05, 0.42, zs - 0.45], at: [sx, 0.27, zs + 0.08], fov: 42, dof: 0.32, p: { eye: [sx + 1.3, 0.48, zs - 0.55], fov: 58 } });
+	const [ra, rb] = C.run;
+	for (const fr of [0.04, 0.22, 0.42, 0.62, 0.82]) {
+		const i = Math.round(ra + (rb - ra) * fr);
+		const a = cp[Math.max(0, i - 6)], b = cp[Math.min(cp.length - 1, i + 6)], q = cp[i];
+		let dx = b[0] - a[0], dz = b[2] - a[2];
+		const dl = Math.hypot(dx, dz) || 1; dx /= dl; dz /= dl;
+		K.push({ eye: [q[0] - dx * 0.8 - dz * 0.12, 0.3, q[2] - dz * 0.8 + dx * 0.12], at: [q[0] + dx * 1.5, 0.06, q[2] + dz * 1.5], fov: 44, dof: 0.24, pass: true, p: { fov: 60 } });
+	}
+	// it reaches the right wall, and the polaroids rise up it
+	K.push({ eye: [W - 3.0, 0.45, zs - 1.6], at: [W - 0.3, 1.9, zs + 0.9], fov: 50, dof: 0.1, p: { fov: 70 } });
 	const add3 = (a, b, k) => [a[0] + b[0] * k, a[1] + b[1] * k, a[2] + b[2] * k];
 	let seed = 11;
 	const rnd = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
@@ -100,7 +109,7 @@ function buildKeys() {
 	K.push({ eye: [PX - 0.55, 1.75, PZ - 1.4], at: [W / 2, 5.0, L], fov: 50, dof: 0.06, p: { fov: 70 } });
 	// the televisions: all of them, then one by one, in no order
 	const sets = TV.stack;
-	K.push({ eye: [W / 2 + 0.5, 1.9, TV.z - 6.2], at: [W / 2, 1.8, TV.z], fov: 48, dof: 0.05, p: { fov: 70 } });
+	K.push({ eye: [W / 2 + 1.4, 1.2, TV.z - 4.9], at: [W / 2, 1.75, TV.z], fov: 50, dof: 0.05, p: { fov: 70 } });
 	const order = sets.map((t, i) => i);
 	for (let i = order.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); const x = order[i]; order[i] = order[j]; order[j] = x; }
 	let prev = null;
@@ -127,18 +136,34 @@ module.exports = function createRedTour() {
 	const END = KEYS.length - 1;
 	// the shots the camera stops on
 	const STOPS = KEYS.map((k, i) => (k.pass ? -1 : i)).filter((i) => i >= 0);
-	const nearestStop = (x) => STOPS.reduce((b, i) => (Math.abs(i - x) < Math.abs(b - x) ? i : b), STOPS[0]);
+	// where to come to rest: the next shot the way the visitor was going
+	// (never back past where they let go, unless they were all but there)
+	const settleStop = (x, d) => {
+		if (d >= 0) { for (const i of STOPS) if (i >= x - 0.06) return i; return STOPS[STOPS.length - 1]; }
+		for (let j = STOPS.length - 1; j >= 0; j--) if (STOPS[j] <= x + 0.06) return STOPS[j];
+		return STOPS[0];
+	};
 	const nextStop = (x, d) => {
 		if (d > 0) { for (const i of STOPS) if (i > x + 0.01) return i; return STOPS[STOPS.length - 1]; }
 		for (let j = STOPS.length - 1; j >= 0; j--) if (STOPS[j] < x - 0.01) return STOPS[j];
 		return STOPS[0];
 	};
 	let eyeS = null, atS = null;
-	let scroll = 0, target = 0, last = null, lastInput = -10, now = 0, startAt = null;
+	let scroll = 0, target = 0, last = null, lastInput = -10, now = 0, startAt = null, dir = 1, dirAt = -10;
 	const listeners = [];
 	const on = (t, fn, o) => { window.addEventListener(t, fn, o); listeners.push([t, fn, o]); };
-	const push = (d) => { target = Math.max(0, Math.min(END, target + d)); lastInput = now; };
-	const go = (d) => { target = nextStop(target, d); lastInput = now - 10; };
+	const push = (d) => {
+		const sd = Math.sign(d);
+		if (!sd) return;
+		// (a trackpad's tail of momentum can twitch backwards: ignore a tiny
+		// reverse just after a gesture)
+		if (sd !== dir && now - dirAt < 0.25 && Math.abs(d) < 0.02) return;
+		if (sd !== dir) dir = sd;
+		dirAt = now;
+		target = Math.max(0, Math.min(END, target + d));
+		lastInput = now;
+	};
+	const go = (d) => { dir = d > 0 ? 1 : -1; target = nextStop(target, d); lastInput = now - 10; };
 	on('wheel', (e) => {
 		if (e.target.closest && e.target.closest('.st-ui')) return;
 		e.preventDefault();
@@ -175,9 +200,9 @@ module.exports = function createRedTour() {
 		// (tests: ?tourdebug and window.__redShot put the camera anywhere)
 		if (typeof window !== 'undefined' && window.__redShot !== undefined && /tourdebug/.test(location.search)) { scroll = target = window.__redShot; }
 		// when the visitor stops, the camera settles on the nearest shot
-		if (now - lastInput > 0.5) target += (nearestStop(target) - target) * (1 - Math.exp(-dt * 2.2));
+		if (now - lastInput > 0.35) target += (settleStop(target, dir) - target) * (1 - Math.exp(-dt * 2.0));
 		// a heavy, smooth glide
-		scroll += (target - scroll) * (1 - Math.exp(-dt * 1.5));
+		scroll += (target - scroll) * (1 - Math.exp(-dt * 1.7));
 		if (Math.abs(target - scroll) < 1e-4) scroll = target;
 
 		const portrait = window.innerWidth < window.innerHeight;
