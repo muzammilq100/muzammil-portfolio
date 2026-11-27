@@ -53,6 +53,9 @@ const tray = DARK.trays[0];
 // eye, what it looks at, lens (degrees); dof: how shallow the focus is;
 // p: changes for a phone held upright; pass: the camera goes through this
 // point without stopping there
+// the two letters on the table, and the middle of them
+const LETS = TBL.letters;
+const LET_C = [(LETS[0].x + LETS[1].x) / 2, TBL.top, (LETS[0].z + LETS[1].z) / 2];
 const BASE_KEYS = [
 	// the corridor: far back in the dark, the door and its sign
 	{ eye: [W / 2 + 0.15, 1.55, -9.6], at: [W / 2, 1.7, 0.0], fov: 40, dof: 0.05, p: { fov: 58 } },
@@ -66,6 +69,11 @@ const BASE_KEYS = [
 	{ eye: [TBL.x - 1.4, TBL.top + 0.48, TBL.z - 0.7], at: [TBL.x + 0.05, TBL.top + 0.26, TBL.z + 0.0], fov: 40, dof: 0.32, p: { fov: 50 } },
 	// down over the stack of polaroids by the candles
 	{ eye: [TBL.stack[0] - 0.35, TBL.top + 0.75, TBL.stack[1] - 0.25], at: [TBL.stack[0] + 0.02, TBL.top, TBL.stack[1] + 0.02], fov: 34, dof: 0.3, p: { fov: 50 } },
+	// along the table from above, to the two letters left open before the
+	// chair pushed back; then down to each, close enough to read
+	{ eye: [LET_C[0] - 0.3, TBL.top + 0.85, LET_C[2] - 0.1], at: [LET_C[0] + 0.03, TBL.top, LET_C[2] + 0.02], fov: 40, dof: 0.22, p: { eye: [LET_C[0] - 0.35, TBL.top + 1.05, LET_C[2] - 0.1], fov: 62 } },
+	{ eye: [LETS[0].x - 0.09, TBL.top + 0.4, LETS[0].z - 0.01], at: [LETS[0].x + 0.012, TBL.top, LETS[0].z], fov: 42, dof: 0.12, p: { eye: [LETS[0].x - 0.1, TBL.top + 0.46, LETS[0].z], fov: 70 } },
+	{ eye: [LETS[1].x - 0.09, TBL.top + 0.4, LETS[1].z + 0.01], at: [LETS[1].x + 0.012, TBL.top, LETS[1].z], fov: 42, dof: 0.12, p: { eye: [LETS[1].x - 0.1, TBL.top + 0.46, LETS[1].z], fov: 70 } },
 	// the darkroom along the left wall
 	{ eye: [3.3, 1.55, 1.3], at: [0.3, 1.35, 5.2], fov: 50, dof: 0.05, p: { eye: [2.8, 1.6, 0.9], fov: 72 } },
 	// down into the developer: his photograph floating up in the black water
@@ -74,6 +82,13 @@ const BASE_KEYS = [
 	{ eye: [0.95, 1.22, DARK.cam.z - 0.5], at: [DARK.cam.x - 0.02, DARK.cam.y + 0.04, DARK.cam.z + 0.06], fov: 34, dof: 0.34, p: { fov: 48 } },
 	// the dry bench: the enlarger and the mess round it
 	{ eye: [1.75, 1.45, 9.0], at: [0.35, 1.08, 10.8], fov: 46, dof: 0.12, p: { eye: [1.9, 1.5, 8.6], fov: 66 } },
+	// then from above, slowly along the white tiles under the hanging
+	// prints: the letters and the mug, the enlarger, the books and the
+	// ashtray's thread of smoke, the box of paper
+	{ eye: [0.66, 1.58, 9.25], at: [0.38, DARK.top, 9.75], fov: 52, dof: 0.18, p: { eye: [0.7, 1.68, 9.15], fov: 74 } },
+	{ eye: [0.66, 1.58, 10.75], at: [0.38, DARK.top, 11.25], fov: 52, dof: 0.18, pass: true, p: { eye: [0.7, 1.68, 10.65], fov: 74 } },
+	{ eye: [0.68, 1.5, 11.35], at: [0.5, DARK.top + 0.06, 11.72], fov: 44, dof: 0.26, p: { eye: [0.72, 1.6, 11.25], fov: 66 } },
+	{ eye: [0.66, 1.58, 12.2], at: [0.4, DARK.top, 12.62], fov: 52, dof: 0.18, p: { eye: [0.7, 1.68, 12.1], fov: 74 } },
 	// up to the prints drying on their lines
 	{ eye: [2.0, 1.6, 8.3], at: [0.4, 2.25, 11.3], fov: 50, dof: 0.12, p: { eye: [1.8, 1.6, 8.1], fov: 72 } },
 ];
@@ -96,6 +111,19 @@ function spline(pts, s) {
 let REVEAL = 0;
 function buildKeys() {
 	const K = BASE_KEYS.slice();
+	// close among the hanging prints: one or two in focus, the rest soft,
+	// all of them swaying (they swing more when the camera is near)
+	{
+		// (on the outermost lines, so no other print hangs between)
+		const H = (room.ROOM.DARK.hung || []).filter((q) => q.peg[0] > 1.3 && q.c[2] > 9.4 && q.c[2] < 12.6 && q.c[1] > 1.6 && q.c[1] < 2.5);
+		H.sort((a, b) => Math.abs(a.c[2] - 10.9) - Math.abs(b.c[2] - 10.9));
+		if (H.length) {
+			const q = H[0], c = q.c;
+			K.push({ eye: [c[0] + 0.85, c[1] - 0.05, c[2] - 0.55], at: c, fov: 30, dof: 0.42, p: { eye: [c[0] + 1.05, c[1] - 0.05, c[2] - 0.6], fov: 46 } });
+			const r = H.find((x) => Math.abs(x.c[2] - c[2]) > 0.25 && Math.abs(x.c[2] - c[2]) < 0.9);
+			if (r) K.push({ eye: [r.c[0] + 0.7, r.c[1] + 0.02, r.c[2] + 0.45], at: r.c, fov: 30, dof: 0.42, p: { eye: [r.c[0] + 0.9, r.c[1] + 0.02, r.c[2] + 0.5], fov: 46 } });
+		}
+	}
 	// the cable: where it is plugged in, low, close; then down on the floor
 	// with it, following it across the room to the polaroids' wall
 	const C = room.ROOM.CABLE, cp = C.path, zs = C.socket[2];

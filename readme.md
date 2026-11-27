@@ -39,6 +39,9 @@ Pushing to `master` builds the site and publishes it to Cloudflare Pages and Git
 - Red room books: "Vintage Books" by feivelyn (https://sketchfab.com/3d-models/vintage-books-7a9bedf1e85c4f85b1b384dbdadadee9), CC BY-NC 4.0 (no commercial use); the set split into its stacks and single books, in `res/redroom/books_*`.
 - Red room ashtray: "Vintage Metal Ashtray" by Mattyew (https://sketchfab.com/3d-models/vintage-metal-ashtray-e3a5fd374386419680a26a3acaa18728), CC BY 4.0.
 - Her veil (`res/redroom/veil.bin`): a circle of sheer net let fall on her head as cloth (worked out once, pinned at the crown, resting on her shoulders); in the room it gathers into folds, stirs, and rises and falls with her breath.
+- The projector plays only his clips (`res/redroom/reel.mp4`, 400 x 300, his phone clips cropped to 4:3), no stills between them.
+- His two letters (`res/redroom/letters_real.webp`, photographed, straightened and evened out) lie open on the table before a chair pushed back and turned aside; the tour comes down over the table and close to each, near enough to read.
+- The cigarette in the darkroom's ashtray, still burning, its thread of smoke curling up into the red light.
 - The cable's heartbeat: pulses of light run along the black cable from its socket to the televisions, lub-dub, quicker as the camera nears her, with an electric buzz (made in the browser, no sound files). The projector clicks at every change of clip or still.
 - `src/listview.js` – all paintings as a plain list (`#list`, and the fallback without 3D).
 - `source/` – source files that are not published (e.g. the Blender wall model).

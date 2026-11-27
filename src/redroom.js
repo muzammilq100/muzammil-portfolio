@@ -197,6 +197,14 @@ TV.letters = (() => {
 // the second, the chemistry: gallon jugs and canisters (Poly Haven, CC0).
 // Over both, prints hang to dry on lines strung between the shafts, on
 // pegs, curling, stirring; a red tube on the wall above lights them.
+// THE TWO LETTERS (his own, photographed: res/redroom/letters_real.webp,
+// one beside the other) left open on the table in front of the chair
+// pushed back, where someone sat reading them: centre, turn (radians; the
+// top of each faces the window), size
+TBL.letters = [
+	{ x: TBL.x - 0.39, z: TBL.z + 0.2, a: 0.12, w: 0.2, h: 0.292, y: 0.0012 },
+	{ x: TBL.x - 0.37, z: TBL.z + 0.5, a: -0.22, w: 0.2, h: 0.292, y: 0.0024 }
+];
 // the box of photographic paper on the dry bench (see the darkroom)
 const PAPERBOX = { x0: 0.3, x1: 0.56, z0: 12.38, z1: 12.7, h: 0.055 };
 const DARK = (() => {
@@ -215,6 +223,10 @@ const DARK = (() => {
 	// the old camera, set down on the tiles of the sink beside the developer
 	// (where his photograph is coming up), its strap trailing
 	D.cam = { x: 0.43, y: D.basin.floor, z: D.trays[0] - D.TZ / 2 - 0.3 };
+	// (the prints hung on the lines, filled in with the polaroids)
+	D.hung = [];
+	// the ashtray on the dry bench, a cigarette left burning in it
+	D.ash = { x: 0.6, z: 11.62 };
 	// the drying lines: [x out from the wall, height, from z, to z, sag]
 	D.lines = [
 		[0.32, 2.74, SHAFTS[0], SHAFTS[1], 0.12], [0.74, 2.52, SHAFTS[0], SHAFTS[1], 0.17], [1.1, 2.62, SHAFTS[0], SHAFTS[1], 0.2],
@@ -309,7 +321,7 @@ const vaultY = (x) => { const u = x <= W / 2 ? x : W - x; return H + Math.sqrt(M
 // ------------------------------------------------------------------
 // GEOMETRY
 // ------------------------------------------------------------------
-const K = { FLOOR: 0, WALL: 1, REVEAL: 2, GLASS: 3, VAULT: 4, TRIM: 5, VOID: 6, TUBE: 7, CABLE: 8, TILE: 9, STEEL: 10, PEG: 11, CONC: 12, CFLOOR: 13, DOOR: 14, MAINCABLE: 15 };
+const K = { FLOOR: 0, WALL: 1, REVEAL: 2, GLASS: 3, VAULT: 4, TRIM: 5, VOID: 6, TUBE: 7, CABLE: 8, TILE: 9, STEEL: 10, PEG: 11, CONC: 12, CFLOOR: 13, DOOR: 14, MAINCABLE: 15, PAPER: 16, ASH: 17 };
 
 function Geo() {
 	const pos = [], nrm = [], kind = [], uv = [], idx = [];
@@ -604,6 +616,19 @@ function build() {
 			const c = [x + 0.03, D.liquid + 0.145, z + 0.024], ax = [0.62, 0.66, 0.42];
 			tube(g, [[c[0] - ax[0] * 0.008, c[1] - ax[1] * 0.008, c[2] - ax[2] * 0.008], [c[0] + ax[0] * 0.012, c[1] + ax[1] * 0.012, c[2] + ax[2] * 0.012]], 0.026, 14, K.STEEL);
 		}
+		// the cigarette left in the ashtray: its filter on the rim, the
+		// paper, a little ash, and its tip still burning (the smoke rises
+		// from SMOKE, drawn apart)
+		{
+			const T0 = D.top, ax = D.ash.x, az = D.ash.z;
+			const tip = [ax - 0.012, T0 + 0.027, az + 0.006], end = [ax + 0.066, T0 + 0.041, az - 0.012];
+			const at = (f) => [tip[0] + (end[0] - tip[0]) * f, tip[1] + (end[1] - tip[1]) * f, tip[2] + (end[2] - tip[2]) * f];
+			tube(g, [tip, at(0.03)], 0.0041, 8, K.TUBE);
+			tube(g, [at(0.03), at(0.2)], 0.0042, 8, K.ASH);
+			tube(g, [at(0.2), at(0.7)], 0.0043, 8, K.PAPER);
+			tube(g, [at(0.7), end], 0.0044, 8, K.PEG);
+			D.smoke = tip;
+		}
 		// on the dry bench: a roll of tape on its side, and the box the
 		// photographic paper came in, its lid off and leaning against it
 		{
@@ -756,10 +781,17 @@ function buildPolaroids() {
 			const n = [1, 0, 0];
 			const c = [p[0] + 0.004, p[1] - 0.02 - ay[1] * h * 0.5, p[2] - ay[2] * h * 0.5];
 			card(c, ax, ay, n, sc, nextPic(), [p[0], p[1], p[2], -(0.04 + rnd() * 0.06)], 0.01 + rnd() * 0.025, 1);
+			if (DARK.hung.length < 200) DARK.hung.push({ c, h, peg: p });
 			pegs.push(p);
 			k++;
 		}
 	}
+	// the letters, open on the table (style 6: v_pic says which)
+	TBL.letters.forEach((L, i) => {
+		const ay = [Math.cos(L.a), 0, Math.sin(L.a)], ax = [-Math.sin(L.a), 0, Math.cos(L.a)];
+		card([L.x, TBL.top + L.y, L.z], ax, ay, [0, 1, 0], 1, i, none, 0.003, 6, [L.w, L.h]);
+		k++;
+	});
 	// the stack of polaroids on the table, squared up roughly, and three
 	// slid off it across the wood
 	{
@@ -1320,6 +1352,8 @@ const FRAG = `
 			}
 			else if (k == 10) { alb = vec3(0.32, 0.31, 0.3); spec = 1.0; }
 			else if (k == 11) alb = vec3(0.5, 0.36, 0.22);
+			else if (k == 16) alb = vec3(0.8, 0.78, 0.74);
+			else if (k == 17) alb = vec3(0.2, 0.19, 0.18) * (0.7 + 0.6 * rnoise(lp.xz * 900.0));
 			else { alb = vec3(0.17, 0.008, 0.012); spec = 1.0; }
 
 			// light: straight through the windows, and back off the floor
@@ -1448,8 +1482,10 @@ const BREATHE = `
 		float up = smoothstep(0.3, 0.62, p.y);
 		vec2 r = p.xz - vec2(0.035, -0.07);
 		float chest = exp(-pow((p.y - 0.6) / 0.1, 2.0));
-		vec3 d = vec3(0.0, 0.006 * b * up, 0.0);
-		d.xz += normalize(r + vec2(1e-4)) * 0.0045 * b * chest;
+		vec3 d = vec3(0.0, 0.016 * b * up, 0.0);
+		d.xz += normalize(r + vec2(1e-4)) * 0.009 * b * chest;
+		// (her shoulders draw back a little as they rise)
+		d.z -= 0.006 * b * up * smoothstep(0.08, 0.2, abs(p.x - 0.035));
 		return p + d;
 	}`;
 const TV_VERT = `
@@ -1555,7 +1591,7 @@ const TV_FRAG = `
 		vec3 snow = vec3(0.86, 0.9, 0.98) * (0.16 + 0.84 * sn) * (0.85 + 0.3 * hl);
 
 		// the memory: torn, wobbling, drifting slowly closer
-		float k = mod(4.0 * slot + floor(h1 * 4.0) + 4.0 * memRot, 52.0);
+		float k = mod(4.0 * slot + floor(h1 * 4.0) + 4.0 * memRot, 57.0);
 		vec2 q = uv - 0.5;
 		q *= 1.0 - 0.07 * f;
 		q.x += sin(uv.y * 22.0 + t * 7.0) * 0.004;
@@ -1746,7 +1782,7 @@ const POL_VERT = `
 const POL_FRAG = `
 	precision highp float;
 	uniform float time, yScale;
-	uniform sampler2D polTex;
+	uniform sampler2D polTex, letTex;
 	varying vec3 v_pos, v_nrm, v_eye;
 	varying vec2 v_uv;
 	varying float v_pic, v_style;
@@ -1814,6 +1850,12 @@ const POL_FRAG = `
 					alb = vec3(dot(ph, vec3(0.3, 0.59, 0.11))) * 0.8 + 0.02;
 				}
 			}
+		} else if (v_style > 5.5) {
+			// a letter, his own: the photograph of the page (side by side in
+			// letTex, each 1000 x 1460 of a 2048 square)
+			vec2 lu = vec2((v_pic * 1024.0 + 12.0 + u.x * 1000.0) / 2048.0, (1.0 - u.y) * 1460.0 / 2048.0);
+			alb = texture2D(letTex, lu).rgb;
+			alb = alb * alb * 0.42;
 		} else if (v_style > 4.5) {
 			// blank photographic paper, its glossy face up
 			alb = vec3(0.86, 0.84, 0.8) * (0.9 + 0.1 * grime);
@@ -2052,9 +2094,9 @@ module.exports = function (regl) {
 	// (for their shadows in the beam), shared by every shader that lights
 	let memTexShared = null;
 	// ---- the reel: his clips (res/redroom/reel.mp4, one after another,
-	// 400 x 300, no sound). After every two clips the projector stops on a
-	// still for a few seconds; while she is being approached it stops dead
-	const REEL_STARTS = [0, 3.417, 8.417, 12.333, 15.625, 19.25, 22.5, 25.958, 30.75, 33.417, 36.25, 40.125, 43.667];
+	// 400 x 300, no sound), nothing but them; while she is being
+	// approached it stops dead
+	const REEL_STARTS = [0, 3.417, 8.417, 12.333, 15.625, 19.25, 22.5, 25.958, 30.75, 33.417, 36.25, 40.125, 43.667, 46.917, 51.292, 56.458, 60.25, 64.083];
 	const vidTexR = regl.texture({ width: 400, height: 300, min: 'linear', mag: 'linear', wrap: 'clamp' });
 	const film_ = { v: null, on: 0, ready: false, clip: -1, since: 0, stillUntil: 0 };
 	const reelUpdate = () => {
@@ -2076,10 +2118,8 @@ module.exports = function (regl) {
 		// which clip is on
 		let c = 0;
 		for (let i = 0; i < REEL_STARTS.length; i++) if (v.currentTime >= REEL_STARTS[i] - 0.02) c = i;
-		if (c !== film_.clip) {
-			if (film_.clip >= 0 && ++film_.since >= 2) { film_.since = 0; film_.stillUntil = now + 3.4; }
-			film_.clip = c;
-		}
+		// (only his clips now: no stills between them)
+		if (c !== film_.clip) film_.clip = c;
 		const still = now < film_.stillUntil;
 		// what is on the gate: this clip, or this still (the stills change
 		// every 3.4 s of the film's clock, see film()); every change, a click
@@ -2177,7 +2217,7 @@ module.exports = function (regl) {
 		return regl.texture({ data: cv, min: 'nearest', mag: 'nearest', wrap: 'clamp' });
 	})();
 	let memTex = null;
-	const NMEM = 55;
+	const NMEM = 57;
 	const tvCmd = regl({
 		vert: TV_VERT,
 		frag: TV_FRAG,
@@ -2243,15 +2283,16 @@ module.exports = function (regl) {
 
 	// ---- the polaroids ----------------------------------------------------
 	const pg = buildPolaroids();
-	let polTex = null;
+	let polTex = null, letTex = null;
 	loadImg('res/redroom/polaroids.webp').then((t) => { polTex = t; }).catch((e) => console.error('The photographs did not load', e));
+	loadImg('res/redroom/letters_real.webp').then((t) => { letTex = t; }).catch((e) => console.error('The letters did not load', e));
 	const polDraw = regl({
 		vert: POL_VERT,
 		frag: POL_FRAG,
 		attributes: { position: pg.pos, normal: pg.nrm, uv: pg.uv, pic: pg.pic, style: pg.sty, pivot: { buffer: regl.buffer(pg.piv), size: 4 } },
 		elements: regl.elements({ data: new Uint16Array(pg.idx), type: 'uint16' }),
 		cull: { enable: false },
-		uniforms: { ...SHARED, polTex: () => polTex, tvLight: () => tvLight }
+		uniforms: { ...SHARED, polTex: () => polTex, letTex: () => letTex || memDummy, tvLight: () => tvLight }
 	});
 
 
@@ -2395,7 +2436,9 @@ module.exports = function (regl) {
 	const TABLE_PROPS = [
 		['wtable', mul(at(TBL.x, 0, tz, PI2), scl(tk)), 1.7],
 		['wchair', mul(at(TBL.x - TBL.depth / 2 - 0.36, 0, tz - 0.42, PI2 + 0.05), scl(tk)), 1.6],
-		['wchair', mul(at(TBL.x - TBL.depth / 2 - 0.42, 0, tz + 0.45, PI2 - 0.12), scl(tk)), 1.6],
+		// (this one pushed back and turned aside: someone was sitting here
+		// reading the letters, and got up)
+		['wchair', mul(at(TBL.x - TBL.depth / 2 - 0.74, 0, tz + 0.66, PI2 - 0.95), scl(tk)), 1.6],
 		['wchair', mul(at(TBL.x + 0.02, 0, tz - TBL.half - 0.36, 0.06), scl(tk)), 1.6],
 		['wchair', mul(at(TBL.x - 0.05, 0, tz + TBL.half + 0.4, Math.PI - 0.1), scl(tk)), 0.95]
 	];
@@ -2444,7 +2487,7 @@ module.exports = function (regl) {
 			// two more lying one on the other, askew
 			['books', at(0.22, T, 11.72, 1.45), 1.3, 6],
 			['books', at(0.24, T + 0.058, 11.75, 1.8), 1.3, 7],
-			['ashtray', at(0.6, T, 11.62, 0.7), 1.2]
+			['ashtray', at(DARK.ash.x, T, DARK.ash.z, 0.7), 1.2]
 		);
 	}
 	const drawDark = () => {
@@ -2578,11 +2621,15 @@ module.exports = function (regl) {
 				float fold = sin(u * 13.0 + sin(u * 3.0) * 1.6) * 0.6 + sin(u * 22.0 + 1.7) * 0.28 + sin(u * 5.0 + 0.4) * 0.3;
 				// ...and the folds move: slow waves running round and down it
 				float wv = sin(time * 0.8 + u * 5.0 - v * 4.0) * 0.55 + sin(time * 1.31 + u * 9.0 + v * 3.0) * 0.3 + sin(time * 0.37 + u * 2.0) * 0.4;
-				p += n * free * (fold * 0.0075 + wv * 0.0042 * free);
-				// the draught: the hem swings a little, now this way, now that
+				// A LIGHT BREEZE: it comes and goes in gusts, lifting the hem
+				// and sending a ripple up through it
+				float gust = 0.55 + 0.45 * sin(time * 0.31) * sin(time * 0.17 + 1.3);
+				float rip = sin(time * 1.7 - v * 7.0 + u * 2.0) * 0.6 + sin(time * 2.6 - v * 11.0 + u * 5.0) * 0.4;
+				p += n * free * (fold * 0.0075 + wv * 0.006 * free + rip * 0.007 * free * free * gust);
 				float sway = sin(time * 0.55 + u * 0.5) * 0.6 + sin(time * 1.1 + 2.0) * 0.4;
-				p.x += sway * 0.004 * free * free;
-				p.z += cos(time * 0.47 + u) * 0.0025 * free * free;
+				p.x += (sway * 0.012 + 0.008) * free * free * gust;
+				p.z += cos(time * 0.47 + u) * 0.008 * free * free * gust;
+				p.y += max(0.0, rip) * 0.005 * free * free * gust;
 				p = breathe(p, breath);
 				v_fold = fold * free;
 				vec4 w = model * vec4(p, 1.0);
@@ -2947,6 +2994,74 @@ module.exports = function (regl) {
 		uniforms: { pxScale: (ctx) => ctx.viewportHeight * 1.2 }
 	});
 
+	// ---- THE CIGARETTE'S SMOKE: a thin thread off the burning tip that
+	// wavers, then curls and spreads and thins away as it rises into the
+	// red light. Soft cards, turned to the camera, each one born at the tip
+	// and carried up for a few seconds. -------------------------------
+	const CIG_N = 56;
+	const cigGeo = (() => {
+		const id = [], cr = [], idx = [];
+		for (let i = 0; i < CIG_N; i++) {
+			for (const [a, b] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) { id.push(i); cr.push(a, b); }
+			const o = i * 4; idx.push(o, o + 1, o + 2, o, o + 2, o + 3);
+		}
+		return { id, cr, idx };
+	})();
+	const cigDraw = regl({
+		vert: `
+			precision highp float;
+			uniform mat4 proj, view;
+			uniform float time, yScale;
+			uniform vec3 src;
+			attribute float id;
+			attribute vec2 corner;
+			varying vec2 v_c;
+			varying float v_a, v_id, v_age;
+			const float LIFE = 6.5, N = ${CIG_N}.0;
+			void main() {
+				float ph = fract(time / LIFE + id / N);
+				float age = ph * LIFE;
+				float born = time - age;
+				// the thread wavers as a whole (by when each bit left the tip),
+				// and each bit curls more the higher it is carried
+				float sway = sin(born * 0.7) * 0.6 + sin(born * 1.9 + 1.0) * 0.3;
+				vec3 p = src;
+				p.y += age * 0.075 + age * age * 0.006;
+				p.x += (sway * 0.012 + sin(age * 1.7 + id * 0.9) * 0.018 * age) * smoothstep(0.0, 1.2, age);
+				p.z += (cos(born * 0.53) * 0.01 + cos(age * 1.3 + id * 1.7) * 0.016 * age) * smoothstep(0.0, 1.2, age) - age * 0.01;
+				float size = 0.006 + 0.03 * smoothstep(0.6, LIFE, age) + 0.012 * smoothstep(0.0, 1.5, age);
+				vec3 right = vec3(view[0][0], view[1][0], view[2][0]);
+				vec3 up = vec3(view[0][1], view[1][1], view[2][1]);
+				// (a thread is taller than it is wide)
+				p += right * corner.x * size + up * corner.y * size * mix(2.6, 1.2, smoothstep(0.5, 3.0, age));
+				v_c = corner; v_id = id; v_age = age;
+				v_a = smoothstep(0.0, 0.25, age) * (1.0 - smoothstep(LIFE * 0.45, LIFE, age));
+				p.y *= yScale;
+				gl_Position = proj * view * vec4(p, 1.0);
+			}`,
+		frag: `
+			precision highp float;
+			uniform float time;
+			varying vec2 v_c;
+			varying float v_a, v_id, v_age;
+			${COMMON}
+			void main() {
+				float r = length(v_c);
+				if (r > 1.0) discard;
+				float w = rfbm(v_c * 1.3 + vec2(v_id * 3.7, time * 0.25 - v_age * 0.4));
+				float a = (1.0 - r * r) * smoothstep(0.25, 0.75, w) * v_a * mix(0.55, 0.16, smoothstep(0.5, 4.0, v_age));
+				// pale smoke, lit red by the room, warmer where it is thick
+				vec3 col = mix(vec3(0.42, 0.2, 0.19), vec3(0.62, 0.34, 0.3), w);
+				gl_FragColor = vec4(col, a);
+			}`,
+		attributes: { id: cigGeo.id, corner: cigGeo.cr },
+		elements: regl.elements({ data: new Uint16Array(cigGeo.idx), type: 'uint16' }),
+		depth: { enable: true, mask: false },
+		blend: { enable: true, func: { srcRGB: 'src alpha', dstRGB: 'one minus src alpha', srcAlpha: 'one', dstAlpha: 'one minus src alpha' } },
+		cull: { enable: false },
+		uniforms: { ...SHARED, src: () => [O[0] + DARK.smoke[0], O[1] + DARK.smoke[1], O[2] + DARK.smoke[2]] }
+	});
+
 	let reflectedNow = false;
 	const draw = (o) => {
 		const reflected = !!(o && o.reflected);
@@ -2964,6 +3079,7 @@ module.exports = function (regl) {
 		if (polTex) polDraw();
 		drawDark();
 		drawProps(typeof window !== 'undefined' && window.__tvTime != null ? window.__tvTime : t);
+		if (DARK.smoke) cigDraw();
 		if (memTexShared && !(typeof window !== 'undefined' && window.__noBeam)) beamDraw();
 		lensDraw();
 		if (!reflected && !(typeof window !== "undefined" && window.__noSmoke)) smokeDraw();
