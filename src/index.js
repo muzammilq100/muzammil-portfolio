@@ -198,6 +198,7 @@ const drawStairHall = require('./stairhall')(regl);
 const conservatory = require('./conservatory');
 conservatory.init({ regl, post });
 // (tests: go into the red room as if from "A Private Eulogy")
+if (/tourdebug/.test(location.search)) window.__enterCons = () => { const p = placement.interactables().find((q) => q.slug === conservatory.SLUG); if (p) window.__consDebug.go(p, 'cons'); return !!p; };
 if (/tourdebug/.test(location.search)) window.__enterRed = () => { const p = placement.interactables().find((q) => q.slug === 'a-private-eulogy'); const b = p && conservatory.button(p); if (b) b.click(); return !!b; };
 const drawStudio = (o) => { const d = conservatory.draw; if (d) d(o); };
 drawStudio.reflect = (fn, n) => { const d = conservatory.draw; if (d) d.reflect(fn, n); };

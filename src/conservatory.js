@@ -183,6 +183,15 @@ let regl = null, post = null;
 let room = null;        // { studio, tour } from the room's file
 let draw = null;        // the room's draw (studio.js), once made
 const draws = {};       // each room's draw, made once
+const mods = {};        // each room's file, once fetched
+// make one room the one in use: the gallery draws it behind its walls and
+// the light shafts take its sun (only the room being visited, or about to be)
+function useRoom(w) {
+	if (!mods[w] || !draws[w]) return;
+	room = mods[w];
+	draw = draws[w];
+	if (post && post.useStudio) post.useStudio(room.studio);
+}
 let dummy = null;
 let roomTour = null;    // the petal's tour, while a visit lasts
 let phase = 'idle';     // idle, zoom, wait, room, leave
@@ -207,11 +216,11 @@ function setPhase(p) { phase = p; phaseAt = now; }
 function ensureRoom(w) {
 	w = w || which;
 	return loadRoom(w).then((r) => {
+		mods[w] = r;
 		if (!draws[w]) draws[w] = r.studio(regl);
-		which = w;
-		room = r;
-		draw = draws[w];
-		if (post && post.useStudio) post.useStudio(r.studio);
+		// (a room that arrives late, after the visitor chose the other one,
+		// is kept but not put in use)
+		if (w === which) useRoom(w);
 		return r;
 	});
 }
@@ -250,6 +259,7 @@ function redButton(p) {
 		} catch (err) { /* silent, then */ }
 		ensureRoom('red').catch((err) => console.error(err));
 		which = 'red';
+		useRoom('red');
 		enter(p);
 	});
 	return b;
@@ -293,6 +303,7 @@ function ask(p) {
 		if (hash(a) === ANSWER) {
 			// let in: the room starts on its way now
 			which = 'cons';
+			useRoom('cons');
 			ensureRoom('cons').catch((err) => console.error(err));
 			card.innerHTML = `
 				<button type="button" class="cons-x" aria-label="Close">×</button>
@@ -444,7 +455,8 @@ function update(time, cam, look) {
 	}
 	if (phase === 'wait') {
 		// all red, while the room arrives
-		const ok = room && draw && room.studio.ready() && t > (which === 'red' ? 0.9 : 0.35);
+		// (only the room chosen: never another one still in memory)
+		const ok = room && draw && room === mods[which] && draw === draws[which] && room.studio.ready() && t > (which === 'red' ? 0.9 : 0.35);
 		if (ok) {
 			roomTour = which === 'red'
 				? room.tour({ onExpel: expel })
@@ -484,6 +496,9 @@ function update(time, cam, look) {
 	}
 	return null;
 }
+
+// (tests: go into either room straight away)
+if (typeof window !== 'undefined' && /tourdebug/.test(location.search)) window.__consDebug = { go(p, w) { which = w; useRoom(w); ensureRoom(w).catch((e) => console.error(e)); enter(p); }, leave };
 
 module.exports = {
 	SLUG,
