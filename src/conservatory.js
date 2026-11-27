@@ -25,6 +25,15 @@
  * "Back to the gallery" is there all the while.
  *
  * ?studio in the address opens the room on its own, as the preview did.
+ *
+ * THE RED ROOM (redroom.js) stands in the same place behind the gallery,
+ * and is reached the same way from "A Private Eulogy": under its story,
+ * "Step through the door of her thoughts". The camera goes into the
+ * painting, into the black of her veil, and out of the dark comes the red
+ * room's corridor, ENTER flickering where her head was. Inside, the room
+ * may put the visitor out (redtour.js, the warning): the picture breaks up
+ * and they are back before the painting, which stutters once and is still.
+ * ?redroom opens it on its own.
  */
 
 const env = require('./env');
@@ -40,6 +49,9 @@ const hash = (s) => {
 };
 // ?redroom: the red room (redroom.js) shown the same way, on its own
 const RED_ROOM = /[?&]redroom\b/.test(location.search);
+const RED_SLUG = 'a-private-eulogy';
+// where in "A Private Eulogy" the camera goes in: the black of her veil
+const INTO_RED = [0.5, 0.31];
 const PREVIEW = RED_ROOM || /[?&]studio\b/.test(location.search);
 // the red of the painting's cloth and of the door: where the cut is hidden
 const RED = [0.32, 0.02, 0.05];
@@ -54,7 +66,7 @@ const mix = (a, b, t) => a + (b - a) * t;
 const mix3 = (a, b, t) => [mix(a[0], b[0], t), mix(a[1], b[1], t), mix(a[2], b[2], t)];
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
-const LOOK0 = { fade: 0, fadeColor: [0, 0, 0], letterbox: 0, focus: 6, aperture: 0, exposure: 1, shafts: 1, vignette: 0 };
+const LOOK0 = { fade: 0, fadeColor: [0, 0, 0], letterbox: 0, focus: 6, aperture: 0, exposure: 1, shafts: 1, vignette: 0, glitch: 0 };
 
 const CSS = `
 .cons-btn {
@@ -143,30 +155,34 @@ body.in-conservatory .painting-plaque { display: none !important; }
 const ROSE_SVG = '<svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8.5c-2.2 0-3.6-1.6-3.6-3.4C8.4 3.6 10 2.5 12 3.6c2-1.1 3.6 0 3.6 1.5 0 1.8-1.4 3.4-3.6 3.4z"/><path d="M12 8.5V21"/><path d="M12 15c-2.5-.2-4-1.6-4.4-3.4 2.3.1 3.8 1.1 4.4 3.4z"/><path d="M12 13c1.8-.4 3-1.6 3.3-3 -1.7.1-2.9 1-3.3 3z"/></svg>';
 const DOOR_SVG = '<svg aria-hidden="true" width="16" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 21V9a6 6 0 0 1 12 0v12"/><path d="M4 21h16"/><path d="M14.5 13.5v1"/></svg>';
 
-// the room's file: fetched once, the first time anyone is let in
-let roomFile = null;
-function loadRoom() {
-	if (!roomFile) {
-		roomFile = new Promise((ok, fail) => {
-			const key = RED_ROOM ? '__redRoom' : '__conservatoryRoom';
+// the rooms' files: each fetched once, the first time anyone is let in
+// (the conservatory, or the red room)
+const roomFiles = {};
+let which = RED_ROOM ? 'red' : 'cons';
+function loadRoom(w) {
+	w = w || which;
+	if (!roomFiles[w]) {
+		roomFiles[w] = new Promise((ok, fail) => {
+			const key = w === 'red' ? '__redRoom' : '__conservatoryRoom';
 			if (window[key]) { ok(window[key]); return; }
 			const s = document.createElement('script');
 			/* global __ROOM_V__, __RED_V__ */
-			s.src = RED_ROOM
+			s.src = w === 'red'
 				? 'redroom.js?v=' + (typeof __RED_V__ !== 'undefined' ? __RED_V__ : Date.now())
 				: 'conservatory.js?v=' + (typeof __ROOM_V__ !== 'undefined' ? __ROOM_V__ : Date.now());
 			s.async = true;
 			s.onload = () => (window[key] ? ok(window[key]) : fail(new Error('The room did not load')));
-			s.onerror = () => { roomFile = null; fail(new Error('The conservatory could not be fetched')); };
+			s.onerror = () => { roomFiles[w] = null; fail(new Error('The room could not be fetched')); };
 			document.head.appendChild(s);
 		});
 	}
-	return roomFile;
+	return roomFiles[w];
 }
 
 let regl = null, post = null;
 let room = null;        // { studio, tour } from the room's file
 let draw = null;        // the room's draw (studio.js), once made
+const draws = {};       // each room's draw, made once
 let dummy = null;
 let roomTour = null;    // the petal's tour, while a visit lasts
 let phase = 'idle';     // idle, zoom, wait, room, leave
@@ -186,14 +202,16 @@ function el(tag, cls, html) {
 
 function setPhase(p) { phase = p; phaseAt = now; }
 
-// the room, made the first time it is needed
-function ensureRoom() {
-	return loadRoom().then((r) => {
+// the room, made the first time it is needed (and made the one the
+// gallery draws behind its walls)
+function ensureRoom(w) {
+	w = w || which;
+	return loadRoom(w).then((r) => {
+		if (!draws[w]) draws[w] = r.studio(regl);
+		which = w;
 		room = r;
-		if (!draw) {
-			draw = r.studio(regl);
-			if (post && post.useStudio) post.useStudio(r.studio);
-		}
+		draw = draws[w];
+		if (post && post.useStudio) post.useStudio(r.studio);
 		return r;
 	});
 }
@@ -203,12 +221,37 @@ function ensureRoom() {
 // ---------------------------------------------------------------
 let refused = false;      // a wrong answer: the way in is gone for this visit
 function button(p) {
+	if (p && p.slug === RED_SLUG && !PREVIEW) return redButton(p);
 	if (!p || p.slug !== SLUG || PREVIEW || refused) return null;
 	const b = el('button', 'cons-btn', DOOR_SVG + '<span>The Conservatory of Unsaid Things</span>');
 	b.type = 'button';
 	b.setAttribute('aria-label', 'The Conservatory of Unsaid Things: answer its question to go in');
 	b.addEventListener('pointerdown', (e) => e.stopPropagation());
 	b.addEventListener('click', (e) => { e.stopPropagation(); ask(p); });
+	return b;
+}
+
+// "A Private Eulogy": no question. The painting's own words leave the
+// viewer "standing outside the door of her thoughts"; this is that door
+const VEIL_SVG = '<svg aria-hidden="true" width="16" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3c-3 0-5 2.6-5 6.2 0 2.5-1 4.4-2.6 6.3C6.6 18 9 21 12 21s5.4-3 7.6-5.5C18 13.6 17 11.7 17 9.2 17 5.6 15 3 12 3z"/><path d="M9.5 9.5c.7 1.6 1.6 2.5 2.5 2.5s1.8-.9 2.5-2.5"/></svg>';
+function redButton(p) {
+	const b = el('button', 'cons-btn', VEIL_SVG + '<span>Step through the door of her thoughts</span>');
+	b.type = 'button';
+	b.setAttribute('aria-label', 'Step through the door of her thoughts: go into the room of A Private Eulogy');
+	b.addEventListener('pointerdown', (e) => e.stopPropagation());
+	b.addEventListener('click', (e) => {
+		e.stopPropagation();
+		if (phase !== 'idle') return;
+		// (the room's sound may only start from a tap like this one)
+		try {
+			const AC = window.AudioContext || window.webkitAudioContext;
+			if (AC && !window.__redAudio) window.__redAudio = new AC();
+			if (window.__redAudio && window.__redAudio.state === 'suspended') window.__redAudio.resume();
+		} catch (err) { /* silent, then */ }
+		ensureRoom('red').catch((err) => console.error(err));
+		which = 'red';
+		enter(p);
+	});
 	return b;
 }
 
@@ -249,7 +292,8 @@ function ask(p) {
 		const a = input.value.trim().replace(/[.!?]+$/, '').toLowerCase();
 		if (hash(a) === ANSWER) {
 			// let in: the room starts on its way now
-			ensureRoom().catch((err) => console.error(err));
+			which = 'cons';
+			ensureRoom('cons').catch((err) => console.error(err));
 			card.innerHTML = `
 				<button type="button" class="cons-x" aria-label="Close">×</button>
 				<span class="cons-kicker">The Conservatory of Unsaid Things</span>
@@ -282,7 +326,8 @@ function enter(p) {
 	const right = p.side === 'right';
 	const n = right ? [-1, 0, 0] : [1, 0, 0];
 	const across = right ? [0, 0, 1] : [0, 0, -1];   // left to right in the picture
-	const du = (INTO[0] - 0.5) * w, dv = (0.5 - INTO[1]) * h;
+	const IN = which === 'red' ? INTO_RED : INTO;
+	const du = (IN[0] - 0.5) * w, dv = (0.5 - IN[1]) * h;
 	into = { at: [c[0] + across[0] * du - n[0] * 0.04, c[1] + dv, c[2] + across[2] * du], n };
 	start = null;
 	noted = false;
@@ -292,7 +337,14 @@ function enter(p) {
 }
 
 function buildUi() {
-	if (ui) { ui.classList.add('on'); return; }
+	if (ui) {
+		ui.classList.add('on');
+		const sky = ui.querySelector('.cons-sky');
+		if (sky) sky.style.display = which === 'red' ? 'none' : '';
+		if (which !== 'red' && !nameCard) { nameCard = el('div', 'cons-name', 'The Conservatory of Unsaid Things'); document.body.appendChild(nameCard); }
+		window.addEventListener('keydown', escKey);
+		return;
+	}
 	ui = el('div', 'cons-ui');
 	const sky = el('button', 'cons-sky', env.night > 0.5 ? '☀' : '☾');
 	sky.type = 'button';
@@ -304,11 +356,14 @@ function buildUi() {
 	back.addEventListener('click', (e) => { e.stopPropagation(); leave(); });
 	ui.appendChild(sky);
 	ui.appendChild(back);
+	if (which === 'red') sky.style.display = 'none';
 	['pointerdown', 'pointerup'].forEach((t) => ui.addEventListener(t, (e) => e.stopPropagation()));
 	document.body.appendChild(ui);
 	requestAnimationFrame(() => ui.classList.add('on'));
-	nameCard = el('div', 'cons-name', 'The Conservatory of Unsaid Things');
-	document.body.appendChild(nameCard);
+	if (which !== 'red') {
+		nameCard = el('div', 'cons-name', 'The Conservatory of Unsaid Things');
+		document.body.appendChild(nameCard);
+	}
 	window.addEventListener('keydown', escKey);
 }
 const escKey = (e) => { if (e.key === 'Escape' && (phase === 'room' || phase === 'wait')) leave(); };
@@ -334,6 +389,15 @@ function leave() {
 	setPhase('leave');
 	if (note) { note.classList.remove('on'); }
 	if (nameCard) nameCard.classList.remove('on');
+}
+
+// put out of the red room: the picture has already broken up and gone
+// black (redtour.js); back before the painting, which stutters once
+let expelled = false;
+function expel() {
+	if (phase !== 'room') return;
+	expelled = true;
+	finishLeaving();
 }
 
 function finishLeaving() {
@@ -374,20 +438,23 @@ function update(time, cam, look) {
 		const end = [into.at[0] + into.n[0] * 0.09, into.at[1], into.at[2] + into.n[2] * 0.09];
 		const eye = mix3(start.eye, end, mix(e, 1, e2 * 0.6));
 		const target = mix3(start.target, into.at, smooth(k * 1.6));
-		const L = Object.assign({}, LOOK0, lastLook, { fade: smooth((k - 0.72) / 0.28), fadeColor: RED, aperture: 0, letterbox: (lastLook && lastLook.letterbox) || 0 });
+		const L = Object.assign({}, LOOK0, lastLook, { fade: smooth((k - 0.72) / 0.28), fadeColor: which === 'red' ? [0, 0, 0] : RED, aperture: 0, letterbox: (lastLook && lastLook.letterbox) || 0 });
 		if (k >= 1) setPhase('wait');
 		return { eye, target, fov: mix(start.fov, 26, e), roll: mix(start.roll, 0, e), look: L, moving: true };
 	}
 	if (phase === 'wait') {
 		// all red, while the room arrives
-		const ok = room && draw && room.studio.ready() && t > 0.35;
+		const ok = room && draw && room.studio.ready() && t > (which === 'red' ? 0.9 : 0.35);
 		if (ok) {
-			roomTour = room.tour({ intro: true, onLanded: showNote, onFlowerSettled: () => {} });
+			roomTour = which === 'red'
+				? room.tour({ onExpel: expel })
+				: room.tour({ intro: true, onLanded: showNote, onFlowerSettled: () => {} });
 			if (nameCard) setTimeout(() => { if (nameCard && phase === 'room') nameCard.classList.add('on'); setTimeout(() => { if (nameCard) nameCard.classList.remove('on'); }, 5200); }, 2600);
 			setPhase('room');
 		}
 		const end = [into.at[0] + into.n[0] * 0.09, into.at[1], into.at[2] + into.n[2] * 0.09];
-		return { eye: end, target: into.at, fov: 26, roll: 0, look: Object.assign({}, LOOK0, lastLook, { fade: 1, fadeColor: RED }), moving: false };
+		// (her veil's black; the conservatory's red)
+		return { eye: end, target: into.at, fov: 26, roll: 0, look: Object.assign({}, LOOK0, lastLook, { fade: 1, fadeColor: which === 'red' ? [0, 0, 0] : RED }), moving: false };
 	}
 	if (phase === 'room' || phase === 'leave') {
 		const sc = roomTour.update(time);
@@ -401,11 +468,19 @@ function update(time, cam, look) {
 		return { eye: sc.eye, target: sc.target, fov: sc.fov, roll: sc.roll, moving: sc.moving, look: L };
 	}
 	if (phase === 'back') {
-		// back before the painting: up out of the dark
-		const k = clamp01(t / 1.2);
-		if (k >= 1) { setPhase('idle'); return null; }
+		// back before the painting: up out of the dark (put out of the red
+		// room: through the last of the breaking up, and the painting
+		// stutters once more before it is still)
+		const D = expelled ? 2.4 : 1.2;
+		const k = clamp01(t / D);
+		if (k >= 1) { setPhase('idle'); expelled = false; return null; }
 		if (!cam) return null;
-		return { eye: cam.eye, target: cam.target, fov: cam.fov, roll: cam.roll || 0, look: Object.assign({}, LOOK0, look || lastLook, { fade: 1 - smooth(k), fadeColor: [0, 0, 0] }), moving: true };
+		let glitch = 0, fade = 1 - smooth(k);
+		if (expelled) {
+			fade = 1 - smooth(t / 0.9);
+			glitch = Math.max(0, 0.7 * (1 - t / 0.8)) + (t > 1.7 && t < 1.82 ? 0.55 : 0);
+		}
+		return { eye: cam.eye, target: cam.target, fov: cam.fov, roll: cam.roll || 0, look: Object.assign({}, LOOK0, look || lastLook, { fade, fadeColor: [0, 0, 0], glitch }), moving: true };
 	}
 	return null;
 }
@@ -430,7 +505,7 @@ module.exports = {
 	get draw() { return draw; },
 	get active() { return phase !== 'idle' || PREVIEW; },
 	// the red room keeps its floor's mirror whatever the device
-	get alwaysMirror() { return RED_ROOM && !!draw; },
+	get alwaysMirror() { return which === 'red' && !!draw && (RED_ROOM || phase === 'room' || phase === 'wait'); },
 	// the room's baked sun, for the shaders that share its light
 	bake() { return room ? room.studio.bakedSun(regl) : dummy; }
 };

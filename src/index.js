@@ -197,6 +197,8 @@ const drawStairHall = require('./stairhall')(regl);
 // Already Dead": fetched only when a visitor is let in (conservatory.js)
 const conservatory = require('./conservatory');
 conservatory.init({ regl, post });
+// (tests: go into the red room as if from "A Private Eulogy")
+if (/tourdebug/.test(location.search)) window.__enterRed = () => { const p = placement.interactables().find((q) => q.slug === 'a-private-eulogy'); const b = p && conservatory.button(p); if (b) b.click(); return !!b; };
 const drawStudio = (o) => { const d = conservatory.draw; if (d) d(o); };
 drawStudio.reflect = (fn, n) => { const d = conservatory.draw; if (d) d.reflect(fn, n); };
 
@@ -753,6 +755,8 @@ function openStory(painting) {
 
 	// laptops and desktops: "Visit what remained", for a painting with a film
 	storyVisit.innerHTML = painting.isAbout ? '' : visit.button(painting);
+	// (and under "A Private Eulogy", the way into its room: conservatory.js)
+	if (!painting.isAbout && painting.paintingPosition) { const rb = conservatory.button(painting); if (rb && painting.slug !== conservatory.SLUG) { rb.addEventListener('click', () => closeStoryPanel()); storyVisit.appendChild(rb); } }
 	storyVisit.hidden = !storyVisit.innerHTML;
 	if (!storyVisit.hidden) visit.warm(painting);
 
@@ -1179,7 +1183,7 @@ function applyAboutZoom(time) {
 // ?studio in the address: the conservatory on its own (conservatory.js)
 const STUDIO_PREVIEW = conservatory.PREVIEW;
 
-const FREE_LOOK = { fade: 0, fadeColor: [0, 0, 0], letterbox: 0, focus: 6, aperture: 0, exposure: 1, shafts: 1, vignette: 0 };
+const FREE_LOOK = { fade: 0, fadeColor: [0, 0, 0], letterbox: 0, focus: 6, aperture: 0, exposure: 1, shafts: 1, vignette: 0, glitch: 0 };
 let leafNow = null;
 let walkerNow = false;
 let atPiano = false;
@@ -1239,7 +1243,15 @@ function setCamera(time) {
 	// the Conservatory of Unsaid Things: while a visit lasts (or on
 	// ?studio) its camera and look are the ones used (conservatory.js)
 	if (!(/tourdebug/.test(location.search) && window.__camOverride)) {
-		const sc = conservatory.update(time, c, look);
+		// (walking freely there is no tour camera: the walk's own view is
+		// where a visit into a painting starts from)
+		let from = c;
+		if (!from) {
+			const v = fps.view(), t0 = v[12], t1 = v[13], t2 = v[14];
+			const e = [-(v[0] * t0 + v[1] * t1 + v[2] * t2), -(v[4] * t0 + v[5] * t1 + v[6] * t2), -(v[8] * t0 + v[9] * t1 + v[10] * t2)];
+			from = { eye: e, target: [e[0] - v[2], e[1] - v[6], e[2] - v[10]], fov: 2 * Math.atan(1 / fps.proj()[5]) * 180 / Math.PI, roll: 0 };
+		}
+		const sc = conservatory.update(time, from, look);
 		if (sc) {
 			studioMoving = sc.moving !== false;
 			c = sc;
@@ -1261,7 +1273,7 @@ function setCamera(time) {
 		camEye[2] = -(v[8] * t0 + v[9] * t1 + v[10] * t2);
 	}
 
-	for (const k in FREE_LOOK) shot[k] = look[k];
+	for (const k in FREE_LOOK) shot[k] = look[k] !== undefined ? look[k] : FREE_LOOK[k];
 	if (t) cine.pull(shot, time);
 }
 

@@ -146,7 +146,8 @@ module.exports = (regl, quality) => {
 		aperture: 0.0,           // 0 = everything sharp
 		exposure: 1.0,
 		shafts: 1.0,
-		vignette: 0.0            // extra, on top of the look
+		vignette: 0.0,           // extra, on top of the look
+		glitch: 0.0              // 0..1: the picture breaking up (the red room)
 	};
 
 	const quad = { position: [-1, -1, 3, -1, -1, 3] };
@@ -440,7 +441,7 @@ module.exports = (regl, quality) => {
 	varying vec2 uv;
 	uniform sampler2D scene, depthTex, soft, bloomA, bloomB, shafts;
 	uniform vec2 res;
-	uniform float time, exposure, vignette, grain, letterbox, fade, aperture, focus, hasDepth, bloomK, night;
+	uniform float time, exposure, vignette, grain, letterbox, fade, aperture, focus, hasDepth, bloomK, night, glitch;
 	uniform vec3 fadeColor;
 
 	float hash12(vec2 p) {
@@ -492,7 +493,25 @@ module.exports = (regl, quality) => {
 			return;
 		}
 
+		// the picture breaking up: lines slipping sideways, blocks torn out
+		// and shifted, the frame rolling
+		float gfr = floor(time * 18.0);
+		if (glitch > 0.0) {
+			float row = floor(p.y * mix(14.0, 60.0, hash12(vec2(gfr, 1.0))));
+			float slip = step(1.0 - glitch * 0.65, hash12(vec2(row, gfr)));
+			p.x = fract(p.x + (hash12(vec2(row * 2.3, gfr + 7.0)) - 0.5) * 0.25 * glitch * slip);
+			vec2 blk = floor(p * vec2(12.0, 8.0));
+			if (hash12(blk + gfr * 1.3) > 1.0 - glitch * 0.35) p = fract(p + (vec2(hash12(blk + gfr), hash12(blk.yx + gfr)) - 0.5) * 0.18 * glitch);
+			p.y = fract(p.y + glitch * glitch * 0.3 * step(0.7, hash12(vec2(gfr, 4.0))) * hash12(vec2(gfr, 5.0)));
+		}
+
 		vec3 c = fxaa(p);
+		if (glitch > 0.0) {
+			// the colours parting
+			float sh = 0.012 * glitch * (0.5 + hash12(vec2(gfr, 9.0)));
+			c.r = texture2D(scene, p + vec2(sh, 0.0)).r;
+			c.b = texture2D(scene, p - vec2(sh, 0.0)).b;
+		}
 
 		// a real lens: towards the corners the colours part by a hair
 		vec2 off = p - 0.5;
@@ -546,6 +565,14 @@ module.exports = (regl, quality) => {
 		float n = hash12(gl_FragCoord.xy + fract(time * 13.37) * 113.0) - 0.5;
 		col += n * grain * (1.0 - 0.6 * luma(col));
 
+		if (glitch > 0.0) {
+			// scan lines, a crush of snow, and the odd frame gone wrong
+			col *= 1.0 - 0.35 * glitch * step(0.5, fract(gl_FragCoord.y * 0.5));
+			float sn = hash12(floor(gl_FragCoord.xy / 3.0) + gfr * 31.0);
+			col = mix(col, vec3(sn), glitch * 0.35 * step(0.55, hash12(vec2(floor(p.y * 40.0), gfr))));
+			if (hash12(vec2(gfr, 11.0)) > 1.0 - glitch * 0.12) col = vec3(1.0) - col;
+			col = mix(col, floor(col * 4.0) / 4.0, glitch * 0.5);
+		}
 		col = mix(col, fadeColor, fade);
 		gl_FragColor = vec4(col, 1.0);
 	}`, {
@@ -565,6 +592,7 @@ module.exports = (regl, quality) => {
 		letterbox: () => shot.letterbox,
 		fade: () => shot.fade,
 		fadeColor: () => shot.fadeColor,
+		glitch: () => shot.glitch || 0,
 		aperture: () => (quality.post >= 2 ? shot.aperture : 0),
 		focus: () => shot.focus,
 		hasDepth: hasDepth ? 1 : 0

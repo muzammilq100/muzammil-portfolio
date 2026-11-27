@@ -1250,6 +1250,9 @@ function (
 		e
 	) => {
 
+		// (inside a room behind the gallery the keys are the room's)
+		if (document.body.classList.contains('in-conservatory')) { keys = {}; return; }
+
 		if (
 			e.defaultPrevented ||
 			e.ctrlKey ||

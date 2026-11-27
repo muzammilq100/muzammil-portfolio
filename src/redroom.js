@@ -71,6 +71,23 @@ const TBL = (() => {
 	];
 	return T;
 })();
+// THE WARNING, played on the sets as the visitor presses in on her
+// (redtour.js): one letter a set, in this order through the stack
+const WARN_WORD = 'LEAVEHERBE';
+// the spot's state, and the warning's: s, the sets all to the same snow;
+// n, how many letters are up; glitch, all of it breaking up; freeze, the
+// film held on one frame
+const SPOTK = { k: 0 };
+
+const WARN = { s: 0, n: 0, glitch: 0, freeze: false, frozenAt: null };
+// where the camera is (room metres, from the tour): she is not drawn for a
+// camera in front of her, or beside her, so her face is never seen
+const VIEWER = { eye: null };
+const herHidden = () => {
+	const e = VIEWER.eye;
+	if (!e) return false;
+	return (e[0] - O[0] - WOMAN.x) * Math.sin(WOMAN.yaw) + (e[2] - O[2] - WOMAN.z) * Math.cos(WOMAN.yaw) > -0.25;
+};
 // the window behind it starts just above its top
 WIN.lowSill = TBL.top + 0.06;
 
@@ -81,6 +98,24 @@ WIN.lowSill = TBL.top + 0.06;
 // (res/redroom/woman_all.bin; model units: k to metres)
 const WOMAN = { x: W / 2 - 1.7, z: 17.55, k: 1.3 };
 WOMAN.yaw = Math.atan2(W / 2 - WOMAN.x, 21.2 - WOMAN.z);
+// her outline, for the shadows she throws: [x, y, z, r] (room metres)
+{
+	const fx = Math.sin(WOMAN.yaw), fz = Math.cos(WOMAN.yaw), P = (f, y, r) => [WOMAN.x + fx * f, y, WOMAN.z + fz * f, r];
+	WOMAN.occ = [P(0.0, 1.17, 0.13), P(-0.02, 0.86, 0.22), P(0.1, 0.42, 0.36), P(-0.3, 0.62, 0.17)];
+}
+
+// THE SPOTLIGHT: one theatre spot hung high in the vault, a little behind
+// her, the only light in the room that is not red: a pale warm white on her
+// veil, her shoulders and the chair, a hard pool round her on the floor and
+// her shadow thrown forward towards the sets. It is dark until the camera
+// first finds her (setSpot)
+const SPOT = (() => {
+	const fx = Math.sin(WOMAN.yaw), fz = Math.cos(WOMAN.yaw);
+	const pos = [WOMAN.x - fx * 1.4, 8.4, WOMAN.z - fz * 1.4];
+	const aim = [WOMAN.x + fx * 0.25, 0.55, WOMAN.z + fz * 0.25];
+	const d = [aim[0] - pos[0], aim[1] - pos[1], aim[2] - pos[2]], l = Math.hypot(...d);
+	return { pos, axis: d.map((v) => v / l), inner: 0.115, outer: 0.17, reach: l };
+})();
 // the engaged shafts between them, carrying the vault's ribs
 const SHAFTS = [];
 for (let i = 0; i <= WIN.n; i++) SHAFTS.push(WIN.z0 + WIN.step * (i - 0.5));
@@ -134,6 +169,16 @@ const SCREEN_MID = { sony: [0, 0.194], crt: [0, 0.27], old: [0.0625, 0.2145] };
 		t.facing = [-Math.sin(a), 0, -Math.cos(a)];
 		t.size = m.w * TV.G;
 	}
+})();
+
+// which set shows which letter: read from behind her, left to right (the
+// room's x falls to the right), LEAVE along the middle row and HER BE along
+// the bottom; the two on top stay in their snow
+TV.letters = (() => {
+	const rows = [1, 0].map((r) => TV.stack.map((t, i) => [i, t]).filter(([, t]) => t[1] === r).sort((a, b) => b[1].screen[0] - a[1].screen[0]).map(([i]) => i));
+	const L = TV.stack.map(() => -1);
+	[...rows[0], ...rows[1]].forEach((i, k) => { L[i] = k; });
+	return L;
 })();
 
 // THE DARKROOM: where the walled-up windows were, along the left wall by
@@ -999,6 +1044,46 @@ const SHADE = `
 		c += vec3(1.0, 0.12, 0.1) * signK * 0.5 * (0.2 + 0.8 * max(0.0, dot(N, normalize(sd)))) / (0.05 + dot(sd, sd) * 3.0);
 		return c;
 	}
+	uniform float spotK;
+	const vec3 SPOTP = vec3(${f(SPOT.pos[0])}, ${f(SPOT.pos[1])}, ${f(SPOT.pos[2])});
+	const vec3 SPOTA = vec3(${f(SPOT.axis[0])}, ${f(SPOT.axis[1])}, ${f(SPOT.axis[2])});
+	const float SPOT_CI = ${f(Math.cos(SPOT.inner))}, SPOT_CO = ${f(Math.cos(SPOT.outer))};
+	// her shape in the spot's light: soft round blockers, her shadow
+	float spotShade(vec3 lp, vec3 L, float len) {
+		float sh = 1.0;
+		${WOMAN.occ.map((o) => `{
+			vec3 C = vec3(${f(o[0])}, ${f(o[1])}, ${f(o[2])}) - lp;
+			float t = dot(C, L);
+			float r = ${f(o[3])};
+			if (t > 0.0 && t < len && dot(C, C) > r * r * 1.15) sh *= smoothstep(r * 0.55, r * (1.0 + 0.6 * t / len), length(C - L * t));
+		}`).join('\n')}
+		return sh;
+	}
+	// how much of the spot reaches here (0 outside its cone)
+	float spotAt(vec3 lp, out vec3 L) {
+		vec3 d = SPOTP - lp;
+		float r2 = dot(d, d), len = sqrt(r2);
+		L = d / len;
+		float cone = smoothstep(SPOT_CO, SPOT_CI, dot(-L, SPOTA));
+		if (cone <= 0.0 || spotK <= 0.0) return 0.0;
+		return spotK * cone * spotShade(lp, L, len) * 95.0 / r2;
+	}
+	vec3 spotLight(vec3 lp, vec3 N) {
+		vec3 L;
+		float k = spotAt(lp, L);
+		return k > 0.0 ? vec3(1.0, 0.9, 0.78) * k * max(0.0, dot(N, L)) : vec3(0.0);
+	}
+	// on cloth: a satin sheen along the folds, and a soft highlight
+	vec3 spotSheen(vec3 lp, vec3 N, vec3 V) {
+		vec3 L;
+		float k = spotAt(lp, L);
+		if (k <= 0.0) return vec3(0.0);
+		vec3 H = normalize(L + V);
+		float nl = max(0.0, dot(N, L));
+		float spec = pow(max(0.0, dot(N, H)), 24.0) * 0.55;
+		float rim = pow(1.0 - max(0.0, dot(N, V)), 2.2) * (0.3 + 0.7 * nl) * 0.55;
+		return vec3(1.0, 0.9, 0.8) * min(k, 1.4) * (spec + rim) * (0.4 + 0.6 * nl);
+	}
 	// the roses and the vase standing in the candles' light: soft round
 	// blockers, so they throw soft shadows across the table and the window
 	float candleShade(vec3 lp, vec3 d) {
@@ -1036,7 +1121,7 @@ const SHADE = `
 		}
 		// (out in the corridor there is only what comes through the door)
 		float room = 1.0 - 0.9 * smoothstep(-0.3, -1.2, lp.z);
-		return (vec3(0.2, 0.017, 0.02) * (0.8 + 0.2 * N.y) + vec3(0.1, 0.007, 0.007) * exp(-lp.y * 0.25)) * room + vec3(0.7, 0.06, 0.04) * g + tvGlow(lp, N) + safeLight(lp, N) + darkLight(lp, N) + doorGlow(lp, N) + candleLight(lp, N);
+		return (vec3(0.2, 0.017, 0.02) * (0.8 + 0.2 * N.y) + vec3(0.1, 0.007, 0.007) * exp(-lp.y * 0.25)) * room + vec3(0.7, 0.06, 0.04) * g + tvGlow(lp, N) + safeLight(lp, N) + darkLight(lp, N) + doorGlow(lp, N) + candleLight(lp, N) + spotLight(lp, N);
 	}
 	// what the lit floor throws back up onto the walls and the shafts
 	vec3 bounce(vec3 lp, vec3 N) {
@@ -1270,7 +1355,8 @@ const TV_VERT = `
 const TV_FRAG = `
 	#extension GL_OES_standard_derivatives : enable
 	precision highp float;
-	uniform float time, sigTime, yScale, seed, dark, nMem, emit;
+	uniform float time, sigTime, yScale, seed, dark, nMem, emit, order, warnS, warnN, glitchK;
+	uniform sampler2D letterTex;
 	uniform sampler2D bodyTex;
 	varying vec3 v_pos, v_nrm, v_eye;
 	varying vec2 v_uv;
@@ -1284,7 +1370,45 @@ const TV_FRAG = `
 	// (a second, three), then a cut, a burst of snow, and the next. Most of
 	// the time it is snow; often a memory surfaces, drained, dark, torn by
 	// the tube, washed red or cold; sometimes the set goes almost dead.
+	vec3 signal0(vec2 uv);
+	// the warning: every set to the same snow at once; then, one by one, a
+	// letter on black; then all of it tearing apart
 	vec3 signal(vec2 uv) {
+		float fr = floor(sigTime * 24.0);
+		if (glitchK > 0.0) {
+			// rolling, tearing, the lines slipping
+			float ln = floor(uv.y * 30.0);
+			uv.x += (rhash(vec2(ln, fr)) - 0.5) * glitchK * 0.35 * step(0.6 - glitchK * 0.4, rhash(vec2(ln * 1.7, fr + 3.0)));
+			uv.y = fract(uv.y + glitchK * glitchK * fract(sigTime * 1.3 + seed) * 0.8);
+		}
+		vec3 c = warnS < 1.0 ? signal0(uv) : vec3(0.0);
+		// the same snow on every set, in step
+		vec2 g = floor(uv * vec2(120.0, 90.0));
+		float sn = rhash(g + vec2(fr * 17.3, fr * 3.7));
+		vec3 snow = vec3(0.86, 0.9, 0.98) * (0.12 + 0.88 * sn * sn);
+		c = mix(c, snow * (0.85 + 0.15 * sin(uv.y * 400.0 + sigTime * 30.0)), clamp(warnS, 0.0, 1.0));
+		// its letter
+		if (order >= 0.0 && warnN > order) {
+			float on = clamp((warnN - order) * 3.0, 0.0, 1.0);
+			// (it comes on with a stutter)
+			on *= step(0.25, rhash(vec2(fr, order + 9.0))) + step(0.999, on);
+			vec2 lq = vec2((uv.x - 0.5) * 1.333 / (0.8 * 0.66) + 0.5, (uv.y - 0.5) / 0.66 + 0.5);
+			lq.x += (rhash(vec2(floor(uv.y * 60.0), fr)) - 0.5) * 0.04 * (1.0 + glitchK * 6.0);
+			float a = 0.0;
+			if (lq.x > 0.0 && lq.x < 1.0 && lq.y > 0.0 && lq.y < 1.0) a = texture2D(letterTex, vec2((order + lq.x) / 10.0, 1.0 - lq.y)).r;
+			vec3 lc = vec3(0.02) + vec3(0.96, 0.95, 0.9) * a + snow * 0.05;
+			c = mix(c, lc, clamp(on, 0.0, 1.0));
+		}
+		if (glitchK > 0.0) {
+			// colours parting, the picture breaking into blocks
+			vec2 bk = floor(uv * vec2(8.0, 6.0));
+			float br = rhash(bk + fr);
+			c = mix(c, c.gbr * 1.4, step(1.0 - glitchK * 0.5, br));
+			c *= 1.0 - step(1.0 - glitchK * 0.3, rhash(bk * 3.1 + fr));
+		}
+		return c;
+	}
+	vec3 signal0(vec2 uv) {
 		float t = sigTime + seed * 37.0;
 		float rate = 0.42 + 0.35 * fract(seed * 7.13);
 		float ph = t * rate;
@@ -1391,7 +1515,7 @@ const TV_FRAG = `
 				vec3 Lp = normalize(vec3(${f(PROJ.lens[0])}, ${f(PROJ.lens[1])}, ${f(PROJ.lens[2])}) - lp);
 				lit += film(vec2(0.5)) * 1.4 * max(0.0, dot(N, Lp)) * (0.7 + 0.3 * rnoise(v_uv * 40.0));
 			}
-			col = alb * (amb + lit);
+			col = alb * (amb + lit) + spotSheen(lp, N, V);
 			// worn plastic and veneer: a red sheen along the edges, as in
 			// the reference, where the room's light rims every set
 			col += (amb * 0.9 + lit * 0.3 + vec3(0.25, 0.02, 0.02)) * fr * 0.45;
@@ -1725,7 +1849,17 @@ module.exports = function (regl) {
 	const SHARED = {
 		signK: () => signNow,
 		memTex: () => memTexShared || memDummy,
-		projT: (ctx) => (typeof window !== 'undefined' && window.__tvTime != null ? window.__tvTime : ctx.time)
+		// (the film stops on one frame while she is being approached)
+		projT: (ctx) => {
+			const t = typeof window !== 'undefined' && window.__tvTime != null ? window.__tvTime : ctx.time;
+			if (WARN.freeze) { if (WARN.frozenAt === null) WARN.frozenAt = t; return WARN.frozenAt; }
+			WARN.frozenAt = null;
+			return t;
+		},
+		spotK: () => SPOTK.k,
+		warnS: () => WARN.s,
+		warnN: () => WARN.n,
+		glitchK: () => WARN.glitch
 	};
 	TV.stack.forEach((t, i) => {
 		const m = TV.models[t[0]], G = TV.G;
@@ -1767,6 +1901,17 @@ module.exports = function (regl) {
 		return { name, seed: ((i + 1) * 0.6180339) % 1, model: [c, 0, -sn, 0, 0, G, 0, 0, sn, 0, c, 0, x, y, z, 1] };
 	});
 	const tvModels = {};
+	const letterTex = (() => {
+		const cv = document.createElement('canvas');
+		cv.width = 160; cv.height = 20;
+		const cx = cv.getContext('2d');
+		cx.fillStyle = '#000'; cx.fillRect(0, 0, 160, 20);
+		cx.fillStyle = '#fff';
+		cx.font = 'bold 19px "Courier New", Courier, monospace';
+		cx.textAlign = 'center'; cx.textBaseline = 'middle';
+		WARN_WORD.split('').forEach((ch, i) => cx.fillText(ch, i * 16 + 8, 11));
+		return regl.texture({ data: cv, min: 'nearest', mag: 'nearest', wrap: 'clamp' });
+	})();
 	let memTex = null;
 	const NMEM = 36;
 	const tvCmd = regl({
@@ -1787,6 +1932,8 @@ module.exports = function (regl) {
 			seed: regl.prop('seed'),
 			dark: regl.prop('dark'),
 			emit: (ctx, p) => p.emit || 0,
+			order: (ctx, p) => (p.order === undefined ? -1 : p.order),
+			letterTex: () => letterTex,
 			bodyTex: regl.prop('tex'),
 			...SHARED,
 			memTex: () => memTex || memDummy,
@@ -1822,7 +1969,7 @@ module.exports = function (regl) {
 		for (const s of tvSets) {
 			const m = tvModels[s.name];
 			if (!m) continue;
-			for (const p of m.parts) tvBatch.push({ vb: m.vb, el: m.el, offset: p.offset, count: p.count, tex: p.tex, model: s.model, seed: s.seed, dark: m.dark });
+			for (const p of m.parts) tvBatch.push({ vb: m.vb, el: m.el, offset: p.offset, count: p.count, tex: p.tex, model: s.model, seed: s.seed, dark: m.dark, order: TV.letters[tvSets.indexOf(s)] });
 		}
 		if (tvBatch.length) tvCmd(tvBatch);
 	};
@@ -2008,14 +2155,16 @@ module.exports = function (regl) {
 			if (!m) continue;
 			m.parts.forEach((p, i) => batch.push({ vb: m.vb, el: m.el, offset: p.offset, count: p.count, tex: p.tex, model, seed: 0, dark: name === 'jug' || name === 'can' ? 0.85 : 0.7, emit: name === 'bulb' && p.mat === 0 ? 1.6 : 0 }));
 		}
+		const hide = herHidden();
 		for (const [name, model, dk] of TABLE_PROPS) {
 			const m = props[name];
-			if (!m) continue;
+			if (!m || (hide && name === 'woman')) continue;
 			for (const p of m.parts) batch.push({ vb: m.vb, el: m.el, offset: p.offset, count: p.count, tex: p.tex, model, seed: 0, dark: dk, emit: 0 });
 		}
 		if (batch.length) tvCmd(batch);
 		flameDraw();
-		if (props.woman) laceDraw();
+		if (props.woman && !hide) laceDraw();
+		if (SPOTK.k > 0.001 && !reflectedNow) { spotConeDraw(); moteDraw(); }
 		liqDraw();
 		pegDraw();
 	};
@@ -2082,7 +2231,7 @@ module.exports = function (regl) {
 				if (dot(N, V) < 0.0) N = -N;
 				vec3 amb = ambient(lp, N) + bounce(lp, N);
 				vec3 lit = redLightRough(lp + N * 0.05) * 1.2;
-				vec3 col = vec3(0.6, 0.035, 0.04) * (amb + lit) * 1.5 + vec3(0.035, 0.002, 0.003);
+				vec3 col = vec3(0.6, 0.035, 0.04) * (amb + lit) * 1.5 + vec3(0.035, 0.002, 0.003) + spotSheen(lp, N, V) * vec3(0.9, 0.3, 0.3);
 				float dist = length(v_eye - v_pos);
 				col = mix(col, vec3(0.06, 0.004, 0.005), (1.0 - exp(-dist * 0.035)) * 0.55);
 				gl_FragColor = vec4(col, 1.0);
@@ -2091,6 +2240,105 @@ module.exports = function (regl) {
 		count: lacePos.length / 3,
 		cull: { enable: false },
 		uniforms: { ...SHARED, model: () => womanM, tvLight: () => tvLight }
+	});
+
+	// ---- the spot's cone in the haze: nested cones (each fainter at its own
+	// edge), with a slow drift of dust in it ----------------------------------
+	const spotPos = [], spotLay = [];
+	{
+		const A = SPOT.axis, up = Math.abs(A[1]) > 0.9 ? [1, 0, 0] : [0, 1, 0];
+		const cr = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+		const nz = (v) => { const l = Math.hypot(...v); return v.map((x) => x / l); };
+		const U = nz(cr(A, up)), V = cr(A, U);
+		const len = SPOT.pos[1] / -A[1];
+		const segs = 40;
+		[1.0, 0.82, 0.64, 0.46, 0.3].forEach((sc, li) => {
+			const r = Math.tan(SPOT.outer * sc) * len;
+			for (let i = 0; i < segs; i++) {
+				const a0 = (i / segs) * Math.PI * 2, a1 = ((i + 1) / segs) * Math.PI * 2;
+				const P = (a) => [0, 1, 2].map((k) => O[k] + SPOT.pos[k] + A[k] * len + (U[k] * Math.cos(a) + V[k] * Math.sin(a)) * r);
+				const S = [0, 1, 2].map((k) => O[k] + SPOT.pos[k]);
+				spotPos.push(...S, ...P(a0), ...P(a1));
+				spotLay.push(li, li, li);
+			}
+		});
+	}
+	const spotConeDraw = regl({
+		vert: `
+			precision highp float;
+			uniform mat4 proj, view;
+			uniform float yScale;
+			attribute vec3 position;
+			attribute float layer;
+			varying vec3 v_pos, v_eye;
+			void main() {
+				v_pos = position;
+				vec3 t = view[3].xyz;
+				v_eye = -vec3(dot(view[0].xyz, t), dot(view[1].xyz, t), dot(view[2].xyz, t));
+				v_eye.y *= yScale;
+				vec3 p = position; p.y *= yScale;
+				gl_Position = proj * view * vec4(p, 1.0);
+			}`,
+		frag: `
+			precision highp float;
+			uniform float time, spotK;
+			varying vec3 v_pos, v_eye;
+			${COMMON}
+			void main() {
+				vec3 lp = v_pos - RO;
+				float along = length(lp - vec3(${f(SPOT.pos[0])}, ${f(SPOT.pos[1])}, ${f(SPOT.pos[2])})) / ${f(SPOT.pos[1] / -SPOT.axis[1])};
+				float haze = 0.55 + 0.9 * rfbm(lp.xz * 1.3 + vec2(lp.y * 0.6, time * 0.05)) * rfbm(lp.xy * 0.9 - time * 0.03);
+				float dist = length(v_eye - v_pos);
+				float a = spotK * haze * (0.55 + 0.45 * smoothstep(1.0, 0.0, along)) * smoothstep(0.0, 0.12, along) * smoothstep(0.98, 0.8, along) * smoothstep(0.3, 1.6, dist);
+				gl_FragColor = vec4(vec3(1.0, 0.88, 0.74) * a * 0.045, 1.0);
+			}`,
+		attributes: { position: spotPos, layer: spotLay },
+		count: spotPos.length / 3,
+		cull: { enable: false },
+		depth: { enable: true, mask: false },
+		blend: { enable: true, func: { src: 'one', dst: 'one' } },
+		uniforms: { spotK: () => SPOTK.k }
+	});
+	const MOTE_N = 90;
+	const moteSeeds = [];
+	for (let i = 0; i < MOTE_N; i++) moteSeeds.push(Math.random(), Math.random(), Math.random(), Math.random());
+	const moteDraw = regl({
+		vert: `
+			precision highp float;
+			uniform mat4 proj, view;
+			uniform float time, yScale, pxScale, spotK;
+			attribute vec4 seed;
+			varying float v_a;
+			void main() {
+				vec3 S = vec3(${f(O[0] + SPOT.pos[0])}, ${f(O[1] + SPOT.pos[1])}, ${f(O[2] + SPOT.pos[2])});
+				vec3 A = vec3(${f(SPOT.axis[0])}, ${f(SPOT.axis[1])}, ${f(SPOT.axis[2])});
+				// somewhere in the cone, drifting slowly down and round
+				float al = 0.25 + 0.7 * fract(seed.x - time * 0.004 * (0.5 + seed.w));
+				float len = al * ${f(SPOT.pos[1] / -SPOT.axis[1])};
+				float ang = seed.y * 6.2832 + time * 0.03 * (seed.z - 0.5);
+				float rr = sqrt(seed.z) * tan(${f(SPOT.outer)}) * len * 0.92;
+				vec3 U = normalize(cross(A, vec3(0.0, 1.0, 0.0)));
+				vec3 V = cross(A, U);
+				vec3 p = S + A * len + (U * cos(ang) + V * sin(ang)) * rr;
+				p.y *= yScale;
+				vec4 v = view * vec4(p, 1.0);
+				gl_Position = proj * v;
+				gl_PointSize = clamp(pxScale * 0.006 / max(0.2, -v.z), 1.0, 5.0);
+				v_a = spotK * (0.4 + 0.6 * sin(time * (0.7 + seed.w) + seed.x * 30.0) * 0.5 + 0.3);
+			}`,
+		frag: `
+			precision highp float;
+			varying float v_a;
+			void main() {
+				float d = length(gl_PointCoord - 0.5);
+				gl_FragColor = vec4(vec3(1.0, 0.9, 0.78) * smoothstep(0.5, 0.0, d) * v_a * 0.7, 1.0);
+			}`,
+		attributes: { seed: moteSeeds },
+		count: MOTE_N,
+		primitive: 'points',
+		depth: { enable: true, mask: false },
+		blend: { enable: true, func: { src: 'one', dst: 'one' } },
+		uniforms: { pxScale: (ctx) => ctx.viewportHeight * 1.2, spotK: () => SPOTK.k }
 	});
 
 	// ---- the candles' flames: small, upright, never still -------------------
@@ -2279,8 +2527,10 @@ module.exports = function (regl) {
 		uniforms: { pxScale: (ctx) => ctx.viewportHeight * 1.2 }
 	});
 
+	let reflectedNow = false;
 	const draw = (o) => {
 		const reflected = !!(o && o.reflected);
+		reflectedNow = reflected;
 		// the snow's light flickers with the screens
 		const t = performance.now() / 1000;
 		const fl = 0.8 + 0.12 * Math.sin(t * 47) * Math.sin(t * 3.1) + 0.08 * Math.sin(t * 23.0 + 1.3);
@@ -2328,5 +2578,11 @@ Object.assign(module.exports, {
 	ready: () => true,
 	setFlower() {},
 	setGuide() {},
-	setWind() {}
+	setWind() {},
+	// the spot over her: 0 (dark) to 1
+	setSpot(k) { SPOTK.k = k; },
+	// the warning on the sets (see WARN)
+	setWarn(o) { Object.assign(WARN, o); },
+	// the camera's eye (world), or null
+	setViewer(e) { VIEWER.eye = e ? e.slice() : null; }
 });
