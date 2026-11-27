@@ -54,11 +54,21 @@ const TBL = (() => {
 	const T = { k, z: c, top: 0.543 * k, half: 0.601 * k, depth: 0.706 * k };
 	T.x = W - 0.12 - T.depth / 2;
 	// the candles: [x, z, how much of the candle is left]
-	T.candles = [[W - 0.4, c - 0.52, 1.0], [W - 0.3, c - 0.3, 0.62], [W - 0.36, c + 0.42, 0.38]];
+	T.candles = [[W - 0.4, c - 0.52, 1.0], [W - 0.3, c - 0.3, 0.62], [W - 0.36, c + 0.42, 0.38],
+		[W - 0.86, c - 0.06, 0.55], [W - 0.24, c + 0.66, 0.85], [W - 0.8, c + 0.42, 0.3]];
 	// the roses' vase
 	T.vase = { x: W - 0.55, z: c + 0.06, h: 0.24 };
 	// where each flame burns (room metres)
 	T.flames = T.candles.map(([x, z, s]) => [x, T.top + 0.156 + 0.144 * s + 0.018, z]);
+	// roses laid on the table beside the vase: [x, z, yaw (head first)]
+	T.laid = [[W - 0.66, c - 0.22, Math.PI / 2 + 0.5], [W - 0.62, c - 0.36, Math.PI / 2 + 0.15], [W - 0.7, c + 0.26, Math.PI / 2 - 0.6]];
+	// a stack of polaroids, and a few slid off it
+	T.stack = [W - 0.88, c - 0.5];
+	// what stands in the candles' light, for their shadows: [x, y, z, r]
+	T.occ = [
+		[W - 0.55, T.top + 0.46, c + 0.06, 0.15], [W - 0.55, T.top + 0.26, c + 0.06, 0.06], [W - 0.55, T.top + 0.11, c + 0.06, 0.08],
+		...T.laid.map(([x, z, a]) => [x - Math.sin(a) * 0.15, T.top + 0.05, z - Math.cos(a) * 0.15, 0.065])
+	];
 	return T;
 })();
 // the window behind it starts just above its top
@@ -665,6 +675,21 @@ function buildPolaroids() {
 			k++;
 		}
 	}
+	// the stack of polaroids on the table, squared up roughly, and three
+	// slid off it across the wood
+	{
+		const [sx, sz] = TBL.stack, up = [0, 1, 0];
+		for (let i = 0; i < 9; i++) {
+			const a = (rnd() - 0.5) * 0.35 + 0.3;
+			card([sx + (rnd() - 0.5) * 0.012, TBL.top + 0.003 + i * 0.0022, sz + (rnd() - 0.5) * 0.012], [Math.cos(a), 0, Math.sin(a)], [Math.sin(a), 0, -Math.cos(a)], up, 0.26, Math.floor(rnd() * POL.n), none, 0.004);
+			k++;
+		}
+		const slid = [[0.13, 0.12, 0.9], [-0.04, 0.2, -0.4], [0.2, -0.05, 1.6]];
+		slid.forEach(([dx, dz, a], i) => {
+			card([sx + dx, TBL.top + 0.002 + i * 0.0012, sz + dz], [Math.cos(a), 0, Math.sin(a)], [Math.sin(a), 0, -Math.cos(a)], up, 0.26, Math.floor(rnd() * POL.n), none, 0.006);
+			k++;
+		});
+	}
 	return { pos, nrm, uv, pic, piv, idx, sty, pegs, count: k };
 }
 
@@ -966,16 +991,32 @@ const SHADE = `
 		c += vec3(1.0, 0.12, 0.1) * signK * 0.5 * (0.2 + 0.8 * max(0.0, dot(N, normalize(sd)))) / (0.05 + dot(sd, sd) * 3.0);
 		return c;
 	}
+	// the roses and the vase standing in the candles' light: soft round
+	// blockers, so they throw soft shadows across the table and the window
+	float candleShade(vec3 lp, vec3 d) {
+		float sh = 1.0;
+		float len = length(d);
+		vec3 dir = d / len;
+		${TBL.occ.map((o) => `{
+			vec3 C = vec3(${f(o[0])}, ${f(o[1])}, ${f(o[2])}) - lp;
+			float t = dot(C, dir);
+			float cd = length(C - dir * t);
+			float r = ${f(o[3])};
+			if (t > 0.0 && t < len && dot(C, C) > r * r * 1.1) sh *= mix(1.0, smoothstep(r * 0.35, r * (1.0 + 2.5 * t / len), cd), 0.9);
+		}`).join('\n')}
+		return sh;
+	}
 	// the candles on the table: a warm, breathing light close round them
 	vec3 candleLight(vec3 lp, vec3 N) {
 		vec3 sum = vec3(0.0);
 		${TBL.flames.map((F, i) => `{
 			vec3 d = vec3(${f(F[0])}, ${f(F[1])}, ${f(F[2])}) - lp;
-			float r2 = dot(d, d);
+ 			float r2 = dot(d, d);
+			float sh = candleShade(lp, d);
 			float fl = 0.82 + 0.1 * sin(time * (9.0 + ${f(i * 1.7)}) + ${f(i * 2.1)}) * sin(time * 3.3 + ${f(i)}) + 0.08 * sin(time * 23.0 + ${f(i * 4.0)});
-			sum += fl * (0.35 + 0.65 * max(0.0, dot(N, d * inversesqrt(r2 + 1e-4)))) / (r2 * 5.0 + 0.1);
+			sum += sh * fl * (0.35 + 0.65 * max(0.0, dot(N, d * inversesqrt(r2 + 1e-4)))) / (r2 * 5.0 + 0.1);
 		}`).join('\n')}
-		return vec3(1.0, 0.52, 0.22) * sum * 0.45;
+		return vec3(1.0, 0.52, 0.22) * sum * 0.6;
 	}
 	vec3 ambient(vec3 lp, vec3 N) {
 		// the room's own dark: a little red, lifted near the lit floor
@@ -1947,6 +1988,7 @@ module.exports = function (regl) {
 			TABLE_PROPS.push(['rose', m, 2.0]);
 		}
 	}
+	for (const [x, z, a] of TBL.laid) TABLE_PROPS.push(['rose', mul(at(x, TBL.top + 0.002, z, a), scl(0.72)), 2.0]);
 	TABLE_PROPS.push(['camera', at(0.15, DARK.shelf.y, (DARK.shelf.z0 + DARK.shelf.z1) / 2, PI2 - 0.4), 1.7]);
 	const drawDark = () => {
 		const batch = [];
