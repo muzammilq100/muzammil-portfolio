@@ -96,7 +96,7 @@ WIN.lowSill = TBL.top + 0.06;
 // televisions. She sits beside the projector, nearer the sets, turned to
 // them, so that whichever way the camera comes it only ever finds her back
 // (res/redroom/woman_all.bin; model units: k to metres)
-const WOMAN = { x: W / 2 - 1.7, z: 17.55, k: 1.3 };
+const WOMAN = { x: W / 2, z: 18.6, k: 1.3 };
 WOMAN.yaw = Math.atan2(W / 2 - WOMAN.x, 21.2 - WOMAN.z);
 // her outline, for the shadows she throws: [x, y, z, r] (room metres)
 {
@@ -287,7 +287,7 @@ const CABLE = { r: 0.045 };
 // THE POLAROIDS: his photographs, blurred and darkened as if left in the
 // developer too long, pinned in drifts on the wall panels between the
 // windows. (The far wall is kept bare for the projector.)
-const POL = { spots: [], w: 0.36, h: 0.435, n: 36, lines: [{ z: L - 1.7, y: 6.5, sag: 1.0 }, { z: L - 2.6, y: 5.3, sag: 0.8 }] };
+const POL = { spots: [], w: 0.36, h: 0.435, n: 55, lines: [{ z: L - 1.7, y: 6.5, sag: 1.0 }, { z: L - 2.6, y: 5.3, sag: 0.8 }] };
 
 // the light: from high outside each long wall, a little from the far end,
 // so every window's shape lies long on the floor towards the middle
@@ -652,7 +652,8 @@ function build() {
 
 // the polaroids' cards: where each one is, its picture, and whether it hangs
 function buildPolaroids() {
-	let seed = 7;
+	let seed = 7, deal = 0;
+	const nextPic = () => (deal++ * 23 + 5) % POL.n;
 	const rnd = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
 	const pos = [], nrm = [], uv = [], pic = [], piv = [], idx = [], sty = [];
 	const NU = 3, NV = 4;
@@ -690,7 +691,7 @@ function buildPolaroids() {
 			const [ax, ay] = rot(along, [0, 1, 0], (rnd() - 0.5) * 0.5);
 			const c = place(px, py, 0.012 + 0.0016 * (layer++ % 9) + rnd() * 0.004);
 			const sc = 0.88 + rnd() * 0.3;
-			card(c, ax, ay, n, sc, Math.floor(rnd() * POL.n), none, (rnd() - 0.3) * 0.02);
+			card(c, ax, ay, n, sc, nextPic(), none, (rnd() - 0.3) * 0.02);
 			// (where they are, for the camera to come close to some)
 			if (POL.spots.length < 400) POL.spots.push({ c, n, up: ay, size: POL.h * sc });
 			k++;
@@ -723,7 +724,7 @@ function buildPolaroids() {
 			const [ax, ay] = rot([0, 0, -1], [0, 1, 0], corner);
 			const n = [1, 0, 0];
 			const c = [p[0] + 0.004, p[1] - 0.02 - ay[1] * h * 0.5, p[2] - ay[2] * h * 0.5];
-			card(c, ax, ay, n, sc, Math.floor(rnd() * POL.n), [p[0], p[1], p[2], -(0.04 + rnd() * 0.06)], 0.01 + rnd() * 0.025, 1);
+			card(c, ax, ay, n, sc, nextPic(), [p[0], p[1], p[2], -(0.04 + rnd() * 0.06)], 0.01 + rnd() * 0.025, 1);
 			pegs.push(p);
 			k++;
 		}
@@ -734,12 +735,12 @@ function buildPolaroids() {
 		const [sx, sz] = TBL.stack, up = [0, 1, 0];
 		for (let i = 0; i < 9; i++) {
 			const a = (rnd() - 0.5) * 0.35 + 0.3;
-			card([sx + (rnd() - 0.5) * 0.012, TBL.top + 0.003 + i * 0.0022, sz + (rnd() - 0.5) * 0.012], [Math.cos(a), 0, Math.sin(a)], [Math.sin(a), 0, -Math.cos(a)], up, 0.26, Math.floor(rnd() * POL.n), none, 0.004);
+			card([sx + (rnd() - 0.5) * 0.012, TBL.top + 0.003 + i * 0.0022, sz + (rnd() - 0.5) * 0.012], [Math.cos(a), 0, Math.sin(a)], [Math.sin(a), 0, -Math.cos(a)], up, 0.26, nextPic(), none, 0.004);
 			k++;
 		}
 		const slid = [[0.13, 0.12, 0.9], [-0.04, 0.2, -0.4], [0.2, -0.05, 1.6]];
 		slid.forEach(([dx, dz, a], i) => {
-			card([sx + dx, TBL.top + 0.002 + i * 0.0012, sz + dz], [Math.cos(a), 0, Math.sin(a)], [Math.sin(a), 0, -Math.cos(a)], up, 0.26, Math.floor(rnd() * POL.n), none, 0.006);
+			card([sx + dx, TBL.top + 0.002 + i * 0.0012, sz + dz], [Math.cos(a), 0, Math.sin(a)], [Math.sin(a), 0, -Math.cos(a)], up, 0.26, nextPic(), none, 0.006);
 			k++;
 		});
 	}
@@ -948,21 +949,24 @@ const SHADE = `
 	// specked with dust, burnt at its edges; a new memory every few seconds,
 	// with a flash of bare light between
 	uniform sampler2D memTex;
-	uniform float projT;
+	uniform float projT, memRot;
 	vec3 film(vec2 uv) {
 		float t = projT;
 		float fr = floor(t * 18.0);
 		float shot = floor(t / 3.4);
-		float k = floor(rhash(vec2(shot, 4.7)) * 36.0);
+		float k = mod(48.0 + floor(rhash(vec2(shot, 4.7)) * 4.0) + 4.0 * memRot, 52.0);
 		float f = fract(t / 3.4);
 		uv += vec2(sin(t * 13.0) * 0.0015 + (rhash(vec2(fr, 1.0)) - 0.5) * 0.003, (rhash(vec2(fr, 2.0)) - 0.5) * 0.006);
+		// (each shot moves, as if filmed: a slow push in, drifting one way)
+		vec2 dr = vec2(rhash(vec2(shot, 8.1)), rhash(vec2(shot, 9.3))) - 0.5;
+		uv = 0.5 + (uv - 0.5) * (0.9 - 0.07 * f) + dr * 0.08 * (f - 0.5);
 		// an old print, only a touch soft: its colours faded, not gone
 		vec2 su = clamp((floor(uv * vec2(300.0, 225.0)) + 0.5) / vec2(300.0, 225.0), 0.01, 0.99);
-		vec2 tile = vec2(mod(k, 6.0), floor(k / 6.0));
+		vec2 tile = vec2(mod(k, 8.0), floor(k / 8.0));
 		vec3 pc = vec3(0.0);
 		for (int i = 0; i < 5; i++) {
 			vec2 o = i == 0 ? vec2(0.0) : vec2(i == 1 ? 1.0 : (i == 2 ? -1.0 : 0.0), i == 3 ? 1.0 : (i == 4 ? -1.0 : 0.0)) * 0.0042;
-			pc += texture2D(memTex, (tile + vec2(clamp(su.x + o.x, 0.005, 0.995), 1.0 - clamp(su.y + o.y, 0.005, 0.995))) / 6.0).rgb * (i == 0 ? 0.4 : 0.15);
+			pc += texture2D(memTex, (tile + vec2(clamp(su.x + o.x, 0.005, 0.995), 1.0 - clamp(su.y + o.y, 0.005, 0.995))) / 8.0).rgb * (i == 0 ? 0.4 : 0.15);
 		}
 		float l = dot(pc, vec3(0.3, 0.59, 0.11));
 		float l0 = clamp((l - 0.04) * 1.18, 0.0, 1.0);
@@ -1066,7 +1070,7 @@ const SHADE = `
 		L = d / len;
 		float cone = smoothstep(SPOT_CO, SPOT_CI, dot(-L, SPOTA));
 		if (cone <= 0.0 || spotK <= 0.0) return 0.0;
-		return spotK * cone * spotShade(lp, L, len) * 95.0 / r2;
+		return spotK * cone * spotShade(lp, L, len) * 150.0 / r2;
 	}
 	vec3 spotLight(vec3 lp, vec3 N) {
 		vec3 L;
@@ -1080,9 +1084,11 @@ const SHADE = `
 		if (k <= 0.0) return vec3(0.0);
 		vec3 H = normalize(L + V);
 		float nl = max(0.0, dot(N, L));
-		float spec = pow(max(0.0, dot(N, H)), 24.0) * 0.55;
-		float rim = pow(1.0 - max(0.0, dot(N, V)), 2.2) * (0.3 + 0.7 * nl) * 0.55;
-		return vec3(1.0, 0.9, 0.8) * min(k, 1.4) * (spec + rim) * (0.4 + 0.6 * nl);
+		// (cloth: no hard highlight, a broad soft sheen and the bright
+		// fringe velvet and crepe get where they turn from the eye)
+		float sheen = pow(max(0.0, dot(N, H)), 5.0) * 0.08;
+		float rim = pow(1.0 - max(0.0, dot(N, V)), 4.0) * (0.25 + 0.75 * nl) * 0.35;
+		return vec3(1.0, 0.88, 0.78) * min(k, 1.6) * (sheen + rim);
 	}
 	// the roses and the vase standing in the candles' light: soft round
 	// blockers, so they throw soft shadows across the table and the window
@@ -1355,7 +1361,7 @@ const TV_VERT = `
 const TV_FRAG = `
 	#extension GL_OES_standard_derivatives : enable
 	precision highp float;
-	uniform float time, sigTime, yScale, seed, dark, nMem, emit, order, warnS, warnN, glitchK;
+	uniform float time, sigTime, yScale, seed, dark, nMem, emit, order, warnS, warnN, glitchK, slot;
 	uniform sampler2D letterTex;
 	uniform sampler2D bodyTex;
 	varying vec3 v_pos, v_nrm, v_eye;
@@ -1432,7 +1438,7 @@ const TV_FRAG = `
 		vec3 snow = vec3(0.86, 0.9, 0.98) * (0.16 + 0.84 * sn) * (0.85 + 0.3 * hl);
 
 		// the memory: torn, wobbling, drifting slowly closer
-		float k = floor(h1 * nMem);
+		float k = mod(4.0 * slot + floor(h1 * 4.0) + 4.0 * memRot, 52.0);
 		vec2 q = uv - 0.5;
 		q *= 1.0 - 0.07 * f;
 		q.x += sin(uv.y * 22.0 + t * 7.0) * 0.004;
@@ -1443,9 +1449,9 @@ const TV_FRAG = `
 		jit += band * 0.05 * (rhash(vec2(fr, 2.0)) - 0.3);
 		q.x += jit;
 		vec2 mu = clamp((floor((q + 0.5) * vec2(220.0, 165.0)) + 0.5) / vec2(220.0, 165.0), 0.002, 0.998);
-		vec2 tile = vec2(mod(k, 6.0), floor(k / 6.0));
-		vec2 au = (tile + vec2(mu.x, 1.0 - mu.y)) / 6.0;
-		vec2 ca = vec2(0.004 + 0.01 * band, 0.0) / 6.0;
+		vec2 tile = vec2(mod(k, 8.0), floor(k / 8.0));
+		vec2 au = (tile + vec2(mu.x, 1.0 - mu.y)) / 8.0;
+		vec2 ca = vec2(0.004 + 0.01 * band, 0.0) / 8.0;
 		vec3 m = vec3(texture2D(memTex, au + ca).r, texture2D(memTex, au).g, texture2D(memTex, au - ca).b);
 		// drained and darkened, the shadows crushed
 		float l = lum(m);
@@ -1515,7 +1521,21 @@ const TV_FRAG = `
 				vec3 Lp = normalize(vec3(${f(PROJ.lens[0])}, ${f(PROJ.lens[1])}, ${f(PROJ.lens[2])}) - lp);
 				lit += film(vec2(0.5)) * 1.4 * max(0.0, dot(N, Lp)) * (0.7 + 0.3 * rnoise(v_uv * 40.0));
 			}
-			col = alb * (amb + lit) + spotSheen(lp, N, V);
+			if (emit < 0.0) {
+				// cloth: a fine weave and soft folds instead of a smooth
+				// cast surface; the spot wraps round it
+				float wv = rnoise(v_pos.xy * 260.0 + v_pos.z * 90.0) * 0.6 + rnoise(v_pos.zy * 70.0) * 0.4;
+				alb *= 0.78 + 0.4 * wv;
+				vec3 Ls; float ks = spotAt(lp, Ls);
+				lit += vec3(1.0, 0.9, 0.78) * ks * max(0.0, dot(N, Ls) * 0.6 + 0.4) * 0.35;
+				// the bentwood chair's red lacquer: warmed towards a deep
+				// red-orange in the spot, with a soft gleam along its bends
+				float lac = smoothstep(1.4, 2.2, alb.r / max(alb.g, 0.002)) * smoothstep(0.0015, 0.008, alb.r);
+				alb = mix(alb, alb * vec3(2.2, 2.0, 1.2) + vec3(0.06, 0.012, 0.004), lac);
+				lit += vec3(1.0, 0.85, 0.7) * ks * max(0.0, dot(N, Ls)) * 1.2 * lac;
+				col = vec3(0.0) + pow(max(0.0, dot(N, normalize(Ls + V))), 20.0) * ks * 0.12 * lac * vec3(1.0, 0.7, 0.5);
+			}
+			col = (emit < 0.0 ? col : vec3(0.0)) + alb * (amb + lit) + spotSheen(lp, N, V);
 			// worn plastic and veneer: a red sheen along the edges, as in
 			// the reference, where the room's light rims every set
 			col += (amb * 0.9 + lit * 0.3 + vec3(0.25, 0.02, 0.02)) * fr * 0.45;
@@ -1607,8 +1627,8 @@ const POL_FRAG = `
 		bool inPic = !back && u.x > fr4.x && u.x < fr4.y && u.y > fr4.z && u.y < fr4.w;
 		if (inPic) {
 			vec2 pu = vec2((u.x - fr4.x) / (fr4.y - fr4.x), 1.0 - (u.y - fr4.z) / (fr4.w - fr4.z));
-			vec2 tile = vec2(mod(v_pic, 6.0), floor(v_pic / 6.0));
-			vec3 ph = texture2D(polTex, (tile + clamp(pu, 0.01, 0.99)) / 6.0).rgb;
+			vec2 tile = vec2(mod(v_pic, 8.0), floor(v_pic / 8.0));
+			vec3 ph = texture2D(polTex, (tile + clamp(pu, 0.01, 0.99)) / 8.0).rgb;
 			// burnt in a little at the edges, as if the chemistry ran out
 			vec2 e = pu * (1.0 - pu);
 			ph *= 0.62 + 0.38 * clamp(e.x * e.y * 18.0, 0.0, 1.0);
@@ -1750,7 +1770,7 @@ const LIQ_FRAG = `
 						float thr = dev * 1.35 - 0.1;
 						im = mix(1.0, im, smoothstep(thr, thr - 0.3, im));
 					} else {
-						im = texture2D(polTex, (vec2(2.0, 1.0) + vec2(iu.x, 1.0 - iu.y)) / 6.0).r;
+						im = texture2D(polTex, (vec2(0.0, 1.0) + vec2(iu.x, 1.0 - iu.y)) / 8.0).r;
 					}
 					paper *= mix(0.06, 1.0, im);
 				}
@@ -1848,6 +1868,9 @@ module.exports = function (regl) {
 	};
 	const SHARED = {
 		signK: () => signNow,
+		// (which four of every fifty-two each screen draws from, turning on
+		// every twenty seconds or so)
+		memRot: (ctx) => Math.floor((typeof window !== 'undefined' && window.__tvTime != null ? window.__tvTime : ctx.time) / 21),
 		memTex: () => memTexShared || memDummy,
 		// (the film stops on one frame while she is being approached)
 		projT: (ctx) => {
@@ -1913,7 +1936,7 @@ module.exports = function (regl) {
 		return regl.texture({ data: cv, min: 'nearest', mag: 'nearest', wrap: 'clamp' });
 	})();
 	let memTex = null;
-	const NMEM = 36;
+	const NMEM = 55;
 	const tvCmd = regl({
 		vert: TV_VERT,
 		frag: TV_FRAG,
@@ -1933,6 +1956,7 @@ module.exports = function (regl) {
 			dark: regl.prop('dark'),
 			emit: (ctx, p) => p.emit || 0,
 			order: (ctx, p) => (p.order === undefined ? -1 : p.order),
+			slot: (ctx, p) => p.slot || 0,
 			letterTex: () => letterTex,
 			bodyTex: regl.prop('tex'),
 			...SHARED,
@@ -1969,7 +1993,7 @@ module.exports = function (regl) {
 		for (const s of tvSets) {
 			const m = tvModels[s.name];
 			if (!m) continue;
-			for (const p of m.parts) tvBatch.push({ vb: m.vb, el: m.el, offset: p.offset, count: p.count, tex: p.tex, model: s.model, seed: s.seed, dark: m.dark, order: TV.letters[tvSets.indexOf(s)] });
+			for (const p of m.parts) tvBatch.push({ vb: m.vb, el: m.el, offset: p.offset, count: p.count, tex: p.tex, model: s.model, seed: s.seed, dark: m.dark, order: TV.letters[tvSets.indexOf(s)], slot: tvSets.indexOf(s) });
 		}
 		if (tvBatch.length) tvCmd(tvBatch);
 	};
@@ -2159,7 +2183,7 @@ module.exports = function (regl) {
 		for (const [name, model, dk] of TABLE_PROPS) {
 			const m = props[name];
 			if (!m || (hide && name === 'woman')) continue;
-			for (const p of m.parts) batch.push({ vb: m.vb, el: m.el, offset: p.offset, count: p.count, tex: p.tex, model, seed: 0, dark: dk, emit: 0 });
+			for (const p of m.parts) batch.push({ vb: m.vb, el: m.el, offset: p.offset, count: p.count, tex: p.tex, model, seed: 0, dark: dk, emit: name === 'woman' ? -1 : 0 });
 		}
 		if (batch.length) tvCmd(batch);
 		flameDraw();

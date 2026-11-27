@@ -164,7 +164,10 @@ function buildKeys() {
 	K.push({ eye: herAt(-3.4, 2.5, -1.5), at: herAt(1.0, 0.75), fov: 46, dof: 0.08, p: { fov: 66 } });
 	// down behind her, where the painting stands: her back, the chair, the
 	// sets either side of her, his memories over them
-	K.push({ eye: herAt(-2.9, 2.3, 0.05), at: herAt(5.2, 0.95), fov: 56, dof: 0.14, p: { eye: herAt(-3.3, 2.4, 0.05), fov: 74 } });
+	K.push({ eye: herAt(-2.55, 2.3, 0.0), at: herAt(5.2, 0.95), fov: 56, dof: 0.12, p: { eye: herAt(-2.55, 2.4, 0.0), fov: 74 } });
+	// and close to her back, as the painting has her: the veil, the
+	// shoulders, the lace in the chair; the sets glowing past her
+	K.push({ eye: herAt(-1.6, 0.92, 0.0), at: herAt(3.0, 1.02), fov: 50, dof: 0.28, p: { eye: herAt(-1.9, 0.95, 0.0), fov: 64 } });
 	return K;
 }
 
