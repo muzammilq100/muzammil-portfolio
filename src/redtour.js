@@ -20,7 +20,7 @@
 
 const room = require('./redroom');
 const { O } = room;
-const { W, L, TV, DARK, PROJ } = room.ROOM;
+const { W, L, TV, DARK, PROJ, TBL } = room.ROOM;
 
 const W3 = (p) => [p[0] + O[0], p[1] + O[1], p[2] + O[2]];
 const mix = (a, b, t) => a + (b - a) * t;
@@ -42,10 +42,16 @@ const BASE_KEYS = [
 	{ eye: [W / 2 + 0.05, 1.6, -3.0], at: [W / 2, 1.85, 1.5], fov: 50, dof: 0.05, p: { fov: 70 } },
 	// through the door: the room opens
 	{ eye: [W / 2 - 0.2, 1.5, 0.9], at: [W / 2 - 3.0, 1.4, 7.0], fov: 56, dof: 0.04, p: { fov: 74 } },
+	// to the right: the table under its window, the candles burning
+	{ eye: [W - 4.4, 1.55, 1.2], at: [W - 0.7, 1.05, TBL.z + 0.2], fov: 46, dof: 0.06, p: { eye: [W - 4.8, 1.6, 0.9], fov: 68 } },
+	// close: the roses laid among the candles
+	{ eye: [TBL.x - 1.4, TBL.top + 0.48, TBL.z - 0.7], at: [TBL.x + 0.05, TBL.top + 0.26, TBL.z + 0.0], fov: 40, dof: 0.32, p: { fov: 50 } },
 	// the darkroom along the left wall
 	{ eye: [3.3, 1.55, 1.3], at: [0.3, 1.35, 5.2], fov: 50, dof: 0.05, p: { eye: [2.8, 1.6, 0.9], fov: 72 } },
 	// down into the developer: his photograph floating up in the black water
 	{ eye: [1.05, 1.5, tray - 0.42], at: [DARK.TXc - 0.02, DARK.liquid, tray + 0.04], fov: 34, dof: 0.2, p: { eye: [1.0, 1.55, tray - 0.45], fov: 52 } },
+	// the old camera on its shelf by the trays
+	{ eye: [0.62, 1.68, (DARK.shelf.z0 + DARK.shelf.z1) / 2 - 0.36], at: [0.14, 1.55, (DARK.shelf.z0 + DARK.shelf.z1) / 2], fov: 34, dof: 0.34, p: { fov: 48 } },
 	// up to the prints drying on their lines
 	{ eye: [2.0, 1.6, 8.3], at: [0.4, 2.25, 11.3], fov: 50, dof: 0.12, p: { eye: [1.8, 1.6, 8.1], fov: 72 } },
 ];

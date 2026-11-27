@@ -42,6 +42,27 @@ WIN.apex = WIN.spring + WIN.hw * Math.sqrt(3);
 const winZ = (i) => WIN.z0 + WIN.step * i;
 // the first two windows on the left are walled up: the darkroom stands there
 WIN.leftFrom = 2;
+
+// THE TABLE: across the room from the darkroom, an old wooden table (and
+// its chairs; Sketchfab, CC BY: see the readme) pushed against the right
+// wall's first window, whose opening comes down to just above it. On it a
+// bunch of red roses (the conservatory's rose) and three candles in
+// candlesticks (Sketchfab, CC BY), burnt down to different lengths. Two
+// chairs in front of it, one at each end. (k: the models' scale)
+const TBL = (() => {
+	const k = 1.42, c = WIN.z0;
+	const T = { k, z: c, top: 0.543 * k, half: 0.601 * k, depth: 0.706 * k };
+	T.x = W - 0.12 - T.depth / 2;
+	// the candles: [x, z, how much of the candle is left]
+	T.candles = [[W - 0.4, c - 0.52, 1.0], [W - 0.3, c - 0.3, 0.62], [W - 0.36, c + 0.42, 0.38]];
+	// the roses' vase
+	T.vase = { x: W - 0.55, z: c + 0.06, h: 0.24 };
+	// where each flame burns (room metres)
+	T.flames = T.candles.map(([x, z, s]) => [x, T.top + 0.156 + 0.144 * s + 0.018, z]);
+	return T;
+})();
+// the window behind it starts just above its top
+WIN.lowSill = TBL.top + 0.06;
 // the engaged shafts between them, carrying the vault's ribs
 const SHAFTS = [];
 for (let i = 0; i <= WIN.n; i++) SHAFTS.push(WIN.z0 + WIN.step * (i - 0.5));
@@ -120,11 +141,15 @@ const DARK = (() => {
 	// the bulb over the developer, and the tube over the lines
 	D.bulb = [D.TXc + 0.02, 1.39, D.trays[0] + 0.05];
 	D.tube = { x: 0.07, y: 3.05, z0: D.b[0] + 0.2, z1: D.b[1] - 0.2 };
+	// a small wooden shelf on the wall beside the trays, an old camera on it
+	D.shelf = { y: 1.5, d: 0.3, z0: D.trays[2] + 0.42, z1: D.trays[2] + 1.12 };
 	// the drying lines: [x out from the wall, height, from z, to z, sag]
 	D.lines = [
 		[0.32, 2.74, SHAFTS[0], SHAFTS[1], 0.12], [0.74, 2.52, SHAFTS[0], SHAFTS[1], 0.17], [1.1, 2.62, SHAFTS[0], SHAFTS[1], 0.2],
 		[0.3, 2.76, SHAFTS[1], SHAFTS[2], 0.15], [0.68, 2.46, SHAFTS[1], SHAFTS[2], 0.19], [1.06, 2.66, SHAFTS[1], SHAFTS[2], 0.22],
-		[0.5, 1.98, SHAFTS[1], SHAFTS[2], 0.12]
+		[0.5, 1.98, SHAFTS[1], SHAFTS[2], 0.12],
+		[0.45, 2.98, SHAFTS[0], SHAFTS[1], 0.1, 1.45], [1.45, 2.4, SHAFTS[0], SHAFTS[1], 0.2], [0.95, 2.26, SHAFTS[0], SHAFTS[1], 0.13, 0.4],
+		[1.4, 3.0, SHAFTS[1], SHAFTS[2], 0.14, 0.45], [1.5, 2.36, SHAFTS[1], SHAFTS[2], 0.22], [0.9, 2.2, SHAFTS[1], SHAFTS[2], 0.15, 1.35]
 	];
 	return D;
 })();
@@ -280,7 +305,7 @@ function tube(g, pts, r, sides, k) {
 	}
 }
 // a point along one of the darkroom's drying lines (u 0..1)
-const darkLineAt = (ln, u) => [ln[0], ln[1] - ln[4] * 4 * u * (1 - u), ln[2] + 0.35 + (ln[3] - ln[2] - 0.7) * u];
+const darkLineAt = (ln, u) => [ln[0] + ((ln[5] === undefined ? ln[0] : ln[5]) - ln[0]) * u, ln[1] - ln[4] * 4 * u * (1 - u), ln[2] + 0.35 + (ln[3] - ln[2] - 0.7) * u];
 // the line of a sagging clothesline, x from wall to wall
 const lineAt = (L0, x) => { const t = (x - 0.62) / (W - 1.24); return [x, L0.y - L0.sag * 4 * t * (1 - t), L0.z]; };
 
@@ -345,19 +370,22 @@ function build() {
 
 	// the windows: their deep stone sides, and the glass
 	const wp = outline(WIN.hw, WIN.sill, WIN.spring);
+	const wpLow = outline(WIN.hw, WIN.lowSill, WIN.spring);
 	for (let i = 0; i < WIN.n; i++) {
+		const rs = i === 0 ? WIN.lowSill : WIN.sill;
 		const zc = winZ(i);
 		// left wall: depth goes to -x; u runs along -z seen from inside? keep u along +z
 		const left = i >= WIN.leftFrom;
 		if (left) reveal(g, wp, T, (u, v, d, isN) => (isN ? [0, v, u] : [-d, v, zc + u]), true, K.REVEAL, [0, (WIN.sill + WIN.apex) / 2]);
-		reveal(g, wp, T, (u, v, d, isN) => (isN ? [0, v, u] : [W + d, v, zc + u]), true, K.REVEAL, [0, (WIN.sill + WIN.apex) / 2]);
+		reveal(g, i === 0 ? wpLow : wp, T, (u, v, d, isN) => (isN ? [0, v, u] : [W + d, v, zc + u]), true, K.REVEAL, [0, (rs + WIN.apex) / 2]);
 		const gx = T * 0.55;
 		const lo = WIN.sill - 0.02, hi = WIN.apex + 0.02, a = WIN.hw + 0.02;
 		if (left) g.quad([-gx, lo, zc + a], [-gx, lo, zc - a], [-gx, hi, zc - a], [-gx, hi, zc + a], [1, 0, 0], K.GLASS, [a, lo], [-a, lo], [-a, hi], [a, hi]);
-		g.quad([W + gx, lo, zc - a], [W + gx, lo, zc + a], [W + gx, hi, zc + a], [W + gx, hi, zc - a], [-1, 0, 0], K.GLASS, [-a, lo], [a, lo], [a, hi], [-a, hi]);
+		const lo2 = rs - 0.02;
+		g.quad([W + gx, lo2, zc - a], [W + gx, lo2, zc + a], [W + gx, hi, zc + a], [W + gx, hi, zc - a], [-1, 0, 0], K.GLASS, [-a, lo2], [a, lo2], [a, hi], [-a, hi]);
 		// the sill, a little proud of the wall
 		if (left) g.box(-0.02, WIN.sill - 0.12, zc - WIN.hw - 0.18, 0.12, WIN.sill, zc + WIN.hw + 0.18, K.TRIM);
-		g.box(W - 0.12, WIN.sill - 0.12, zc - WIN.hw - 0.18, W + 0.02, WIN.sill, zc + WIN.hw + 0.18, K.TRIM);
+		g.box(W - 0.12, rs - (i === 0 ? 0.05 : 0.12), zc - WIN.hw - 0.18, W + 0.02, rs, zc + WIN.hw + 0.18, K.TRIM);
 	}
 
 	// the doorways: their sides and the dark beyond
@@ -481,6 +509,26 @@ function build() {
 		tube(g, [[0.0, 2.32, bl[2]], [bl[0] * 0.6, 2.32, bl[2]], [bl[0], 2.28, bl[2]]], 0.012, 6, K.TRIM);
 		g.box(0.0, 2.24, bl[2] - 0.06, 0.03, 2.4, bl[2] + 0.06, K.TRIM);
 		tube(g, [[bl[0], 2.28, bl[2]], [bl[0] + 0.004, 1.9, bl[2] + 0.003], [bl[0], bl[1] + 0.2, bl[2]]], 0.004, 5, K.CABLE);
+		// the roses' vase on the table: a dark glazed jar
+		{
+			const V = TBL.vase, y0 = TBL.top;
+			const prof = [[0.045, 0], [0.07, 0.03], [0.08, 0.09], [0.072, 0.15], [0.05, 0.2], [0.042, 0.225], [0.05, V.h]];
+			const segs = 24;
+			for (let j = 0; j < prof.length - 1; j++) {
+				const [r0, h0] = prof[j], [r1, h1] = prof[j + 1];
+				for (let i = 0; i < segs; i++) {
+					const a0 = i / segs * Math.PI * 2, a1 = (i + 1) / segs * Math.PI * 2;
+					const P = (r, h, a) => [V.x + Math.cos(a) * r, y0 + h, V.z + Math.sin(a) * r];
+					const nn = (a) => { const dr = r1 - r0, dh = h1 - h0, l = Math.hypot(dr, dh); return [Math.cos(a) * dh / l, -dr / l, Math.sin(a) * dh / l]; };
+					const am = (a0 + a1) / 2;
+					g.quad(P(r0, h0, a0), P(r0, h0, a1), P(r1, h1, a1), P(r1, h1, a0), nn(am), K.TRIM);
+				}
+			}
+		}
+		// the camera's shelf, on two brackets
+		const sh = DARK.shelf;
+		g.box(0.0, sh.y - 0.03, sh.z0, sh.d, sh.y, sh.z1, K.TRIM);
+		for (const z of [sh.z0 + 0.08, sh.z1 - 0.08]) g.box(0.0, sh.y - 0.2, z - 0.012, 0.022, sh.y - 0.03, z + 0.012, K.TRIM), g.box(0.0, sh.y - 0.06, z - 0.012, sh.d * 0.7, sh.y - 0.03, z + 0.012, K.TRIM);
 		// the red tube over the lines, on two clips
 		const tb = DARK.tube;
 		tube(g, [[tb.x + 0.02, tb.y, tb.z0], [tb.x + 0.02, tb.y, (tb.z0 + tb.z1) / 2], [tb.x + 0.02, tb.y, tb.z1]], 0.035, 10, K.TUBE);
@@ -662,6 +710,11 @@ const COMMON = `
 		float i = clamp(floor((z - WZ0) / WSTEP + 0.5), 0.0, ${f(WIN.n - 1)});
 		return vec2(z - (WZ0 + WSTEP * i), y);
 	}
+	// (on the right, the first window comes down to the table: its height
+	// below the springing is stretched onto the others' shape)
+	const float LSILL = ${f(WIN.lowSill)};
+	float lowY(float z, float y) { return (winIdx(z) < 0.5 && y < SPRING) ? SILL + (y - LSILL) * (SPRING - SILL) / (SPRING - LSILL) : y; }
+	vec2 winLocalR(float z, float y) { return vec2(winLocal(z, y).x, lowY(z, y)); }
 
 	// the window's stonework and leading: 1 where the glass is clear, 0 on
 	// the stone and the lead (w: how soft the edges are)
@@ -717,7 +770,7 @@ const COMMON = `
 		float a = smoothstep(-0.1, 0.25, pointedSD(winLocal(h.z, h.y), HW, SILL, SPRING)) * leftOpen(h.z);
 		t = (RW - p.x) / LDIR_R.x;
 		h = p + LDIR_R * t;
-		a += smoothstep(-0.1, 0.25, pointedSD(winLocal(h.z, h.y), HW, SILL, SPRING));
+		a += smoothstep(-0.1, 0.25, pointedSD(winLocalR(h.z, h.y), HW, SILL, SPRING));
 		return vec3(0.75, 0.08, 0.05) * a * 0.62;
 	}
 	// for the air: the leading, but the glass's colour left plain
@@ -728,7 +781,7 @@ const COMMON = `
 		sum += vec3(0.8, 0.09, 0.05) * glassOpen(winLocal(h.z, h.y), 0.06) * leftOpen(h.z);
 		t = (RW + RT * 0.55 - p.x) / LDIR_R.x;
 		h = p + LDIR_R * t;
-		sum += vec3(0.8, 0.09, 0.05) * glassOpen(winLocal(h.z, h.y), 0.06);
+		sum += vec3(0.8, 0.09, 0.05) * glassOpen(winLocalR(h.z, h.y), 0.06);
 		return sum;
 	}
 
@@ -751,10 +804,10 @@ const COMMON = `
 		{
 			float t = (RW + RT * 0.55 - p.x) / LDIR_R.x;
 			vec3 h = p + LDIR_R * t;
-			vec2 q = winLocal(h.z, h.y);
+			vec2 q = winLocalR(h.z, h.y);
 			float t0 = (RW - p.x) / LDIR_R.x;
 			vec3 h0 = p + LDIR_R * t0;
-			vec2 q0 = winLocal(h0.z, h0.y);
+			vec2 q0 = winLocalR(h0.z, h0.y);
 			float open = glassOpen(q, soft) * step(0.0, pointedSD(q0, HW, SILL, SPRING) + 0.02);
 			sum += glassTint(q + 11.0) * open;
 		}
@@ -826,11 +879,11 @@ const SHADE = `
 		float f = fract(t / 3.4);
 		uv += vec2(sin(t * 13.0) * 0.0015 + (rhash(vec2(fr, 1.0)) - 0.5) * 0.003, (rhash(vec2(fr, 2.0)) - 0.5) * 0.006);
 		// an old print, only a touch soft: its colours faded, not gone
-		vec2 su = clamp((floor(uv * vec2(210.0, 158.0)) + 0.5) / vec2(210.0, 158.0), 0.01, 0.99);
+		vec2 su = clamp((floor(uv * vec2(300.0, 225.0)) + 0.5) / vec2(300.0, 225.0), 0.01, 0.99);
 		vec2 tile = vec2(mod(k, 6.0), floor(k / 6.0));
 		vec3 pc = vec3(0.0);
 		for (int i = 0; i < 5; i++) {
-			vec2 o = i == 0 ? vec2(0.0) : vec2(i == 1 ? 1.0 : (i == 2 ? -1.0 : 0.0), i == 3 ? 1.0 : (i == 4 ? -1.0 : 0.0)) * 0.0065;
+			vec2 o = i == 0 ? vec2(0.0) : vec2(i == 1 ? 1.0 : (i == 2 ? -1.0 : 0.0), i == 3 ? 1.0 : (i == 4 ? -1.0 : 0.0)) * 0.0042;
 			pc += texture2D(memTex, (tile + vec2(clamp(su.x + o.x, 0.005, 0.995), 1.0 - clamp(su.y + o.y, 0.005, 0.995))) / 6.0).rgb * (i == 0 ? 0.4 : 0.15);
 		}
 		float l = dot(pc, vec3(0.3, 0.59, 0.11));
@@ -850,7 +903,7 @@ const SHADE = `
 		// the light falls off to the edges and corners of the frame
 		vec2 e = uv * (1.0 - uv);
 		float vig = clamp(pow(e.x * e.y * 16.0, 0.45), 0.0, 1.0);
-		vec3 c = mix(vec3(l), pcol * (l / max(l0, 0.02)), 0.28 * (1.0 - gap));
+		vec3 c = mix(vec3(l), pcol * (l / max(l0, 0.02)), 0.36 * (1.0 - gap));
 		return vec3(1.0, 0.86, 0.66) * max(c, 0.0) * vig;
 	}
 	// where a point in the room is in the projected picture (x, y in 0..1;
@@ -913,17 +966,28 @@ const SHADE = `
 		c += vec3(1.0, 0.12, 0.1) * signK * 0.5 * (0.2 + 0.8 * max(0.0, dot(N, normalize(sd)))) / (0.05 + dot(sd, sd) * 3.0);
 		return c;
 	}
+	// the candles on the table: a warm, breathing light close round them
+	vec3 candleLight(vec3 lp, vec3 N) {
+		vec3 sum = vec3(0.0);
+		${TBL.flames.map((F, i) => `{
+			vec3 d = vec3(${f(F[0])}, ${f(F[1])}, ${f(F[2])}) - lp;
+			float r2 = dot(d, d);
+			float fl = 0.82 + 0.1 * sin(time * (9.0 + ${f(i * 1.7)}) + ${f(i * 2.1)}) * sin(time * 3.3 + ${f(i)}) + 0.08 * sin(time * 23.0 + ${f(i * 4.0)});
+			sum += fl * (0.35 + 0.65 * max(0.0, dot(N, d * inversesqrt(r2 + 1e-4)))) / (r2 * 5.0 + 0.1);
+		}`).join('\n')}
+		return vec3(1.0, 0.52, 0.22) * sum * 0.45;
+	}
 	vec3 ambient(vec3 lp, vec3 N) {
 		// the room's own dark: a little red, lifted near the lit floor
 		// the glow of the glass itself, spread round each window
 		float g = 0.0;
 		if (abs(N.x) > 0.5) {
-			vec2 q = winLocal(lp.z, lp.y);
+			vec2 q = lp.x > RW * 0.5 ? winLocalR(lp.z, lp.y) : winLocal(lp.z, lp.y);
 			g = exp(pointedSD(q, HW, SILL, SPRING) * 1.1) * 0.9 * (lp.x > RW * 0.5 ? 1.0 : leftOpen(lp.z));
 		}
 		// (out in the corridor there is only what comes through the door)
 		float room = 1.0 - 0.9 * smoothstep(-0.3, -1.2, lp.z);
-		return (vec3(0.2, 0.017, 0.02) * (0.8 + 0.2 * N.y) + vec3(0.1, 0.007, 0.007) * exp(-lp.y * 0.25)) * room + vec3(0.7, 0.06, 0.04) * g + tvGlow(lp, N) + safeLight(lp, N) + darkLight(lp, N) + doorGlow(lp, N);
+		return (vec3(0.2, 0.017, 0.02) * (0.8 + 0.2 * N.y) + vec3(0.1, 0.007, 0.007) * exp(-lp.y * 0.25)) * room + vec3(0.7, 0.06, 0.04) * g + tvGlow(lp, N) + safeLight(lp, N) + darkLight(lp, N) + doorGlow(lp, N) + candleLight(lp, N);
 	}
 	// what the lit floor throws back up onto the walls and the shafts
 	vec3 bounce(vec3 lp, vec3 N) {
@@ -963,6 +1027,7 @@ const FRAG = `
 		if (k == 3) {
 			// the glass, glowing; the stone and lead dark against it
 			vec2 q = v_uv;
+			if (lp.x > RW * 0.5) q.y = lowY(lp.z, q.y);
 			if (pointedSD(q, HW, SILL, SPRING) < -0.005) discard;
 			float open = glassOpen(q, max(wpx, 0.006));
 			vec3 g = glassTint(q + (N.x < 0.0 ? 11.0 : 0.0));
@@ -979,7 +1044,7 @@ const FRAG = `
 			// the openings in the walls
 			if (k == 1) {
 				if (abs(N.x) > 0.5) {
-					vec2 q = winLocal(lp.z, lp.y);
+					vec2 q = lp.x > RW * 0.5 ? winLocalR(lp.z, lp.y) : winLocal(lp.z, lp.y);
 					if (pointedSD(q, HW, SILL, SPRING) > 0.0 && (lp.x > RW * 0.5 || leftOpen(lp.z) > 0.5)) discard;
 				} else {
 					vec2 q = vec2(lp.x - RW * 0.5, lp.y);
@@ -1035,8 +1100,7 @@ const FRAG = `
 			if (k == 1 && N.z < -0.5 && lp.z > RL - 0.02) {
 				vec3 pu = projUV(lp);
 				if (pu.x > 0.0 && pu.x < 1.0 && pu.y > 0.0 && pu.y < 1.0) {
-					float sh = projShadow(lp);
-					vec3 pl = film(pu.xy) * sh;
+					vec3 pl = film(pu.xy);
 					col += alb * pl * 4.4 + pl * 0.09;
 				}
 			}
@@ -1109,7 +1173,7 @@ const FRAG = `
 					float t = (wx - lp.x) / (abs(r.x) > 1e-4 ? r.x : 1e-4);
 					if (t > 0.0) {
 						vec3 h = lp + r * t;
-						vec2 q = winLocal(h.z, h.y);
+						vec2 q = s == 0 ? winLocal(h.z, h.y) : winLocalR(h.z, h.y);
 						float b = 0.12 + t * (0.05 + 0.12 * (1.0 - gl));
 						float sd = pointedSD(q, HW, SILL, SPRING);
 						sheen += vec3(0.95, 0.13, 0.08) * smoothstep(-b, b * 0.5, sd) * (0.7 + 0.3 * smoothstep(SILL, SPRING, h.y));
@@ -1205,7 +1269,7 @@ const TV_FRAG = `
 		float band = smoothstep(0.06, 0.0, abs(fract(uv.y * 0.7 - t * 0.31) - 0.5));
 		jit += band * 0.05 * (rhash(vec2(fr, 2.0)) - 0.3);
 		q.x += jit;
-		vec2 mu = clamp((floor((q + 0.5) * vec2(150.0, 112.0)) + 0.5) / vec2(150.0, 112.0), 0.002, 0.998);
+		vec2 mu = clamp((floor((q + 0.5) * vec2(220.0, 165.0)) + 0.5) / vec2(220.0, 165.0), 0.002, 0.998);
 		vec2 tile = vec2(mod(k, 6.0), floor(k / 6.0));
 		vec2 au = (tile + vec2(mu.x, 1.0 - mu.y)) / 6.0;
 		vec2 ca = vec2(0.004 + 0.01 * band, 0.0) / 6.0;
@@ -1217,7 +1281,7 @@ const TV_FRAG = `
 		// washed red, or cold and grey
 		float red = step(0.62, rhash(vec2(seg, 7.0 + seed)));
 		vec3 tint = mix(vec3(0.78, 0.86, 0.95), vec3(1.15, 0.28, 0.22), red);
-		m = mix(mono * tint, mix(vec3(l), m, 0.5) * 1.05, 0.22);
+		m = mix(mono * tint, mix(vec3(l), m, 0.6) * 1.05, 0.3);
 		// the odd frame in negative
 		if (rhash(vec2(fr, seed * 3.0)) > 0.992) m = vec3(0.9) - m;
 		// grain over it, and the snow showing through
@@ -1848,6 +1912,42 @@ module.exports = function (regl) {
 		['socket', at(DARK.bulb[0], DARK.bulb[1] + 0.065, DARK.bulb[2], 0)],
 		['bulb', mul(at(DARK.bulb[0], DARK.bulb[1] + 0.048, DARK.bulb[2], 0), rotX(Math.PI))]
 	];
+	const scl = (k, ky) => [k, 0, 0, 0, 0, ky === undefined ? k : ky, 0, 0, 0, 0, k, 0, 0, 0, 0, 1];
+	loadPart('res/redroom/wtable_all.bin', ['res/redroom/wtable_0.webp']).then((m) => { props.wtable = m; }).catch((e) => console.error(e));
+	loadPart('res/redroom/wchair_all.bin', ['res/redroom/wchair_0.webp']).then((m) => { props.wchair = m; }).catch((e) => console.error(e));
+	loadPart('res/redroom/cstick_holder.bin', ['res/redroom/cstick_0.webp']).then((m) => { props.holder = m; }).catch((e) => console.error(e));
+	loadPart('res/redroom/cstick_candle.bin', ['res/redroom/cstick_0.webp']).then((m) => { props.candle = m; }).catch((e) => console.error(e));
+	loadPart('res/redroom/rose_all.bin', ['res/redroom/rose_0.webp']).then((m) => { props.rose = m; }).catch((e) => console.error(e));
+	loadPart('res/redroom/camera_all.bin', [0, 1, 2, 3].map((i) => 'res/redroom/camera_' + i + '.webp')).then((m) => { props.camera = m; }).catch((e) => console.error(e));
+	const tk = TBL.k, tz = TBL.z, PI2 = Math.PI / 2;
+	// (the chairs face +z as they come)
+	const TABLE_PROPS = [
+		['wtable', mul(at(TBL.x, 0, tz, PI2), scl(tk)), 1.7],
+		['wchair', mul(at(TBL.x - TBL.depth / 2 - 0.36, 0, tz - 0.42, PI2 + 0.05), scl(tk)), 1.6],
+		['wchair', mul(at(TBL.x - TBL.depth / 2 - 0.42, 0, tz + 0.45, PI2 - 0.12), scl(tk)), 1.6],
+		['wchair', mul(at(TBL.x + 0.02, 0, tz - TBL.half - 0.36, 0.06), scl(tk)), 1.6],
+		['wchair', mul(at(TBL.x - 0.05, 0, tz + TBL.half + 0.4, Math.PI - 0.1), scl(tk)), 0.95]
+	];
+	for (const [x, z, s] of TBL.candles) {
+		TABLE_PROPS.push(['holder', at(x, TBL.top, z, s * 3.0), 0.9]);
+		TABLE_PROPS.push(['candle', mul(at(x, TBL.top, z, s * 3.0), mul(trans(0, 0.156, 0), mul(scl(1, s), trans(0, -0.156, 0)))), 1.15]);
+	}
+	// the roses: a bunch standing in a dark vase between the candles, the
+	// heads leaning out every way (the rose lies along its z, head at -z:
+	// stood up, its middle raised to the vase's mouth)
+	{
+		let sd = 7;
+		const rr = () => { sd = (sd * 16807) % 2147483647; return (sd - 1) / 2147483646; };
+		const V = TBL.vase;
+		for (let i = 0; i < 9; i++) {
+			const a = i * 2.39996 + rr() * 0.4, lean = i === 0 ? 0.04 : 0.16 + rr() * 0.2;
+			const k = 0.66 + rr() * 0.12;
+			const up = V.h + 0.25 * k - 0.1 - (i === 0 ? -0.04 : rr() * 0.05);
+			const m = mul(mul(at(V.x, TBL.top + 0.02, V.z, a), rotX(lean)), mul(trans(0, up - 0.02, 0), mul(rotX(Math.PI / 2), mul(scl(k), trans(0, -0.13, 0)))));
+			TABLE_PROPS.push(['rose', m, 2.0]);
+		}
+	}
+	TABLE_PROPS.push(['camera', at(0.15, DARK.shelf.y, (DARK.shelf.z0 + DARK.shelf.z1) / 2, PI2 - 0.4), 1.7]);
 	const drawDark = () => {
 		const batch = [];
 		for (const [name, model] of DARK_PROPS) {
@@ -1855,11 +1955,59 @@ module.exports = function (regl) {
 			if (!m) continue;
 			m.parts.forEach((p, i) => batch.push({ vb: m.vb, el: m.el, offset: p.offset, count: p.count, tex: p.tex, model, seed: 0, dark: name === 'jug' || name === 'can' ? 0.85 : 0.7, emit: name === 'bulb' && p.mat === 0 ? 1.6 : 0 }));
 		}
+		for (const [name, model, dk] of TABLE_PROPS) {
+			const m = props[name];
+			if (!m) continue;
+			for (const p of m.parts) batch.push({ vb: m.vb, el: m.el, offset: p.offset, count: p.count, tex: p.tex, model, seed: 0, dark: dk, emit: 0 });
+		}
 		if (batch.length) tvCmd(batch);
+		flameDraw();
 		liqDraw();
 		pegDraw();
 	};
 
+
+	// ---- the candles' flames: small, upright, never still -------------------
+	const flameDraw = regl({
+		vert: `
+			precision highp float;
+			uniform mat4 proj, view;
+			uniform float yScale, pxScale, time;
+			attribute vec4 fp;
+			varying float v_i, v_h, v_s;
+			void main() {
+				vec3 p = fp.xyz; p.y *= yScale;
+				vec4 v = view * vec4(p, 1.0);
+				gl_Position = proj * v;
+				gl_PointSize = clamp(pxScale * 0.2 / max(0.12, -v.z), 3.0, 600.0);
+				float t = time + fp.w * 7.0;
+				v_h = 0.85 + 0.12 * sin(t * 11.0) * sin(t * 2.7) + 0.08 * sin(t * 27.0);
+				v_s = 0.25 * sin(t * 3.1) * sin(t * 1.3) + 0.12 * sin(t * 13.0);
+				v_i = 0.85 + 0.15 * sin(t * 17.0 + 1.0);
+			}`,
+		frag: `
+			precision highp float;
+			varying float v_i, v_h, v_s;
+			void main() {
+				vec2 q = gl_PointCoord - 0.5; q.y = -q.y;
+				// (q in units of the sprite: the flame is 0.07 m tall in 0.2 m)
+				float y = (q.y + 0.07) / (0.2 * v_h);
+				float x = q.x + v_s * max(0.0, y) * 0.12;
+				float w = 0.045 * sqrt(max(0.0, 1.0 - y)) * smoothstep(-0.25, 0.25, y + 0.2);
+				float flame = smoothstep(w, w * 0.25, abs(x)) * step(-0.12, y) * step(y, 1.0);
+				float core = smoothstep(w * 0.5, 0.0, abs(x)) * smoothstep(0.55, 0.05, y) * step(-0.08, y);
+				vec3 c = vec3(1.0, 0.55, 0.16) * flame * 1.6 + vec3(1.0, 0.92, 0.75) * core * 1.4;
+				float r = length(vec2(q.x, q.y + 0.03));
+				c += vec3(1.0, 0.45, 0.15) * (exp(-r * r * 120.0) * 0.35 + exp(-r * r * 18.0) * 0.08);
+				gl_FragColor = vec4(c * v_i, 1.0);
+			}`,
+		attributes: { fp: [].concat(...TBL.flames.map((F, i) => [O[0] + F[0], O[1] + F[1], O[2] + F[2], i * 1.37])) },
+		count: TBL.flames.length,
+		primitive: 'points',
+		depth: { enable: true, mask: false },
+		blend: { enable: true, func: { src: 'one', dst: 'one' } },
+		uniforms: { pxScale: (ctx) => ctx.viewportHeight * 1.2 }
+	});
 
 	// ---- the ENTER sign ------------------------------------------------------
 	const signCanvas = document.createElement('canvas');
@@ -2047,7 +2195,7 @@ module.exports = function (regl) {
 let dummy = null;
 Object.assign(module.exports, {
 	O, W, L, H,
-	ROOM: { W, L, H, WIN, DOOR, ENT, SHAFTS, TV, DARK, PROJ, CABLE, POL, winZ, vaultY },
+	ROOM: { W, L, H, WIN, DOOR, ENT, SHAFTS, TV, DARK, PROJ, CABLE, POL, TBL, winZ, vaultY },
 	POST: { threshold: 0.3 },
 	sunGLSL,
 	bakedSun(regl) { if (!dummy) dummy = regl.texture({ width: 1, height: 1, data: [0, 0, 0, 0] }); return dummy; },
