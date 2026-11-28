@@ -43,8 +43,9 @@ const lightmap = require('./lightmap');
 const EMAX = 4.0;
 const GMAX = 4.0;
 
-// ?exp=nobake: the light worked out live everywhere, as before (to compare)
-const BAKE = !quality.exp('nobake');
+// (?nobake: the light worked out live everywhere, as before, to compare)
+let BAKE = true;
+try { if (/[?&]nobake\b/.test(location.search)) BAKE = false; } catch (e) { /* baked */ }
 
 module.exports = (regl, data, useReflexion, ranged) => {
 
@@ -125,10 +126,6 @@ module.exports = (regl, data, useReflexion, ranged) => {
     uniform sampler2D lmDay, lmNight;
     varying vec3 v_lm;
     #endif
-    ${quality.exp('nolight') ? '#define EXP_NOLIGHT' : ''}
-    ${quality.exp('nodetail') ? '#define EXP_NODETAIL' : ''}
-    ${quality.exp('lmonly') ? '#define EXP_LMONLY' : ''}
-    ${quality.exp('lmmark') ? '#define EXP_LMMARK' : ''}
 
     uniform float yScale;
     uniform float mirrorOn;
@@ -253,9 +250,6 @@ module.exports = (regl, data, useReflexion, ranged) => {
 
       // The mirrored floor pass skips the expensive noise detail.
       bool detail = yScale > 0.0;
-      #ifdef EXP_NODETAIL
-      detail = false;
-      #endif
 
       // ---------------------------------------------------------
       // SURFACE CLASSIFICATION
@@ -492,9 +486,7 @@ module.exports = (regl, data, useReflexion, ranged) => {
 
       // Light from the bar above each painting
       float pic = 0.0;
-      #ifndef EXP_NOLIGHT
       ${lightCalls}
-      #endif
 
       // Corridor glow and the end wall light
       light += (1.0 - smoothstep(7.0, 35.0, abs(v_pos.z - 29.0))) * 0.04;
@@ -531,7 +523,6 @@ module.exports = (regl, data, useReflexion, ranged) => {
       float spill = 0.0;
       float sun = 0.0;
       float glow = 0.0, aGlow = 0.0, winL = 0.0, cg = 0.0;
-      #ifndef EXP_NOLIGHT
       if (v_pos.z < 12.0 && v_pos.z > 0.30) {
         if (isFloor > 0.5) {
           float through = doorLight(v_pos, vec3(${DOOR_LIGHT_DIR}));
@@ -581,7 +572,6 @@ module.exports = (regl, data, useReflexion, ranged) => {
       // the little lamps in the statue niches
       float nl = nicheLight(v_pos, N);
       light += nl * 1.1;
-      #endif
 
       // soft contact shadows where pillars, statues and plants meet the floor
       if (isFloor > 0.5) {
@@ -635,14 +625,6 @@ module.exports = (regl, data, useReflexion, ranged) => {
       return;
       #endif
       }
-
-      #ifdef EXP_LMONLY
-      gl_FragColor = vec4(Eb * 0.5, 1.0);
-      return;
-      #endif
-      #if defined(EXP_LMMARK) && defined(HAS_BAKE)
-      if (v_lm.z > 0.5) { vec4 dm = texture2D(lmDay, v_lm.xy); gl_FragColor = vec4(dm.a * 4.0, fromBake ? 1.0 : 0.0, fract(v_lm.x * 64.0), 1.0); return; }
-      #endif
 
       vec3 finalColour = material * Eb;
 
@@ -805,6 +787,7 @@ module.exports = (regl, data, useReflexion, ranged) => {
     }`;
 
   const src = lm || data;
+  const dummy = lm ? regl.texture({ width: 1, height: 1 }) : null;
   const attributes = {
     position: src.position,
     normal: src.normal,
@@ -812,7 +795,16 @@ module.exports = (regl, data, useReflexion, ranged) => {
   };
   if (lm) attributes.a_lm = lm.lm;
 
-  const bakedLight = lm ? makeBake(regl, lm, attributes, FRAG('#define BAKE_PASS', bakeDecl, bakeCalls), bakeUniforms, data) : null;
+  // (should the graphics chip refuse any part of the bake, the light
+  // simply stays live, as it was before)
+  let bakedLight = null;
+  if (lm) {
+    try {
+      bakedLight = makeBake(regl, lm, attributes, FRAG('#define BAKE_PASS', bakeDecl, bakeCalls), bakeUniforms, data);
+    } catch (e) {
+      bakedLight = null;
+    }
+  }
 
   const cmd = regl({
     frag: FRAG(lm ? '#define HAS_BAKE' : '', lightDecl, lightCalls),
@@ -821,9 +813,9 @@ module.exports = (regl, data, useReflexion, ranged) => {
     attributes,
 
     uniforms: lm ? Object.assign({
-      bakeOn: () => (bakedLight.ready ? 1 : 0),
-      lmDay: () => bakedLight.day,
-      lmNight: () => bakedLight.night
+      bakeOn: () => (bakedLight && bakedLight.ready ? 1 : 0),
+      lmDay: () => (bakedLight ? bakedLight.day : dummy),
+      lmNight: () => (bakedLight ? bakedLight.night : dummy)
     }, lightUniforms) : lightUniforms,
 
     blend: {
@@ -848,7 +840,15 @@ module.exports = (regl, data, useReflexion, ranged) => {
   const draw = (props) => cmd(props);
   // called once a frame, before anything is drawn: bakes the light when
   // it is first needed and again whenever a picture light changes
-  draw.prepare = () => { if (bakedLight) bakedLight.update(); };
+  draw.prepare = () => {
+    if (!bakedLight) return;
+    try {
+      bakedLight.update();
+    } catch (e) {
+      bakedLight.ready = false;
+      bakedLight = null;
+    }
+  };
   draw.baked = () => !!(bakedLight && bakedLight.ready);
   return draw;
 };
@@ -954,9 +954,6 @@ function makeBake(regl, lm, attributes, frag, lightUniforms, data) {
 
   // what the picture lights are now (a painting arriving switches its on)
   const signature = () => (data.lights || []).map((l) => l.c.concat(l.d).map((x) => x.toFixed(3)).join(',')).join(';');
-
-  // (tests: the baked picture, read back)
-  if (/tourdebug/.test(location.search)) window.__lmRead = (n) => ({ w: W, h: H, px: Array.from(regl.read({ framebuffer: n ? fNight : fDay })) });
 
   const state = {
     day, night,
