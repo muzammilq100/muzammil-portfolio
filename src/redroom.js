@@ -1236,7 +1236,7 @@ const SHADE = `
 		}
 		// (out in the corridor there is only what comes through the door)
 		float room = 1.0 - 0.9 * smoothstep(-0.3, -1.2, lp.z);
-		return (vec3(0.2, 0.017, 0.02) * (0.8 + 0.2 * N.y) + vec3(0.1, 0.007, 0.007) * exp(-lp.y * 0.25)) * room + vec3(0.7, 0.06, 0.04) * g + tvGlow(lp, N) + safeLight(lp, N) + darkLight(lp, N) + doorGlow(lp, N) + candleLight(lp, N) + spotLight(lp, N);
+		return ${require('./quality').exp('rrnodyn') ? `(vec3(0.2, 0.017, 0.02) * (0.8 + 0.2 * N.y) + vec3(0.1, 0.007, 0.007) * exp(-lp.y * 0.25)) * room + vec3(0.7, 0.06, 0.04) * g + safeLight(lp, N) + darkLight(lp, N) + doorGlow(lp, N)` : `(vec3(0.2, 0.017, 0.02) * (0.8 + 0.2 * N.y) + vec3(0.1, 0.007, 0.007) * exp(-lp.y * 0.25)) * room + vec3(0.7, 0.06, 0.04) * g + tvGlow(lp, N) + safeLight(lp, N) + darkLight(lp, N) + doorGlow(lp, N) + candleLight(lp, N) + spotLight(lp, N)`};
 	}
 	// what the lit floor throws back up onto the walls and the shafts
 	vec3 bounce(vec3 lp, vec3 N) {
@@ -1359,10 +1359,11 @@ const FRAG = `
 			// light: straight through the windows, and back off the floor
 			vec3 lit = vec3(0.0);
 			float nl = max(0.0, dot(N, LDIR_L)) + max(0.0, dot(N, LDIR_R));
+			${require('./quality').exp('rrnostatic') ? '' : ''}
 			if (flr) lit = redLight(lp, max(wpx * 0.6, 0.004)) * 3.2 * LDIR_L.y;
 			else if (nl > 0.0) lit = redLight(lp + N * 0.02, max(wpx, 0.01)) * 2.0 * min(1.0, nl);
 			vec3 amb = ambient(lp, N) * (flr ? 1.4 : 1.0);
-			if (!flr) amb += bounce(lp, N);
+			${require('./quality').exp('rrnostatic') ? 'lit = vec3(0.0);' : 'if (!flr) amb += bounce(lp, N);'}
 			// the deep sides of the windows catch the glass's glow
 			if (k == 2) {
 				float sideL = lp.x < RW * 0.5 ? 1.0 : -1.0;

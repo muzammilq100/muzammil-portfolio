@@ -243,7 +243,7 @@ const LIGHTS = candleLights(CANDLES.filter((c) => c[1] < 2.0 || c[1] > 2.5)).con
 //   vec3 roomHaze(p, eye)                       the warm air between
 
 function roomGLSL() {
-	const lights = LIGHTS.map((l, i) => `
+	const lights = require('./quality').exp('shnolights') ? '' : LIGHTS.map((l, i) => `
 		{
 			vec3 d = ${v3(l)} - p;
 			float dd = dot(d, d);

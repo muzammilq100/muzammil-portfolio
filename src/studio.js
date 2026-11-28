@@ -2609,7 +2609,7 @@ const LIGHT = `
 		// the hanging candles (by night): each drift a flickering flame, the
 		// rotunda's ring putting its arches' shadows round the room and its
 		// cloth staining what lies beyond it red
-		float nk = smoothstep(0.35, 0.8, night);
+		float nk = smoothstep(0.35, 0.8, night)${require('./quality').exp('stnocandles') ? ' * 0.0' : ''};
 		if (nk > 0.01) {
 			${CANDLE_LIGHTS.map((l, i) => `
 			{
@@ -2636,7 +2636,7 @@ const LIGHT = `
 		vec3 airC = mix(vec3(0.17, 0.17, 0.16), vec3(0.012, 0.018, 0.035), night);
 		col = mix(col, airC, clamp(h * (0.42 + 0.25 * low), 0.0, 0.8));
 		// by night the damp air glows round each drift of candles
-		float nka = smoothstep(0.35, 0.8, night);
+		float nka = smoothstep(0.35, 0.8, night)${require('./quality').exp('stnocandles') ? ' * 0.0' : ''};
 		if (nka > 0.01) {
 			vec3 rd = (pw - eye) / max(d, 1e-4);
 			float g = 0.0;
