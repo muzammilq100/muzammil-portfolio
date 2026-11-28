@@ -242,70 +242,13 @@ const LIGHTS = candleLights(CANDLES.filter((c) => c[1] < 2.0 || c[1] > 2.5)).con
 //   vec3 roomLight(p, N, V, gloss, out spec)   light reaching p (diffuse)
 //   vec3 roomHaze(p, eye)                       the warm air between
 
-// BAKED CANDLELIGHT (bake.js): each candle's light on the room's stone
-// (without its flicker) is worked out once, into four pictures of four
-// candles each; drawing then reads them and multiplies each by its candle's
-// flicker of the moment. Kept as log2(1 + 8 d) / log2(1 + 8 DMAX), so the
-// faint light far off keeps its gradations as well as the bright pools.
-const DMAX = 64;
-const NB = Math.ceil(LIGHTS.length / 4);
-function candleParts() {
-	const one = LIGHTS.map((l, i) => `
-	float candleD${i}(vec3 p, vec3 N, float floorK) {
-		vec3 d = ${v3(l)} - p;
-		float dd = dot(d, d);
-		vec3 L = d * inversesqrt(dd);
-		float lam = max(dot(N, L), 0.0) * 0.82 + 0.18;
-		return ${f(l[3] * LIGHTS.length)} * (lam / (0.7 + dd * 0.42) + floorK * 0.9 / (0.02 + dd * 7.0));
-	}`).join('');
-	const spec = LIGHTS.map((l, i) => `
-		{
-			vec3 d = ${v3(l)} - p;
-			float dd = dot(d, d);
-			vec3 L = d * inversesqrt(dd);
-			spec += ${f(l[3] * LIGHTS.length)} * shFl${i >> 2}.${'xyzw'[i & 3]} * pow(max(dot(N, normalize(L + V)), 0.0), ex) / (0.25 + dd * 0.9);
-		}`).join('');
-	const sum = [];
-	for (let k = 0; k < NB; k++) sum.push(`dot(candleDec(b${k}), shFl${k})`);
-	return `${one}
-	// the candles' glints on a polished face (seen from where you stand, so
-	// never baked)
-	vec3 candleSpec(vec3 p, vec3 N, vec3 V, float gloss) {
-		vec3 spec = vec3(0.0);
-		float ex = mix(10.0, 180.0, gloss);
-		${spec}
-		return spec * gloss * 1.6 * vec3(1.0, 0.62, 0.30) * 0.62;
-	}
-	const float CANDLE_LOG = ${f(Math.log2(1 + 8 * DMAX))};
-	float candleEnc(float d) { return max(log2(1.0 + 8.0 * max(d, 0.0)) / CANDLE_LOG, 1.0 / 255.0); }
-	vec4 candleDec(vec4 e) { return (exp2(e * CANDLE_LOG) - 1.0) / 8.0; }
-	vec3 candlesBaked(${Array.from({ length: NB }, (_, k) => 'vec4 b' + k).join(', ')}) {
-		return (${sum.join(' + ')}) * vec3(1.0, 0.56, 0.24) * 0.62;
-	}`;
-}
-// the bake's passes: candles 4k..4k+3 into picture k
-function candleBakeFrag(k) {
-	const ch = [0, 1, 2, 3].map((j) => (k * 4 + j < LIGHTS.length ? `candleEnc(candleD${k * 4 + j}(v_pos, N, floorK))` : '1.0 / 255.0'));
-	return `
-	precision highp float;
-	uniform float night;
-	uniform vec4 shFl0, shFl1, shFl2, shFl3;
-	varying vec3 v_pos, v_n;
-	${candleParts()}
-	void main() {
-		vec3 N = normalize(v_n);
-		float floorK = (v_pos.y < 0.02 && N.y > 0.9) ? 1.0 : 0.0;
-		gl_FragColor = vec4(${ch.join(', ')});
-	}`;
-}
-
 function roomGLSL() {
 	const lights = LIGHTS.map((l, i) => `
 		{
 			vec3 d = ${v3(l)} - p;
 			float dd = dot(d, d);
 			vec3 L = d * inversesqrt(dd);
-			float fl = shFl${i >> 2}.${'xyzw'[i & 3]};
+			float fl = 0.86 + 0.08 * sin(time * ${f(5.3 + i * 0.71)} + ${f(i * 1.9)}) + 0.06 * sin(time * ${f(11.7 + i * 1.3)} + ${f(i * 0.7)});
 			float w = ${f(l[3] * LIGHTS.length)} * fl;
 			float lam = max(dot(N, L), 0.0) * 0.82 + 0.18;
 			col += w * lam / (0.7 + dd * 0.42);
@@ -314,18 +257,6 @@ function roomGLSL() {
 			spec += w * pow(max(dot(N, normalize(L + V)), 0.0), mix(10.0, 180.0, gloss)) * gloss * 1.6 / (0.25 + dd * 0.9);
 		}`).join('');
 	return `
-	// each candle's flicker, worked out once a frame (flickers below)
-	uniform vec4 shFl0, shFl1, shFl2, shFl3;
-	${candleParts()}
-	vec3 roomRest(vec3 p, vec3 N);
-	// the candles' and the room's soft light alone (no glints): for the
-	// candles themselves, worked out at their corners (see candles below)
-	vec3 roomDiffuse(vec3 p, vec3 N) {
-		float floorK = (p.y < 0.02 && N.y > 0.9) ? 1.0 : 0.0;
-		float s = 0.0;
-		${LIGHTS.map((l, i) => `s += candleD${i}(p, N, floorK) * shFl${i >> 2}.${'xyzw'[i & 3]};`).join('\n\t\t')}
-		return s * vec3(1.0, 0.56, 0.24) * 0.62 + roomRest(p, N);
-	}
 	vec3 roomLight(vec3 p, vec3 N, vec3 V, float gloss, out vec3 spec) {
 		spec = vec3(0.0);
 		vec3 col = vec3(0.0);
@@ -333,12 +264,6 @@ function roomGLSL() {
 		${lights}
 		col *= vec3(1.0, 0.56, 0.24) * 0.62;
 		spec *= vec3(1.0, 0.62, 0.30) * 0.62;
-		return col + roomRest(p, N);
-	}
-	// the rest of the room's light: the oculus, the pool on the piano, the
-	// hall's light through the arch (cheap, and it follows day and night)
-	vec3 roomRest(vec3 p, vec3 N) {
-		vec3 col = vec3(0.0);
 		// light from the oculus, high above: pale by day, moonlight at night
 		float up = smoothstep(0.0, ${f(TOP)}, p.y);
 		vec3 sky = mix(vec3(0.10, 0.095, 0.085), vec3(0.030, 0.045, 0.085), night);
@@ -690,15 +615,11 @@ function buildRailing() {
 
 // the candles' wax: little upright cylinders, one mesh
 function buildCandles() {
-	const pos = [], nrm = [], info = [], idx = [], near = [], nearW = [];
+	const pos = [], nrm = [], info = [], idx = [];
 	const S = 7;
 	for (const c of CANDLES) {
 		const [x, y, z, r, h, ph] = c;
 		const base = pos.length / 3;
-		// the light (of the sixteen) nearest this candle: its glint on the wax
-		let nj = 0, nd = 1e9;
-		LIGHTS.forEach((l, j) => { const d = (l[0] - x) ** 2 + (l[1] - y - h) ** 2 + (l[2] - z) ** 2; if (d < nd) { nd = d; nj = j; } });
-		const nearOf = () => { near.push(LIGHTS[nj][0], LIGHTS[nj][1], LIGHTS[nj][2], nj); nearW.push(LIGHTS[nj][3] * LIGHTS.length); };
 		// sides
 		for (let s = 0; s <= S; s++) {
 			const q = (s / S) * 2 * PI + ph;
@@ -706,7 +627,6 @@ function buildCandles() {
 			pos.push(x + nx * r, y, z + nz * r, x + nx * r, y + h, z + nz * r);
 			nrm.push(nx, 0, nz, nx, 0, nz);
 			info.push(0, h, ph, 1, h, ph);
-			nearOf(); nearOf();
 		}
 		for (let s = 0; s < S; s++) {
 			const a = base + s * 2;
@@ -714,14 +634,14 @@ function buildCandles() {
 		}
 		// top: a shallow dish of melted wax
 		const top = pos.length / 3;
-		pos.push(x, y + h - 0.006, z); nrm.push(0, 1, 0); info.push(2, h, ph); nearOf();
+		pos.push(x, y + h - 0.006, z); nrm.push(0, 1, 0); info.push(2, h, ph);
 		for (let s = 0; s < S; s++) {
 			const q = (s / S) * 2 * PI + ph;
-			pos.push(x + Math.cos(q) * r, y + h, z + Math.sin(q) * r); nrm.push(0, 1, 0); info.push(1, h, ph); nearOf();
+			pos.push(x + Math.cos(q) * r, y + h, z + Math.sin(q) * r); nrm.push(0, 1, 0); info.push(1, h, ph);
 		}
 		for (let s = 0; s < S; s++) idx.push(top, top + 1 + s, top + 1 + ((s + 1) % S));
 	}
-	return { pos, nrm, info, idx, near, nearW };
+	return { pos, nrm, info, idx };
 }
 
 // the flames: one small upright card per candle, turned to face the camera
@@ -808,23 +728,7 @@ function segments() {
 // ------------------------------------------------------------------
 
 module.exports = (regl) => {
-	const g0 = build();
-	// the room's stone laid flat for the baked candlelight (bake.js): the
-	// floor, the round wall, the stair, its ribbon and string, the ceiling
-	// (not the oculus's sky, nor the surround seen from the hall)
-	let lm = null;
-	if (!require('./quality').noBake) try {
-		const B = require('./bake');
-		lm = B.charts({ pos: g0.pos, nrm: g0.nrm, idx: g0.idx, extra: { kind: [g0.kind, 1], uv: [g0.uv, 2] } }, {
-			width: 1024, maxHeight: 2048, scale: require('./quality').isPhone ? 0.75 : 1,
-			bakeTri: (t, a) => g0.kind[a] <= K.CEIL,
-			kind: (n, p) => (n[1] > 0.9 && p[1] < 0.05 ? 'floor' : (n[1] < -0.5 ? 'ceiling' : 'wall')),
-			density: (k) => ({ floor: 40, wall: 20, ceiling: 10 }[k])
-		});
-	} catch (e) {
-		lm = null;
-	}
-	const g = lm ? { pos: lm.position, nrm: lm.normal, kind: lm.kind, uv: lm.uv, idx: lm.elements } : g0;
+	const g = build();
 	const rail = buildRailing();
 	const wax = buildCandles();
 	const fl = buildFlames();
@@ -863,47 +767,16 @@ module.exports = (regl) => {
 	varying vec3 v_pos, v_n, v_eye;
 	varying float v_kind;
 	varying vec2 v_uv;
-	#ifdef HAS_BAKE
-	attribute vec3 a_lm;
-	varying vec3 v_lm;
-	#endif
 	void main() {
 		v_pos = position; v_n = normal; v_kind = kind; v_uv = uv;
-		#ifdef HAS_BAKE
-		v_lm = a_lm;
-		#endif
 		v_eye = -vec3(dot(view[0].xyz, view[3].xyz), dot(view[1].xyz, view[3].xyz), dot(view[2].xyz, view[3].xyz));
 		vec3 p = position; p.y *= yScale;
 		gl_Position = proj * view * vec4(p, 1.0);
 	}`;
 
-	// the baked candlelight (made once, on the first frame: bake.js)
-	const BAKED = lm ? '#define HAS_BAKE\n' : '';
-	let baked = null;
-	if (lm) {
-		try {
-			baked = require('./bake').baker(regl, lm, { position: lm.position, normal: lm.normal }, Array.from({ length: NB }, (_, k) => ({
-				frag: candleBakeFrag(k),
-				vertDecl: 'varying vec3 v_pos, v_n;',
-				vertMain: 'v_pos = position; v_n = normal;'
-			})));
-		} catch (e) {
-			baked = null;
-		}
-	}
-	const bakeDummy = regl.texture({ width: 1, height: 1 });
-	const bakeUniforms = { bakeOn: () => (baked && baked.ready ? 1 : 0) };
-	for (let k = 0; k < NB; k++) bakeUniforms['shB' + k] = () => (baked && baked.ready ? baked.tex[k] : bakeDummy);
-
 	const room = regl({
-		vert: BAKED + VERT,
-		uniforms: lm ? bakeUniforms : {},
-		frag: `${BAKED}${COMMON}
-		#ifdef HAS_BAKE
-		uniform float bakeOn;
-		uniform sampler2D ${Array.from({ length: NB }, (_, k) => 'shB' + k).join(', ')};
-		varying vec3 v_lm;
-		#endif
+		vert: VERT,
+		frag: `${COMMON}
 		varying vec3 v_pos, v_n, v_eye;
 		varying float v_kind;
 		varying vec2 v_uv;
@@ -981,29 +854,15 @@ module.exports = (regl) => {
 				return;
 			}
 			vec3 spec;
-			vec3 light;
-			bool fromBake = false;
-			#ifdef HAS_BAKE
-			// (the baked light is for the faces' fronts; a back seen through
-			// a gap keeps its light live)
-			if (bakeOn > 0.5 && v_lm.z > 0.5 && gl_FrontFacing) {
-				vec4 b0 = texture2D(shB0, v_lm.xy);
-				if (b0.a > 0.5 / 255.0) {
-					light = candlesBaked(${Array.from({ length: NB }, (_, k) => (k === 0 ? 'b0' : 'texture2D(shB' + k + ', v_lm.xy)')).join(', ')}) + roomRest(v_pos, N);
-					spec = gloss > 0.3 ? candleSpec(v_pos, N, V, gloss) : vec3(0.0);
-					fromBake = true;
-				}
-			}
-			#endif
-			if (!fromBake) light = roomLight(v_pos, N, V, gloss, spec);
+			vec3 light = roomLight(v_pos, N, V, gloss, spec);
 			vec3 col = base * light + spec * 0.6;
 			// under the stair, and high up, a deeper dark
 			col *= mix(0.55, 1.0, smoothstep(-0.95, -0.2, N.y));
 			col = roomHaze(v_pos, v_eye, col);
 			gl_FragColor = vec4(col, 1.0);
 		}`,
-		attributes: lm ? { position: g.pos, normal: g.nrm, kind: g.kind, uv: g.uv, a_lm: lm.lm } : { position: g.pos, normal: g.nrm, kind: g.kind, uv: g.uv },
-		elements: lm ? g.idx : new Uint32Array(g.idx),
+		attributes: { position: g.pos, normal: g.nrm, kind: g.kind, uv: g.uv },
+		elements: new Uint32Array(g.idx),
 		cull: { enable: false }
 	});
 
@@ -1045,39 +904,21 @@ module.exports = (regl) => {
 		cull: { enable: false }
 	});
 
-	// (the candles are small and many: their soft light is worked out at
-	// their corners, and their glint comes from the one light nearest
-	// each, instead of all sixteen for every pixel of wax)
 	const candles = regl({
 		vert: `
 		precision highp float;
-		${env.GLSL}
-		uniform float time;
-		${roomGLSL()}
 		uniform mat4 proj, view;
 		uniform float yScale;
 		attribute vec3 position, normal, info;
-		attribute vec4 near;
-		attribute float nearW;
-		varying vec3 v_pos, v_n, v_eye, v_info, v_light, v_sl, v_spec;
-		varying float v_sw;
+		varying vec3 v_pos, v_n, v_eye, v_info;
 		void main() {
 			v_pos = position; v_n = normal; v_info = info;
-			v_light = roomDiffuse(position, normalize(normal));
-			vec3 eye = -vec3(dot(view[0].xyz, view[3].xyz), dot(view[1].xyz, view[3].xyz), dot(view[2].xyz, view[3].xyz));
-			v_spec = candleSpec(position, normalize(normal), normalize(eye - position), 0.35);
-			v_sl = near.xyz;
-			float j = near.w;
-			v_sw = dot(shFl0, vec4(equal(vec4(j), vec4(0.0, 1.0, 2.0, 3.0)))) + dot(shFl1, vec4(equal(vec4(j), vec4(4.0, 5.0, 6.0, 7.0))))
-				+ dot(shFl2, vec4(equal(vec4(j), vec4(8.0, 9.0, 10.0, 11.0)))) + dot(shFl3, vec4(equal(vec4(j), vec4(12.0, 13.0, 14.0, 15.0))));
-			v_sw *= nearW;
 			v_eye = -vec3(dot(view[0].xyz, view[3].xyz), dot(view[1].xyz, view[3].xyz), dot(view[2].xyz, view[3].xyz));
 			vec3 p = position; p.y *= yScale;
 			gl_Position = proj * view * vec4(p, 1.0);
 		}`,
 		frag: `${COMMON}
-		varying vec3 v_pos, v_n, v_eye, v_info, v_light, v_sl, v_spec;
-		varying float v_sw;
+		varying vec3 v_pos, v_n, v_eye, v_info;
 		void main() {
 			vec3 N = normalize(v_n);
 			vec3 V = normalize(v_eye - v_pos);
@@ -1095,13 +936,8 @@ module.exports = (regl) => {
 			float bead = smoothstep(0.58, 0.75, run) * (1.0 - smoothstep(0.0, 0.07, abs(t - (1.0 - len)))) * step(t, 1.5);
 			N = normalize(N + vec3(-sin(ang), 0.0, cos(ang)) * (vnoise(vec2(ang * 3.2 + ph + 0.15, ph * 7.0)) - run) * 2.5 * drip);
 			base = mix(base, base * 1.12 + 0.03, drip * 0.7);
-			vec3 light = v_light;
-			vec3 sd = v_sl - v_pos;
-			float sdd = dot(sd, sd);
-			// (the glints of all sixteen at the corners, and the nearest
-			// light's again for every pixel, so the brightest stays crisp)
-			vec3 near1 = v_sw * pow(max(dot(N, normalize(sd * inversesqrt(sdd) + V)), 0.0), ${f(10 + 170 * 0.35)}) / (0.25 + sdd * 0.9) * 0.35 * 1.6 * vec3(1.0, 0.62, 0.30) * 0.62;
-			vec3 spec = max(v_spec, near1);
+			vec3 spec;
+			vec3 light = roomLight(v_pos, N, V, 0.35, spec);
 			vec3 col = base * light + spec * (0.35 + 0.6 * bead + 0.25 * drip);
 			// each flame gutters to its own rhythm (three unrelated beats,
 			// and now and then it nearly goes out and catches again)
@@ -1121,7 +957,7 @@ module.exports = (regl) => {
 			col = roomHaze(v_pos, v_eye, col);
 			gl_FragColor = vec4(col, 1.0);
 		}`,
-		attributes: { position: wax.pos, normal: wax.nrm, info: wax.info, near: wax.near, nearW: wax.nearW },
+		attributes: { position: wax.pos, normal: wax.nrm, info: wax.info },
 		elements: new Uint32Array(wax.idx),
 		cull: { enable: false }
 	});
@@ -1332,11 +1168,6 @@ module.exports = (regl) => {
 			flames({ halo: 0 });
 		}
 	}
-	// before anything is drawn in a frame: the candlelight baked, once
-	draw.prepare = () => {
-		if (!baked || baked.ready) return;
-		try { baked.bake(); } catch (e) { baked = null; }
-	};
 	return draw;
 };
 
@@ -1351,12 +1182,4 @@ module.exports.PIANO = PIANO;
 module.exports.PLAY = PLAY;
 module.exports.TOP = TOP;
 module.exports.roomGLSL = roomGLSL;
-// the candles' flicker at time t, four to a vector (the same sums the
-// shader once did for every pixel): index.js hands them to every shader
-const F4 = (x) => +(+x).toFixed(4);
-module.exports.flicker = (t, k) => [0, 1, 2, 3].map((j) => {
-	const i = k * 4 + j;
-	if (i >= LIGHTS.length) return 0;
-	return 0.86 + 0.08 * Math.sin(t * F4(5.3 + i * 0.71) + F4(i * 1.9)) + 0.06 * Math.sin(t * F4(11.7 + i * 1.3) + F4(i * 0.7));
-});
 module.exports.segments = segments;

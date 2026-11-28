@@ -45,9 +45,6 @@ const studioPage = typeof location !== 'undefined' && /[?&](studio|redroom)\b/.t
 
 const Q = {
 	isPhone,
-	// ?nobake: every room's light worked out live, as before the baked
-	// light (mesh.js, bake.js), to compare
-	noBake: (() => { try { return /[?&]nobake\b/.test(location.search); } catch (e) { return false; } })(),
 
 	// fixed at start-up
 	// (the painter's studio is heavy, and soft and dusty anyway: fewer pixels)
