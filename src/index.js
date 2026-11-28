@@ -1442,6 +1442,7 @@ regl.frame(
 		// the architecture's light, baked once (and again whenever a
 		// picture light changes): see mesh.js and lightmap.js
 		drawMap.prepare();
+		if (drawStairHall.prepare) drawStairHall.prepare();
 
 		post.capture(
 			arguments[0],

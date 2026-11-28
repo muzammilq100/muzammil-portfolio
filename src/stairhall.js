@@ -242,6 +242,63 @@ const LIGHTS = candleLights(CANDLES.filter((c) => c[1] < 2.0 || c[1] > 2.5)).con
 //   vec3 roomLight(p, N, V, gloss, out spec)   light reaching p (diffuse)
 //   vec3 roomHaze(p, eye)                       the warm air between
 
+// BAKED CANDLELIGHT (bake.js): each candle's light on the room's stone
+// (without its flicker) is worked out once, into four pictures of four
+// candles each; drawing then reads them and multiplies each by its candle's
+// flicker of the moment. Kept as log2(1 + 8 d) / log2(1 + 8 DMAX), so the
+// faint light far off keeps its gradations as well as the bright pools.
+const DMAX = 64;
+const NB = Math.ceil(LIGHTS.length / 4);
+function candleParts() {
+	const one = LIGHTS.map((l, i) => `
+	float candleD${i}(vec3 p, vec3 N, float floorK) {
+		vec3 d = ${v3(l)} - p;
+		float dd = dot(d, d);
+		vec3 L = d * inversesqrt(dd);
+		float lam = max(dot(N, L), 0.0) * 0.82 + 0.18;
+		return ${f(l[3] * LIGHTS.length)} * (lam / (0.7 + dd * 0.42) + floorK * 0.9 / (0.02 + dd * 7.0));
+	}`).join('');
+	const spec = LIGHTS.map((l, i) => `
+		{
+			vec3 d = ${v3(l)} - p;
+			float dd = dot(d, d);
+			vec3 L = d * inversesqrt(dd);
+			spec += ${f(l[3] * LIGHTS.length)} * shFl${i >> 2}.${'xyzw'[i & 3]} * pow(max(dot(N, normalize(L + V)), 0.0), ex) / (0.25 + dd * 0.9);
+		}`).join('');
+	const sum = [];
+	for (let k = 0; k < NB; k++) sum.push(`dot(candleDec(b${k}), shFl${k})`);
+	return `${one}
+	// the candles' glints on a polished face (seen from where you stand, so
+	// never baked)
+	vec3 candleSpec(vec3 p, vec3 N, vec3 V, float gloss) {
+		vec3 spec = vec3(0.0);
+		float ex = mix(10.0, 180.0, gloss);
+		${spec}
+		return spec * gloss * 1.6 * vec3(1.0, 0.62, 0.30) * 0.62;
+	}
+	const float CANDLE_LOG = ${f(Math.log2(1 + 8 * DMAX))};
+	float candleEnc(float d) { return max(log2(1.0 + 8.0 * max(d, 0.0)) / CANDLE_LOG, 1.0 / 255.0); }
+	vec4 candleDec(vec4 e) { return (exp2(e * CANDLE_LOG) - 1.0) / 8.0; }
+	vec3 candlesBaked(${Array.from({ length: NB }, (_, k) => 'vec4 b' + k).join(', ')}) {
+		return (${sum.join(' + ')}) * vec3(1.0, 0.56, 0.24) * 0.62;
+	}`;
+}
+// the bake's passes: candles 4k..4k+3 into picture k
+function candleBakeFrag(k) {
+	const ch = [0, 1, 2, 3].map((j) => (k * 4 + j < LIGHTS.length ? `candleEnc(candleD${k * 4 + j}(v_pos, N, floorK))` : '1.0 / 255.0'));
+	return `
+	precision highp float;
+	uniform float night;
+	uniform vec4 shFl0, shFl1, shFl2, shFl3;
+	varying vec3 v_pos, v_n;
+	${candleParts()}
+	void main() {
+		vec3 N = normalize(v_n);
+		float floorK = (v_pos.y < 0.02 && N.y > 0.9) ? 1.0 : 0.0;
+		gl_FragColor = vec4(${ch.join(', ')});
+	}`;
+}
+
 function roomGLSL() {
 	const lights = require('./quality').exp('shnolights') ? '' : LIGHTS.map((l, i) => `
 		{
@@ -259,6 +316,8 @@ function roomGLSL() {
 	return `
 	// each candle's flicker, worked out once a frame (flickers below)
 	uniform vec4 shFl0, shFl1, shFl2, shFl3;
+	${candleParts()}
+	vec3 roomRest(vec3 p, vec3 N);
 	vec3 roomLight(vec3 p, vec3 N, vec3 V, float gloss, out vec3 spec) {
 		spec = vec3(0.0);
 		vec3 col = vec3(0.0);
@@ -266,6 +325,12 @@ function roomGLSL() {
 		${lights}
 		col *= vec3(1.0, 0.56, 0.24) * 0.62;
 		spec *= vec3(1.0, 0.62, 0.30) * 0.62;
+		return col + roomRest(p, N);
+	}
+	// the rest of the room's light: the oculus, the pool on the piano, the
+	// hall's light through the arch (cheap, and it follows day and night)
+	vec3 roomRest(vec3 p, vec3 N) {
+		vec3 col = vec3(0.0);
 		// light from the oculus, high above: pale by day, moonlight at night
 		float up = smoothstep(0.0, ${f(TOP)}, p.y);
 		vec3 sky = mix(vec3(0.10, 0.095, 0.085), vec3(0.030, 0.045, 0.085), night);
@@ -730,7 +795,23 @@ function segments() {
 // ------------------------------------------------------------------
 
 module.exports = (regl) => {
-	const g = build();
+	const g0 = build();
+	// the room's stone laid flat for the baked candlelight (bake.js): the
+	// floor, the round wall, the stair, its ribbon and string, the ceiling
+	// (not the oculus's sky, nor the surround seen from the hall)
+	let lm = null;
+	if (!require('./quality').exp('shnobake')) try {
+		const B = require('./bake');
+		lm = B.charts({ pos: g0.pos, nrm: g0.nrm, idx: g0.idx, extra: { kind: [g0.kind, 1], uv: [g0.uv, 2] } }, {
+			width: 1024, maxHeight: 2048, scale: require('./quality').isPhone ? 0.75 : 1,
+			bakeTri: (t, a) => g0.kind[a] <= K.CEIL,
+			kind: (n, p) => (n[1] > 0.9 && p[1] < 0.05 ? 'floor' : (n[1] < -0.5 ? 'ceiling' : 'wall')),
+			density: (k) => ({ floor: 40, wall: 20, ceiling: 10 }[k])
+		});
+	} catch (e) {
+		lm = null;
+	}
+	const g = lm ? { pos: lm.position, nrm: lm.normal, kind: lm.kind, uv: lm.uv, idx: lm.elements } : g0;
 	const rail = buildRailing();
 	const wax = buildCandles();
 	const fl = buildFlames();
@@ -769,16 +850,47 @@ module.exports = (regl) => {
 	varying vec3 v_pos, v_n, v_eye;
 	varying float v_kind;
 	varying vec2 v_uv;
+	#ifdef HAS_BAKE
+	attribute vec3 a_lm;
+	varying vec3 v_lm;
+	#endif
 	void main() {
 		v_pos = position; v_n = normal; v_kind = kind; v_uv = uv;
+		#ifdef HAS_BAKE
+		v_lm = a_lm;
+		#endif
 		v_eye = -vec3(dot(view[0].xyz, view[3].xyz), dot(view[1].xyz, view[3].xyz), dot(view[2].xyz, view[3].xyz));
 		vec3 p = position; p.y *= yScale;
 		gl_Position = proj * view * vec4(p, 1.0);
 	}`;
 
+	// the baked candlelight (made once, on the first frame: bake.js)
+	const BAKED = lm ? '#define HAS_BAKE\n' : '';
+	let baked = null;
+	if (lm) {
+		try {
+			baked = require('./bake').baker(regl, lm, { position: lm.position, normal: lm.normal }, Array.from({ length: NB }, (_, k) => ({
+				frag: candleBakeFrag(k),
+				vertDecl: 'varying vec3 v_pos, v_n;',
+				vertMain: 'v_pos = position; v_n = normal;'
+			})));
+		} catch (e) {
+			baked = null;
+		}
+	}
+	const bakeDummy = regl.texture({ width: 1, height: 1 });
+	const bakeUniforms = { bakeOn: () => (baked && baked.ready ? 1 : 0) };
+	for (let k = 0; k < NB; k++) bakeUniforms['shB' + k] = () => (baked && baked.ready ? baked.tex[k] : bakeDummy);
+
 	const room = regl({
-		vert: VERT,
-		frag: `${COMMON}
+		vert: BAKED + VERT,
+		uniforms: lm ? bakeUniforms : {},
+		frag: `${BAKED}${COMMON}
+		#ifdef HAS_BAKE
+		uniform float bakeOn;
+		uniform sampler2D ${Array.from({ length: NB }, (_, k) => 'shB' + k).join(', ')};
+		varying vec3 v_lm;
+		#endif
 		varying vec3 v_pos, v_n, v_eye;
 		varying float v_kind;
 		varying vec2 v_uv;
@@ -856,15 +968,29 @@ module.exports = (regl) => {
 				return;
 			}
 			vec3 spec;
-			vec3 light = roomLight(v_pos, N, V, gloss, spec);
+			vec3 light;
+			bool fromBake = false;
+			#ifdef HAS_BAKE
+			// (the baked light is for the faces' fronts; a back seen through
+			// a gap keeps its light live)
+			if (bakeOn > 0.5 && v_lm.z > 0.5 && gl_FrontFacing) {
+				vec4 b0 = texture2D(shB0, v_lm.xy);
+				if (b0.a > 0.5 / 255.0) {
+					light = candlesBaked(${Array.from({ length: NB }, (_, k) => (k === 0 ? 'b0' : 'texture2D(shB' + k + ', v_lm.xy)')).join(', ')}) + roomRest(v_pos, N);
+					spec = gloss > 0.3 ? candleSpec(v_pos, N, V, gloss) : vec3(0.0);
+					fromBake = true;
+				}
+			}
+			#endif
+			if (!fromBake) light = roomLight(v_pos, N, V, gloss, spec);
 			vec3 col = base * light + spec * 0.6;
 			// under the stair, and high up, a deeper dark
 			col *= mix(0.55, 1.0, smoothstep(-0.95, -0.2, N.y));
 			col = roomHaze(v_pos, v_eye, col);
 			gl_FragColor = vec4(col, 1.0);
 		}`,
-		attributes: { position: g.pos, normal: g.nrm, kind: g.kind, uv: g.uv },
-		elements: new Uint32Array(g.idx),
+		attributes: lm ? { position: g.pos, normal: g.nrm, kind: g.kind, uv: g.uv, a_lm: lm.lm } : { position: g.pos, normal: g.nrm, kind: g.kind, uv: g.uv },
+		elements: lm ? g.idx : new Uint32Array(g.idx),
 		cull: { enable: false }
 	});
 
@@ -1170,6 +1296,11 @@ module.exports = (regl) => {
 			flames({ halo: 0 });
 		}
 	}
+	// before anything is drawn in a frame: the candlelight baked, once
+	draw.prepare = () => {
+		if (!baked || baked.ready) return;
+		try { baked.bake(); } catch (e) { baked = null; }
+	};
 	return draw;
 };
 
