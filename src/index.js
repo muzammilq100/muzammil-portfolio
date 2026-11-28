@@ -1433,6 +1433,10 @@ regl.frame(
 		drawAvatar.setPiano(atPiano);
 		updateDust(time);
 
+		// the architecture's light, baked once (and again whenever a
+		// picture light changes): see mesh.js and lightmap.js
+		drawMap.prepare();
+
 		post.capture(
 			arguments[0],
 			{ view: camView, proj: camProj, eye: camEye },
