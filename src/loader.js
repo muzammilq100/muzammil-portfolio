@@ -126,4 +126,4 @@ window.fetch = function (input, init) {
 	return p.then(settle, (e) => { settle(); throw e; });
 };
 
-module.exports = { finish };
+module.exports = { finish, isOpen: () => !!(screen && !screen.classList.contains('done')) };

@@ -35,7 +35,35 @@ const DOOR_LIGHT_DIR = (() => {
   return v.map((x) => (x / l).toFixed(4)).join(', ');
 })();
 
+const quality = require('./quality');
+const lightmap = require('./lightmap');
+
+// the baked light is kept as its square root, up to EMAX (the brightest
+// light in the room stays well under it); the polish's strength up to GMAX
+const EMAX = 4.0;
+const GMAX = 4.0;
+
+// (?nobake: the light worked out live everywhere, as before, to compare)
+const BAKE = !quality.noBake;
+
 module.exports = (regl, data, useReflexion, ranged) => {
+
+  // the architecture's own light is baked (not the statues: they are
+  // drawn a few at a time, and are rounded anyway)
+  let lm = null;
+  if (BAKE && !ranged) {
+    try {
+      const maxTex = regl.limits.maxTextureSize || 2048;
+      lm = lightmap.build(data, {
+        width: Math.min(2048, maxTex),
+        maxHeight: Math.min(2048, maxTex),
+        // phones: a little coarser, half the memory
+        scale: quality.isPhone ? 0.72 : 1
+      });
+    } catch (e) {
+      lm = null;
+    }
+  }
 
   // things standing on the floor cast soft contact shadows
   const occluders = (data.occluders || []).slice(0, 24);
@@ -77,9 +105,26 @@ module.exports = (regl, data, useReflexion, ranged) => {
     lightCalls += 'pic += pictureLight(lightC' + i + ', lightD' + i + ', v_pos, N);\n';
   }
 
-  return regl({
-    frag: `
+  // the bake takes every picture light at once (not only the nearest)
+  const NB = (data.lights || []).length;
+  const bakeUniforms = {};
+  let bakeDecl = '';
+  let bakeCalls = '';
+  for (let i = 0; i < NB; i++) {
+    bakeUniforms['lightC' + i] = () => data.lights[i].c;
+    bakeUniforms['lightD' + i] = () => data.lights[i].d;
+    bakeDecl += 'uniform vec4 lightC' + i + ', lightD' + i + ';\n';
+    bakeCalls += 'pic += pictureLight(lightC' + i + ', lightD' + i + ', v_pos, N);\n';
+  }
+
+  const FRAG = (defs, lightDecl, lightCalls) => `
     precision highp float;
+    ${defs}
+    #ifdef HAS_BAKE
+    uniform float bakeOn;
+    uniform sampler2D lmDay, lmNight;
+    varying vec3 v_lm;
+    #endif
 
     uniform float yScale;
     uniform float mirrorOn;
@@ -400,6 +445,35 @@ module.exports = (regl, data, useReflexion, ranged) => {
       // ---------------------------------------------------------
 
       vec3 lightDirection = normalize(vec3(-0.32, 0.92, -0.40));
+
+      // ---------------------------------------------------------
+      // BAKED LIGHT
+      // The light of the flat architecture is read from the baked
+      // light picture (lightmap.js) when it is ready; everything
+      // else works its light out here, as it always did. Eb is the
+      // light falling on the surface (the material is multiplied in
+      // afterwards); glossW and wash are what the polish needs.
+      // ---------------------------------------------------------
+      vec3 Eb = vec3(0.0);
+      float glossW = 0.0, wash = 0.0;
+      bool fromBake = false;
+      #ifdef HAS_BAKE
+      if (bakeOn > 0.5 && v_lm.z > 0.5) {
+        vec4 d0 = texture2D(lmDay, v_lm.xy);
+        // (a texel no face covered, which should not happen, is left to
+        // the live light)
+        if (d0.a > 1.0 / 255.0) {
+          vec4 d1 = texture2D(lmNight, v_lm.xy);
+          // day and night fade into one another as the light is switched
+          Eb = mix(d0.rgb * d0.rgb, d1.rgb * d1.rgb, night) * ${EMAX.toFixed(1)};
+          float ba = mix(d0.a, d1.a, night);
+          glossW = ba * ${GMAX.toFixed(1)};
+          wash = ba * 0.45;
+          fromBake = true;
+        }
+      }
+      #endif
+      if (!fromBake) {
       float diffuse = max(dot(N, lightDirection), 0.0);
 
       // the room's own lamps are kept low: most of the light is daylight
@@ -446,6 +520,8 @@ module.exports = (regl, data, useReflexion, ranged) => {
       // ---------------------------------------------------------
       float inZ = max(v_pos.z - 0.35, 0.0);
       float spill = 0.0;
+      float sun = 0.0;
+      float glow = 0.0, aGlow = 0.0, winL = 0.0, cg = 0.0;
       if (v_pos.z < 12.0 && v_pos.z > 0.30) {
         if (isFloor > 0.5) {
           float through = doorLight(v_pos, vec3(${DOOR_LIGHT_DIR}));
@@ -462,8 +538,7 @@ module.exports = (regl, data, useReflexion, ranged) => {
       // each crossed by the shadows of its glazing bars, and a soft
       // daylight glow under the glass.
       // ---------------------------------------------------------
-      float sun = 0.0;
-      float glow = skylightGlow(v_pos);
+      glow = skylightGlow(v_pos);
       if (glow > 0.0 && v_pos.y < 7.9 && isSky < 0.5) {
         float ndl = max(dot(N, SKY_SUN), 0.0);
         if (ndl > 0.0) sun = skylightAt(v_pos) * ndl;
@@ -484,13 +559,13 @@ module.exports = (regl, data, useReflexion, ranged) => {
       // daylight glow in the little court
       // ---------------------------------------------------------
       float aSun = alcoveSun(v_pos, N);
-      float aGlow = alcoveGlow(v_pos);
+      aGlow = alcoveGlow(v_pos);
       light += aSun * 1.8 * mix(1.0, 1.45, night) + aGlow * 0.5 * (1.0 - 0.3 * isCeiling) * mix(1.0, 0.2, night);
       light += isCream * aGlow * 0.18 * smoothstep(8.0, 10.5, v_pos.y) * mix(1.0, 0.2, night);
       sun = max(sun, aSun);
 
-      float winL = windowLight(v_pos, N);
-      float cg = corridorGlow(v_pos);
+      winL = windowLight(v_pos, N);
+      cg = corridorGlow(v_pos);
       light += winL * 0.48 * mix(1.0, 1.35, night) + cg * 0.16 * (1.0 - 0.4 * isCeiling) * mix(1.0, 0.7, night);
 
       // the little lamps in the statue niches
@@ -525,19 +600,36 @@ module.exports = (regl, data, useReflexion, ranged) => {
       spillTint *= mix(vec3(1.0), vec3(0.93, 0.97, 1.05), coolShare * 0.7);
       // and the dark itself is cold at night, except near the door's lamplight
       spillTint *= mix(vec3(1.0), mix(vec3(0.66, 0.76, 0.98), vec3(1.05, 0.86, 0.62), clamp(spill * 2.0, 0.0, 1.0)), night);
-      vec3 finalColour = material * (vec3(light) * spillTint + pictureTint * pic * ${PICTURE_LIGHT.toFixed(3)} * (1.0 - 0.5 * isFloor));
-
-      // lantern light, patterned by the leaded glass, at night
-      finalColour += material * lanternLight(v_pos, N);
+      Eb = vec3(light) * spillTint + pictureTint * pic * ${PICTURE_LIGHT.toFixed(3)} * (1.0 - 0.5 * isFloor);
 
       // light bounced off the warm floor onto the lower walls and columns
-      finalColour += material * vec3(1.0, 0.84, 0.62) * 0.05 * mix(1.0, 0.3, night) * ${ROOM_BRIGHTNESS.toFixed(3)}
+      Eb += vec3(1.0, 0.84, 0.62) * 0.05 * mix(1.0, 0.3, night) * ${ROOM_BRIGHTNESS.toFixed(3)}
         * (1.0 - smoothstep(0.0, 2.4, v_pos.y)) * (1.0 - isFloor) * (1.0 - abs(N.y));
 
       // and the sunlit (or moonlit) squares under the skylight throw their
       // own light back into the room: warm by day, faint and cold by night
       float bounce = skylightBounce(v_pos, N) * (1.0 - isFloor) * (1.0 - isSky);
-      finalColour += material * mix(vec3(1.0, 0.86, 0.66) * 0.17, vec3(0.62, 0.74, 1.0) * 0.12, night) * bounce * ${ROOM_BRIGHTNESS.toFixed(3)};
+      Eb += mix(vec3(1.0, 0.86, 0.66) * 0.17, vec3(0.62, 0.74, 1.0) * 0.12, night) * bounce * ${ROOM_BRIGHTNESS.toFixed(3)};
+
+      glossW = light + pic * 0.5;
+      wash = clamp(spill * 0.4 + sun * 0.4, 0.0, 0.45);
+
+      #ifdef BAKE_PASS
+      // into the light picture: the light (its square root, so the dark
+      // keeps its gradations), and in the fourth channel the floor's
+      // sunlit wash or the polish's strength (never 0: 0 marks a texel
+      // no face covers)
+      float bakeA = isFloor > 0.5 ? wash / 0.45 : glossW / ${GMAX.toFixed(1)};
+      gl_FragColor = vec4(sqrt(clamp(Eb / ${EMAX.toFixed(1)}, 0.0, 1.0)), max(clamp(bakeA, 0.0, 1.0), 2.0 / 255.0));
+      return;
+      #endif
+      }
+
+      vec3 finalColour = material * Eb;
+
+      // lantern light, patterned by the leaded glass, at night (always
+      // live: the flames flicker)
+      if (night > 0.0) finalColour += material * lanternLight(v_pos, N);
 
       // polished marble (columns, arch, skirting): a soft highlight of the
       // daylight that drifts across the stone as you move, rougher in places
@@ -547,7 +639,7 @@ module.exports = (regl, data, useReflexion, ranged) => {
         float rough = 0.55 + 0.45 * vnoise(uv * 1.7 + 3.0);
         float gloss = pow(max(dot(N, Hm), 0.0), mix(60.0, 14.0, rough));
         float fresM = 0.04 + 0.96 * pow(1.0 - max(dot(N, V), 0.0), 5.0);
-        finalColour += vec3(1.0, 0.96, 0.88) * (gloss * 0.07 * (1.0 - rough * 0.6) + fresM * 0.05) * (light + pic * 0.5);
+        finalColour += vec3(1.0, 0.96, 0.88) * (gloss * 0.07 * (1.0 - rough * 0.6) + fresM * 0.05) * glossW;
       }
 
       // a dull sheen on the black steel frames
@@ -636,14 +728,18 @@ module.exports = (regl, data, useReflexion, ranged) => {
         refl *= tilePolish * (1.0 - 0.32 * wear - 0.30 * scuff);
         alpha = 1.0 - refl * mirrorOn;
         // the bright pool of daylight washes the reflection out a little
-        alpha = mix(alpha, 1.0, clamp(spill * 0.4 + sun * 0.4, 0.0, 0.45));
+        alpha = mix(alpha, 1.0, wash);
       }
 
       gl_FragColor = vec4(finalColour, alpha);
-    }`,
+    }`;
 
-    vert: `
+  const VERT = `
     precision highp float;
+    #ifdef HAS_BAKE
+    attribute vec3 a_lm;
+    varying vec3 v_lm;
+    #endif
 
     uniform mat4 proj;
     uniform mat4 view;
@@ -682,16 +778,44 @@ module.exports = (regl, data, useReflexion, ranged) => {
 
       pos.y *= yScale;
 
+      #ifdef HAS_BAKE
+      v_lm = a_lm;
+      #endif
+
       gl_Position = proj * view * vec4(pos, 1.0);
-    }`,
+    }`;
 
-    attributes: {
-      position: data.position,
-      normal: data.normal,
-      a_mat: data.mat
-    },
+  const src = lm || data;
+  const dummy = lm ? regl.texture({ width: 1, height: 1 }) : null;
+  const attributes = {
+    position: src.position,
+    normal: src.normal,
+    a_mat: src.mat
+  };
+  if (lm) attributes.a_lm = lm.lm;
 
-    uniforms: lightUniforms,
+  // (should the graphics chip refuse any part of the bake, the light
+  // simply stays live, as it was before)
+  let bakedLight = null;
+  if (lm) {
+    try {
+      bakedLight = makeBake(regl, lm, attributes, FRAG('#define BAKE_PASS', bakeDecl, bakeCalls), bakeUniforms, data);
+    } catch (e) {
+      bakedLight = null;
+    }
+  }
+
+  const cmd = regl({
+    frag: FRAG(lm ? '#define HAS_BAKE' : '', lightDecl, lightCalls),
+    vert: (lm ? '#define HAS_BAKE\n' : '') + VERT,
+
+    attributes,
+
+    uniforms: lm ? Object.assign({
+      bakeOn: () => (bakedLight && bakedLight.ready ? 1 : 0),
+      lmDay: () => (bakedLight ? bakedLight.day : dummy),
+      lmNight: () => (bakedLight ? bakedLight.night : dummy)
+    }, lightUniforms) : lightUniforms,
 
     blend: {
       enable: true,
@@ -704,11 +828,151 @@ module.exports = (regl, data, useReflexion, ranged) => {
     },
 
     elements:
-      new Uint32Array(data.elements),
+      lm ? lm.elements : new Uint32Array(data.elements),
 
     // (statues.js draws only the statues in view: one stretch of the
     // triangle list for each)
     offset: ranged ? regl.prop('offset') : 0,
-    count: ranged ? regl.prop('count') : data.elements.length
+    count: ranged ? regl.prop('count') : (lm ? lm.elements.length : data.elements.length)
   });
+
+  const draw = (props) => cmd(props);
+  // called once a frame, before anything is drawn: bakes the light when
+  // it is first needed and again whenever a picture light changes
+  draw.prepare = () => {
+    if (!bakedLight) return;
+    try {
+      bakedLight.update();
+    } catch (e) {
+      bakedLight.ready = false;
+      bakedLight = null;
+    }
+  };
+  draw.baked = () => !!(bakedLight && bakedLight.ready);
+  return draw;
 };
+
+
+/* ===========================================================
+ * THE BAKE
+ * Draws the architecture's flat faces laid out in the light picture
+ * (each texel lit exactly as the live shader would light that spot),
+ * once for day and once for night, then spreads each chart's edge a few
+ * texels outwards so reading right at an edge never picks up black.
+ * =========================================================== */
+
+function makeBake(regl, lm, attributes, frag, lightUniforms, data) {
+  const W = lm.width, H = lm.height;
+  // the finished pictures are read smoothly (linear); the two working
+  // pictures are read texel by texel (nearest), so the edge spread never
+  // blends a lit texel with an empty one
+  const tex = (filter) => regl.texture({ width: W, height: H, min: filter, mag: filter, wrap: 'clamp' });
+  const fbo = (t) => regl.framebuffer({ color: t, depth: false });
+  const day = tex('linear'), night = tex('linear');
+  const fDay = fbo(day), fNight = fbo(night);
+
+  const bakeCmd = regl({
+    frag,
+    vert: `
+    precision highp float;
+    attribute vec3 position, normal, a_mat, a_lm;
+    varying vec3 v_pos, v_relativepos, v_normal, v_eye, v_mat;
+    void main() {
+      v_pos = position;
+      v_normal = normal;
+      v_mat = a_mat;
+      // no camera: the light is the same seen from anywhere
+      v_eye = position + normal;
+      v_relativepos = vec3(0.0);
+      gl_Position = vec4(a_lm.xy * 2.0 - 1.0, 0.0, 1.0);
+    }`,
+    attributes,
+    uniforms: Object.assign({
+      yScale: 1,
+      mirrorOn: 0,
+      time: 0,
+      night: regl.prop('night')
+    }, lightUniforms),
+    framebuffer: regl.prop('fbo'),
+    depth: { enable: false },
+    cull: { enable: false },
+    blend: { enable: false },
+    viewport: { x: 0, y: 0, width: W, height: H },
+    count: lm.bakedCount
+  });
+
+  // the edge spread: an empty texel takes the average of its filled
+  // neighbours
+  const spread = regl({
+    frag: `
+    precision highp float;
+    uniform sampler2D src;
+    uniform vec2 px;
+    uniform float copyOnly;
+    void main() {
+      vec2 uv = gl_FragCoord.xy * px;
+      vec4 c = texture2D(src, uv);
+      if (c.a > 0.0 || copyOnly > 0.5) { gl_FragColor = c; return; }
+      vec4 sum = vec4(0.0);
+      float n = 0.0;
+      for (int y = -1; y <= 1; y++) {
+        for (int x = -1; x <= 1; x++) {
+          vec4 s = texture2D(src, uv + vec2(float(x), float(y)) * px);
+          if (s.a > 0.0) { sum += s; n += 1.0; }
+        }
+      }
+      gl_FragColor = n > 0.0 ? sum / n : vec4(0.0);
+    }`,
+    vert: `
+    precision highp float;
+    attribute vec2 p;
+    void main() { gl_Position = vec4(p, 0.0, 1.0); }`,
+    attributes: { p: [-1, -1, 3, -1, -1, 3] },
+    uniforms: { src: regl.prop('src'), px: [1 / W, 1 / H], copyOnly: regl.prop('copy') },
+    framebuffer: regl.prop('fbo'),
+    depth: { enable: false },
+    blend: { enable: false },
+    viewport: { x: 0, y: 0, width: W, height: H },
+    count: 3
+  });
+
+  const one = (n, fTarget) => {
+    const a = tex('nearest'), b = tex('nearest');
+    const fa = fbo(a), fb = fbo(b);
+    regl.clear({ color: [0, 0, 0, 0], framebuffer: fa });
+    bakeCmd({ night: n, fbo: fa });
+    // two rounds of spreading, through the spare picture and back
+    for (let k = 0; k < 2; k++) {
+      spread({ src: a, fbo: fb, copy: 0 });
+      spread({ src: b, fbo: fa, copy: 0 });
+    }
+    // and into the finished picture
+    spread({ src: a, fbo: fTarget, copy: 1 });
+    fa.destroy(); fb.destroy(); a.destroy(); b.destroy();
+  };
+
+  // what the picture lights are now (a painting arriving switches its on)
+  const signature = () => (data.lights || []).map((l) => l.c.concat(l.d).map((x) => x.toFixed(3)).join(',')).join(';');
+
+  const state = {
+    day, night,
+    ready: false,
+    sig: null,
+    // (the paintings arrive one after another while the loading screen
+    // is up, each switching its light on: the bake waits until they have
+    // stopped changing for a moment, and until then the light is live)
+    seen: null,
+    since: 0,
+    update() {
+      const sig = signature();
+      const now = performance.now();
+      if (sig !== state.seen) { state.seen = sig; state.since = now; }
+      if (sig === state.sig || now - state.since < 700) return;
+      state.sig = sig;
+      one(0, fDay);
+      one(1, fNight);
+      state.ready = true;
+    }
+  };
+  return state;
+}

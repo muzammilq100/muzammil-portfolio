@@ -192,13 +192,25 @@ const drawDust = require('./dust')(regl, quality);
 const drawFireflies = require('./fireflies')(regl, quality);
 const drawLanterns = require('./lanterns')(regl);
 const drawConfessional = require('./confessional')(regl);
-const drawStairHall = require('./stairhall')(regl);
+const stairhallMod = require('./stairhall');
+const drawStairHall = stairhallMod(regl);
 // the Conservatory of Unsaid Things (studio.js), behind "Love me like I am
 // Already Dead": fetched only when a visitor is let in (conservatory.js)
 const conservatory = require('./conservatory');
-conservatory.init({ regl, post });
+// WARMING THE SHADERS. The first time a room is drawn the graphics chip has
+// to learn its shaders, which can stop the screen for a second or more. So
+// each room is drawn once beforehand into a tiny picture nobody sees (one a
+// frame): the stair hall while the loading screen is up, the conservatory
+// and the red room while their story or question is open (conservatory.js).
+const warmFbo = regl.framebuffer({ width: 32, height: 32, depth: true });
+const warmScope = regl({ framebuffer: warmFbo, viewport: { x: 0, y: 0, width: 32, height: 32 } });
+const warmQueue = [];
+const warmDraw = (fn) => warmQueue.push(fn);
+let warmTick = 0;
+conservatory.init({ regl, post, warm: warmDraw });
 // (tests: go into the red room as if from "A Private Eulogy")
 if (/tourdebug/.test(location.search)) window.__enterCons = () => { const p = placement.interactables().find((q) => q.slug === conservatory.SLUG); if (p) window.__consDebug.go(p, 'cons'); return !!p; };
+if (/tourdebug/.test(location.search)) window.__storyRed = () => { const p = placement.interactables().find((q) => q.slug === 'a-private-eulogy'); return !!(p && conservatory.button(p)); };
 if (/tourdebug/.test(location.search)) window.__enterRed = () => { const p = placement.interactables().find((q) => q.slug === 'a-private-eulogy'); const b = p && conservatory.button(p); if (b) b.click(); return !!b; };
 const drawStudio = (o) => { const d = conservatory.draw; if (d) d(o); };
 drawStudio.reflect = (fn, n) => { const d = conservatory.draw; if (d) d.reflect(fn, n); };
@@ -243,7 +255,12 @@ const context = regl({
 		// the studio's sun through its windows and roof, worked out once
 		studioBake: () => conservatory.bake(),
 		candleT: regl.context('time'),
-		time: regl.context('time')
+		time: regl.context('time'),
+		// the stair hall's candles' flicker (stairhall.js)
+		shFl0: (ctx) => stairhallMod.flicker(ctx.time, 0),
+		shFl1: (ctx) => stairhallMod.flicker(ctx.time, 1),
+		shFl2: (ctx) => stairhallMod.flicker(ctx.time, 2),
+		shFl3: (ctx) => stairhallMod.flicker(ctx.time, 3)
 	}
 });
 
@@ -1432,6 +1449,18 @@ regl.frame(
 		atPiano = !walkerNow && cull.room('stair') && (!cull.room('court') || camEye[0] < 0.5 || camEye[2] > 30);
 		drawAvatar.setPiano(atPiano);
 		updateDust(time);
+
+		// the architecture's light, baked once (and again whenever a
+		// picture light changes): see mesh.js and lightmap.js
+		drawMap.prepare();
+		if (drawStairHall.prepare) drawStairHall.prepare();
+		// the stair hall, its confessional and the piano shown to the graphics
+		// chip while the loading screen is still up (see warmDraw)
+		if (loader.isOpen() && (warmTick++ % 30) === 5) warmDraw(() => { drawStairHall({ reflected: true }); drawStairHall(); drawConfessional({ reflected: true, view: camView }); drawConfessional({ view: camView }); });
+		if (warmQueue.length) {
+			const fn = warmQueue.shift();
+			try { warmScope(() => context(fn)); } catch (e) { /* drawn for real later */ }
+		}
 
 		post.capture(
 			arguments[0],
