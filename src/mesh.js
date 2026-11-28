@@ -35,6 +35,8 @@ const DOOR_LIGHT_DIR = (() => {
   return v.map((x) => (x / l).toFixed(4)).join(', ');
 })();
 
+const quality = require('./quality');
+
 module.exports = (regl, data, useReflexion, ranged) => {
 
   // things standing on the floor cast soft contact shadows
@@ -80,6 +82,8 @@ module.exports = (regl, data, useReflexion, ranged) => {
   return regl({
     frag: `
     precision highp float;
+    ${quality.exp('nolight') ? '#define EXP_NOLIGHT' : ''}
+    ${quality.exp('nodetail') ? '#define EXP_NODETAIL' : ''}
 
     uniform float yScale;
     uniform float mirrorOn;
@@ -204,6 +208,9 @@ module.exports = (regl, data, useReflexion, ranged) => {
 
       // The mirrored floor pass skips the expensive noise detail.
       bool detail = yScale > 0.0;
+      #ifdef EXP_NODETAIL
+      detail = false;
+      #endif
 
       // ---------------------------------------------------------
       // SURFACE CLASSIFICATION
@@ -411,7 +418,9 @@ module.exports = (regl, data, useReflexion, ranged) => {
 
       // Light from the bar above each painting
       float pic = 0.0;
+      #ifndef EXP_NOLIGHT
       ${lightCalls}
+      #endif
 
       // Corridor glow and the end wall light
       light += (1.0 - smoothstep(7.0, 35.0, abs(v_pos.z - 29.0))) * 0.04;
@@ -446,6 +455,9 @@ module.exports = (regl, data, useReflexion, ranged) => {
       // ---------------------------------------------------------
       float inZ = max(v_pos.z - 0.35, 0.0);
       float spill = 0.0;
+      float sun = 0.0;
+      float glow = 0.0, aGlow = 0.0, winL = 0.0, cg = 0.0;
+      #ifndef EXP_NOLIGHT
       if (v_pos.z < 12.0 && v_pos.z > 0.30) {
         if (isFloor > 0.5) {
           float through = doorLight(v_pos, vec3(${DOOR_LIGHT_DIR}));
@@ -462,8 +474,7 @@ module.exports = (regl, data, useReflexion, ranged) => {
       // each crossed by the shadows of its glazing bars, and a soft
       // daylight glow under the glass.
       // ---------------------------------------------------------
-      float sun = 0.0;
-      float glow = skylightGlow(v_pos);
+      glow = skylightGlow(v_pos);
       if (glow > 0.0 && v_pos.y < 7.9 && isSky < 0.5) {
         float ndl = max(dot(N, SKY_SUN), 0.0);
         if (ndl > 0.0) sun = skylightAt(v_pos) * ndl;
@@ -484,18 +495,19 @@ module.exports = (regl, data, useReflexion, ranged) => {
       // daylight glow in the little court
       // ---------------------------------------------------------
       float aSun = alcoveSun(v_pos, N);
-      float aGlow = alcoveGlow(v_pos);
+      aGlow = alcoveGlow(v_pos);
       light += aSun * 1.8 * mix(1.0, 1.45, night) + aGlow * 0.5 * (1.0 - 0.3 * isCeiling) * mix(1.0, 0.2, night);
       light += isCream * aGlow * 0.18 * smoothstep(8.0, 10.5, v_pos.y) * mix(1.0, 0.2, night);
       sun = max(sun, aSun);
 
-      float winL = windowLight(v_pos, N);
-      float cg = corridorGlow(v_pos);
+      winL = windowLight(v_pos, N);
+      cg = corridorGlow(v_pos);
       light += winL * 0.48 * mix(1.0, 1.35, night) + cg * 0.16 * (1.0 - 0.4 * isCeiling) * mix(1.0, 0.7, night);
 
       // the little lamps in the statue niches
       float nl = nicheLight(v_pos, N);
       light += nl * 1.1;
+      #endif
 
       // soft contact shadows where pillars, statues and plants meet the floor
       if (isFloor > 0.5) {

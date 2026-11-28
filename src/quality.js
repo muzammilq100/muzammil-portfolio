@@ -43,23 +43,27 @@ const isPhone =
 const dpr = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
 const studioPage = typeof location !== 'undefined' && /[?&](studio|redroom)\b/.test(location.search);
 
+// (temporary measuring switches: ?exp=nolight,nodetail,noshafts,noreflect,half)
+const EXP = (() => { try { return ((/[?&]exp=([\w,]+)/.exec(location.search) || [])[1] || '').split(','); } catch (e) { return []; } })();
+
 const Q = {
 	isPhone,
+	exp: (k) => EXP.indexOf(k) >= 0,
 
 	// fixed at start-up
 	// (the painter's studio is heavy, and soft and dusty anyway: fewer pixels)
-	pixelRatio: studioPage
+	pixelRatio: (EXP.indexOf('half') >= 0 ? 0.5 : 1) * (studioPage
 		? (isPhone ? Math.min(dpr, 1.25) : Math.min(dpr, 1.5))
-		: (isPhone ? Math.min(dpr, 1.5) : Math.min(dpr, 2)),
+		: (isPhone ? Math.min(dpr, 1.5) : Math.min(dpr, 2))),
 
 	// can be stepped down while running
-	reflection: !isPhone,
+	reflection: !isPhone && EXP.indexOf('noreflect') < 0,
 	gardenDetail: isPhone ? 0 : 1,
 	leafShare: isPhone ? 0.65 : 1,
 	motion: !isPhone,
 	// the film camera (post.js): 2 everything, 1 lighter light shafts and
 	// no depth of field, 0 no light shafts
-	post: isPhone ? 1 : 2,
+	post: EXP.indexOf('noshafts') >= 0 ? 0 : (isPhone ? 1 : 2),
 
 	level: isPhone ? 1 : 0
 };
