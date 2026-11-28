@@ -2466,6 +2466,37 @@ const NOISE = `
 // the lamps, in world metres (for the shader)
 const LAMPS_W = LAMPS.map((p) => toW([p[0], p[1] - 0.22, p[2]]));
 
+// THE FLAMES' FLICKER, once a frame: the same sums the shader's
+// candleFlicker does, worked out here for every flame instead of for every
+// pixel (and each flame's little sway with it)
+const F4 = (x) => +(+x).toFixed(4);
+function flickerAt(t, s) {
+	const fl = 0.78 + 0.1 * Math.sin(t * 7.3 + s) * Math.sin(t * 3.1 + s * 1.9) + 0.06 * Math.sin(t * 17.9 + s * 3.1) + 0.05 * Math.sin(t * 29.3 + s * 5.7);
+	const g = Math.sin(t * 0.83 + s * 2.3) * Math.sin(t * 1.37 + s);
+	const u = Math.min(Math.max((g - 0.92) / 0.08, 0), 1);
+	return fl * (1 - 0.45 * u * u * (3 - 2 * u));
+}
+const STC_DECL = [...CANDLE_LIGHTS.map((_, i) => 'stC' + i), ...LANTERNS.map((_, i) => 'stL' + i), ...NYMPH_LANTERNS.map((_, i) => 'stN' + i)].join(', ');
+function candleUniforms() {
+	const u = {};
+	CANDLE_LIGHTS.forEach((l, i) => {
+		u['stC' + i] = (ctx) => {
+			const t = ctx.time, fl = flickerAt(t, F4(i * 7.31 + 1.7)), k = 0.035 * (1.2 - fl);
+			return [Math.sin(t * F4(2.1 + i * 0.37) + F4(i)) * k, 0, Math.cos(t * F4(1.7 + i * 0.29) + F4(i * 2.0)) * k, fl];
+		};
+	});
+	LANTERNS.map((l) => toW(l)).forEach((l, i) => {
+		u['stL' + i] = (ctx) => [0, 0, 0, flickerAt(ctx.time, F4(l[0] * 3.1))];
+	});
+	NYMPH_LANTERNS.forEach((l, i) => {
+		u['stN' + i] = (ctx) => {
+			const t = ctx.time, fl = flickerAt(t, F4(11.3 + i * 4.7)), k = 0.02 * (1.2 - fl);
+			return [Math.sin(t * F4(2.3 + i * 0.4)) * k, 0, Math.cos(t * F4(1.9 + i * 0.3)) * k, fl];
+		};
+	});
+	return u;
+}
+
 const LIGHT = `
 	${NOISE}
 	${sunGLSL()}
@@ -2492,6 +2523,9 @@ const LIGHT = `
 	// through the glass, light bounced off the sunlit floor, and at night
 	// the pendant lamps. Returns diffuse light; spec gets the sun's glint.
 	uniform float candleT;
+	// each flame's flicker and sway, worked out once a frame (candleUniforms
+	// above, the same sums as candleFlicker): xyz its sway, w its flicker
+	uniform vec4 ${STC_DECL};
 	// a candle's flame: a steady breath, quick tremors, and now and then a
 	// gutter when a draught finds it
 	float candleFlicker(float s) {
@@ -2509,7 +2543,7 @@ const LIGHT = `
 		{
 			vec3 Lc = normalize(vec3(${f(w[0])}, ${f(w[1])}, ${f(w[2])}) - pw);
 			float k = max(dot(R, Lc), 0.0);
-			cg += (pow(k, 500.0) * 2.6 + pow(k, 60.0) * 0.12) * candleFlicker(${f(i * 7.31 + 1.7)});
+			cg += (pow(k, 500.0) * 2.6 + pow(k, 60.0) * 0.12) * stC${i}.w;
 		}`; }).join('')}
 		return vec3(1.0, 0.6, 0.27) * cg * nkw;
 	}
@@ -2581,12 +2615,12 @@ const LIGHT = `
 		// the lanterns by the red door: warm candlelight on the door and the
 		// stone round it (only near that end of the room)
 		if (p.z > ${f(L - 6.0)}) {
-			${LANTERNS.map((l) => toW(l)).map((l) => `
+			${LANTERNS.map((l) => toW(l)).map((l, i) => `
 			{
 				vec3 d = vec3(${f(l[0])}, ${f(l[1] - 0.06)}, ${f(l[2])}) - pw;
 				float dd = dot(d, d);
 				vec3 Ld = d * inversesqrt(dd);
-				float w = mix(1.6, 2.4, night) * candleFlicker(${f(l[0] * 3.1)}) / (0.25 + dd * 1.8);
+				float w = mix(1.6, 2.4, night) * stL${i}.w / (0.25 + dd * 1.8);
 				col += vec3(1.0, 0.6, 0.3) * w * (max(dot(N, Ld), 0.0) * 0.9 + 0.1);
 				spec += vec3(1.0, 0.65, 0.35) * w * pow(max(dot(N, normalize(Ld + V)), 0.0), mix(16.0, 300.0, gloss)) * gloss * 0.6;
 			}`).join('')}
@@ -2596,8 +2630,8 @@ const LIGHT = `
 		if (p.z < 9.0) {
 			${NYMPH_LANTERNS.map((l) => toW(l)).map((l, i) => `
 			{
-				float fl = candleFlicker(${f(11.3 + i * 4.7)});
-				vec3 lp = vec3(${f(l[0])}, ${f(l[1] - 0.06)}, ${f(l[2])}) + vec3(sin(candleT * ${f(2.3 + i * 0.4)}), 0.0, cos(candleT * ${f(1.9 + i * 0.3)})) * 0.02 * (1.2 - fl);
+				float fl = stN${i}.w;
+				vec3 lp = vec3(${f(l[0])}, ${f(l[1] - 0.06)}, ${f(l[2])}) + stN${i}.xyz;
 				vec3 d = lp - pw;
 				float dd = dot(d, d);
 				vec3 Ld = d * inversesqrt(dd);
@@ -2613,8 +2647,8 @@ const LIGHT = `
 		if (nk > 0.01) {
 			${CANDLE_LIGHTS.map((l, i) => `
 			{
-				float fl = candleFlicker(${f(i * 7.31 + 1.7)});
-				vec3 lp = vec3(${f(l[0])}, ${f(l[1])}, ${f(l[2])}) + vec3(sin(candleT * ${f(2.1 + i * 0.37)} + ${f(i)}), 0.0, cos(candleT * ${f(1.7 + i * 0.29)} + ${f(i * 2.0)})) * 0.035 * (1.2 - fl);
+				float fl = stC${i}.w;
+				vec3 lp = vec3(${f(l[0])}, ${f(l[1])}, ${f(l[2])}) + stC${i}.xyz;
 				vec3 d = lp - p;
 				float dd = dot(d, d);
 				vec3 Ld = d * inversesqrt(dd);
@@ -2645,7 +2679,7 @@ const LIGHT = `
 				vec3 c = vec3(${f(w[0])}, ${f(w[1])}, ${f(w[2])}) - eye;
 				float t = clamp(dot(c, rd), 0.0, d);
 				vec3 q = c - rd * t;
-				g += ${f(0.012 * l[3])} * candleFlicker(${f(i * 7.31 + 1.7)}) / (0.5 + dot(q, q) * 1.6);
+				g += ${f(0.012 * l[3])} * stC${i}.w / (0.5 + dot(q, q) * 1.6);
 			}`; }).join('')}
 			col += vec3(1.0, 0.55, 0.25) * g * nka;
 		}
@@ -5035,7 +5069,10 @@ module.exports = function (regl) {
 		cull: { enable: false }
 	});
 
-	function draw(opts) {
+	// (every draw of the room inside the flames' flicker)
+	const flames = regl({ uniforms: candleUniforms() });
+	function draw(opts) { flames(() => drawAll(opts)); }
+	function drawAll(opts) {
 		const refl = !!(opts && opts.reflected);
 		if (!refl) { keepReflection(); tick(); }
 		drawSky();
@@ -5058,7 +5095,7 @@ module.exports = function (regl) {
 		drawCloth();
 		if (!refl) { drawGlass(); drawMotes(); }
 	}
-	draw.reflect = reflect;
+	draw.reflect = (fn, every) => flames(() => reflect(fn, every));
 	return draw;
 };
 

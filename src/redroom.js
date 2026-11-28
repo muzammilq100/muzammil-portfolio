@@ -1215,13 +1215,15 @@ const SHADE = `
 		return sh;
 	}
 	// the candles on the table: a warm, breathing light close round them
+	// each flame's flicker, worked out once a frame (flameUniforms)
+	uniform vec4 rrF0, rrF1;
 	vec3 candleLight(vec3 lp, vec3 N) {
 		vec3 sum = vec3(0.0);
 		${TBL.flames.map((F, i) => `{
 			vec3 d = vec3(${f(F[0])}, ${f(F[1])}, ${f(F[2])}) - lp;
  			float r2 = dot(d, d);
 			float sh = candleShade(lp, d);
-			float fl = 0.82 + 0.1 * sin(time * (9.0 + ${f(i * 1.7)}) + ${f(i * 2.1)}) * sin(time * 3.3 + ${f(i)}) + 0.08 * sin(time * 23.0 + ${f(i * 4.0)});
+			float fl = rrF${i >> 2}.${'xyzw'[i & 3]};
 			sum += sh * fl * (0.35 + 0.65 * max(0.0, dot(N, d * inversesqrt(r2 + 1e-4)))) / (r2 * 5.0 + 0.1);
 		}`).join('\n')}
 		return vec3(1.0, 0.52, 0.22) * sum * 0.6;
@@ -3063,8 +3065,16 @@ module.exports = function (regl) {
 		uniforms: { ...SHARED, src: () => [O[0] + DARK.smoke[0], O[1] + DARK.smoke[1], O[2] + DARK.smoke[2]] }
 	});
 
+	// the table's flames' flicker, once a frame instead of for every pixel
+	// (the same sums the shader did)
+	const F4 = (x) => +(+x).toFixed(4);
+	const flameAt = (t, i) => 0.82 + 0.1 * Math.sin(t * (9.0 + F4(i * 1.7)) + F4(i * 2.1)) * Math.sin(t * 3.3 + F4(i)) + 0.08 * Math.sin(t * 23.0 + F4(i * 4.0));
+	const flameVec = (t, k) => [0, 1, 2, 3].map((j) => (k * 4 + j < TBL.flames.length ? flameAt(t, k * 4 + j) : 0));
+	const flames = regl({ uniforms: { rrF0: (ctx) => flameVec(ctx.time, 0), rrF1: (ctx) => flameVec(ctx.time, 1) } });
+
 	let reflectedNow = false;
-	const draw = (o) => {
+	const draw = (o) => flames(() => drawAll(o));
+	const drawAll = (o) => {
 		const reflected = !!(o && o.reflected);
 		if (!reflected) reelUpdate();
 		reflectedNow = reflected;
@@ -3087,7 +3097,8 @@ module.exports = function (regl) {
 		if (!reflected) sparkDraw();
 		if (!reflected) dust();
 	};
-	draw.reflect = (fn, every) => scope((ctx) => {
+	draw.reflect = (fn, every) => flames(() => reflectAll(fn, every));
+	const reflectAll = (fn, every) => scope((ctx) => {
 		const W0 = ctx.viewportWidth, H0 = ctx.viewportHeight;
 		const w = Math.max(2, Math.round(W0 / 2)), h = Math.max(2, Math.round(H0 / 2));
 		let fresh = !reflReady;

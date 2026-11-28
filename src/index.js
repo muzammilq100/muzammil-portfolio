@@ -192,7 +192,8 @@ const drawDust = require('./dust')(regl, quality);
 const drawFireflies = require('./fireflies')(regl, quality);
 const drawLanterns = require('./lanterns')(regl);
 const drawConfessional = require('./confessional')(regl);
-const drawStairHall = require('./stairhall')(regl);
+const stairhallMod = require('./stairhall');
+const drawStairHall = stairhallMod(regl);
 // the Conservatory of Unsaid Things (studio.js), behind "Love me like I am
 // Already Dead": fetched only when a visitor is let in (conservatory.js)
 const conservatory = require('./conservatory');
@@ -243,7 +244,12 @@ const context = regl({
 		// the studio's sun through its windows and roof, worked out once
 		studioBake: () => conservatory.bake(),
 		candleT: regl.context('time'),
-		time: regl.context('time')
+		time: regl.context('time'),
+		// the stair hall's candles' flicker (stairhall.js)
+		shFl0: (ctx) => stairhallMod.flicker(ctx.time, 0),
+		shFl1: (ctx) => stairhallMod.flicker(ctx.time, 1),
+		shFl2: (ctx) => stairhallMod.flicker(ctx.time, 2),
+		shFl3: (ctx) => stairhallMod.flicker(ctx.time, 3)
 	}
 });
 

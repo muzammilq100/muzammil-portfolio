@@ -248,7 +248,7 @@ function roomGLSL() {
 			vec3 d = ${v3(l)} - p;
 			float dd = dot(d, d);
 			vec3 L = d * inversesqrt(dd);
-			float fl = 0.86 + 0.08 * sin(time * ${f(5.3 + i * 0.71)} + ${f(i * 1.9)}) + 0.06 * sin(time * ${f(11.7 + i * 1.3)} + ${f(i * 0.7)});
+			float fl = shFl${i >> 2}.${'xyzw'[i & 3]};
 			float w = ${f(l[3] * LIGHTS.length)} * fl;
 			float lam = max(dot(N, L), 0.0) * 0.82 + 0.18;
 			col += w * lam / (0.7 + dd * 0.42);
@@ -257,6 +257,8 @@ function roomGLSL() {
 			spec += w * pow(max(dot(N, normalize(L + V)), 0.0), mix(10.0, 180.0, gloss)) * gloss * 1.6 / (0.25 + dd * 0.9);
 		}`).join('');
 	return `
+	// each candle's flicker, worked out once a frame (flickers below)
+	uniform vec4 shFl0, shFl1, shFl2, shFl3;
 	vec3 roomLight(vec3 p, vec3 N, vec3 V, float gloss, out vec3 spec) {
 		spec = vec3(0.0);
 		vec3 col = vec3(0.0);
@@ -1182,4 +1184,12 @@ module.exports.PIANO = PIANO;
 module.exports.PLAY = PLAY;
 module.exports.TOP = TOP;
 module.exports.roomGLSL = roomGLSL;
+// the candles' flicker at time t, four to a vector (the same sums the
+// shader once did for every pixel): index.js hands them to every shader
+const F4 = (x) => +(+x).toFixed(4);
+module.exports.flicker = (t, k) => [0, 1, 2, 3].map((j) => {
+	const i = k * 4 + j;
+	if (i >= LIGHTS.length) return 0;
+	return 0.86 + 0.08 * Math.sin(t * F4(5.3 + i * 0.71) + F4(i * 1.9)) + 0.06 * Math.sin(t * F4(11.7 + i * 1.3) + F4(i * 0.7));
+});
 module.exports.segments = segments;
