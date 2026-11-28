@@ -962,9 +962,16 @@ function makeBake(regl, lm, attributes, frag, lightUniforms, data) {
     day, night,
     ready: false,
     sig: null,
+    // (the paintings arrive one after another while the loading screen
+    // is up, each switching its light on: the bake waits until they have
+    // stopped changing for a moment, and until then the light is live)
+    seen: null,
+    since: 0,
     update() {
       const sig = signature();
-      if (sig === state.sig) return;
+      const now = performance.now();
+      if (sig !== state.seen) { state.seen = sig; state.since = now; }
+      if (sig === state.sig || now - state.since < 700) return;
       state.sig = sig;
       one(0, fDay);
       one(1, fNight);
