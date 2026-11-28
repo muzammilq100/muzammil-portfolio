@@ -1030,8 +1030,15 @@ const VERT = `
 	varying vec3 v_pos, v_nrm, v_eye;
 	varying float v_kind;
 	varying vec2 v_uv;
+	#ifdef HAS_BAKE
+	attribute vec3 a_lm;
+	varying vec3 v_lm;
+	#endif
 	void main() {
 		v_pos = position; v_nrm = normal; v_kind = kind; v_uv = uv;
+		#ifdef HAS_BAKE
+		v_lm = a_lm;
+		#endif
 		vec3 t = view[3].xyz;
 		v_eye = -vec3(dot(view[0].xyz, t), dot(view[1].xyz, t), dot(view[2].xyz, t));
 		v_eye.y *= yScale;
@@ -1152,10 +1159,13 @@ const SHADE = `
 		float m = smoothstep(0.08, -0.05, abs(h.x - ${f(W / 2)}) - ${f(DOOR.hw)}) * smoothstep(0.08, -0.05, h.y - ${f(DOOR.h)}) * step(0.0, h.y);
 		float dd = dot(d, d);
 		vec3 Ld = -normalize(d);
-		vec3 c = vec3(1.0, 0.07, 0.05) * 26.0 * m * (0.15 + 0.85 * max(0.0, dot(N, Ld))) / (1.0 + dd * 0.55);
+		return vec3(1.0, 0.07, 0.05) * 26.0 * m * (0.15 + 0.85 * max(0.0, dot(N, Ld))) / (1.0 + dd * 0.55);
+	}
+	// the ENTER sign's flickering glow (live: it stutters)
+	vec3 signGlow(vec3 lp, vec3 N) {
+		if (lp.z > 0.05) return vec3(0.0);
 		vec3 sd = vec3(${f(ENT.sign[0])}, ${f(ENT.sign[1])}, ${f(ENT.sign[2])}) - lp;
-		c += vec3(1.0, 0.12, 0.1) * signK * 0.5 * (0.2 + 0.8 * max(0.0, dot(N, normalize(sd)))) / (0.05 + dot(sd, sd) * 3.0);
-		return c;
+		return vec3(1.0, 0.12, 0.1) * signK * 0.5 * (0.2 + 0.8 * max(0.0, dot(N, normalize(sd)))) / (0.05 + dot(sd, sd) * 3.0);
 	}
 	uniform float spotK;
 	const vec3 SPOTP = vec3(${f(SPOT.pos[0])}, ${f(SPOT.pos[1])}, ${f(SPOT.pos[2])});
@@ -1228,19 +1238,49 @@ const SHADE = `
 		}`).join('\n')}
 		return vec3(1.0, 0.52, 0.22) * sum * 0.6;
 	}
-	vec3 ambient(vec3 lp, vec3 N) {
-		// the room's own dark: a little red, lifted near the lit floor
-		// the glow of the glass itself, spread round each window
+	// the room's light that never changes (baked, bake.js): its dim red
+	// air, the windows' glow on their walls, the darkroom's safelights, the
+	// red doorway
+	vec3 ambientStatic(vec3 lp, vec3 N) {
 		float g = 0.0;
 		if (abs(N.x) > 0.5) {
 			vec2 q = lp.x > RW * 0.5 ? winLocalR(lp.z, lp.y) : winLocal(lp.z, lp.y);
 			g = exp(pointedSD(q, HW, SILL, SPRING) * 1.1) * 0.9 * (lp.x > RW * 0.5 ? 1.0 : leftOpen(lp.z));
 		}
-		// (out in the corridor there is only what comes through the door)
 		float room = 1.0 - 0.9 * smoothstep(-0.3, -1.2, lp.z);
-		return ${require('./quality').exp('rrnodyn') ? `(vec3(0.2, 0.017, 0.02) * (0.8 + 0.2 * N.y) + vec3(0.1, 0.007, 0.007) * exp(-lp.y * 0.25)) * room + vec3(0.7, 0.06, 0.04) * g + safeLight(lp, N) + darkLight(lp, N) + doorGlow(lp, N)` : `(vec3(0.2, 0.017, 0.02) * (0.8 + 0.2 * N.y) + vec3(0.1, 0.007, 0.007) * exp(-lp.y * 0.25)) * room + vec3(0.7, 0.06, 0.04) * g + tvGlow(lp, N) + safeLight(lp, N) + darkLight(lp, N) + doorGlow(lp, N) + candleLight(lp, N) + spotLight(lp, N)`};
+		return (vec3(0.2, 0.017, 0.02) * (0.8 + 0.2 * N.y) + vec3(0.1, 0.007, 0.007) * exp(-lp.y * 0.25)) * room + vec3(0.7, 0.06, 0.04) * g + safeLight(lp, N) + darkLight(lp, N) + doorGlow(lp, N);
 	}
-	// what the lit floor throws back up onto the walls and the shafts
+	// and the light that moves: the screens, the sign, the candles, the spot
+	vec3 ambientLive(vec3 lp, vec3 N) {
+		return ${require('./quality').exp('rrnodyn') ? 'vec3(0.0)' : 'tvGlow(lp, N) + signGlow(lp, N) + candleLight(lp, N) + spotLight(lp, N)'};
+	}
+	vec3 ambient(vec3 lp, vec3 N) {
+		return ambientStatic(lp, N) + ambientLive(lp, N);
+	}
+	// everything of the room's light on a face that never changes: through
+	// the windows, the still ambient, the bounce off the floor, the
+	// windows' deep sides (soft: how wide a texel or a pixel is, in metres)
+	vec3 bounce(vec3 lp, vec3 N);
+	vec3 staticLight(vec3 lp, vec3 N, int k, bool flr, float soft) {
+		vec3 lit = vec3(0.0);
+		float nl = max(0.0, dot(N, LDIR_L)) + max(0.0, dot(N, LDIR_R));
+		if (flr) lit = redLight(lp, max(soft * 0.6, 0.004)) * 3.2 * LDIR_L.y;
+		else if (nl > 0.0) lit = redLight(lp + N * 0.02, max(soft, 0.01)) * 2.0 * min(1.0, nl);
+		vec3 amb = ambientStatic(lp, N) * (flr ? 1.4 : 1.0);
+		if (!flr) amb += bounce(lp, N);
+		// the deep sides of the windows catch the glass's glow
+		if (k == 2) {
+			vec2 q = winLocal(lp.z, lp.y);
+			float depth = lp.x < RW * 0.5 ? -lp.x : lp.x - RW;
+			if (abs(N.x) < 0.5 && lp.z > 0.5 && lp.z < RL - 0.5) amb += vec3(1.0, 0.08, 0.05) * 0.5 * smoothstep(0.0, RT * 0.6, depth) * (0.6 + 0.4 * rfbm(q * 2.0));
+		}
+		return amb + lit;
+	}
+	// the baked light's numbers: log2(1 + 8 x) / log2(1 + 8 * 64), so the
+	// dim red keeps its gradations as well as the bright pools
+	const float RR_LOG = ${f(Math.log2(1 + 8 * 64))};
+	vec3 rrEnc(vec3 x) { return log2(1.0 + 8.0 * max(x, 0.0)) / RR_LOG; }
+	vec3 rrDec(vec3 e) { return (exp2(e * RR_LOG) - 1.0) / 8.0; }
 	vec3 bounce(vec3 lp, vec3 N) {
 		vec3 fp = vec3(clamp(lp.x + N.x * (0.8 + lp.y * 0.35), 0.1, RW - 0.1), 0.0, lp.z + N.z * (0.8 + lp.y * 0.35));
 		vec3 b = redLightRough(fp) * 0.5 + redLightRough(fp + vec3(N.x * 1.4, 0.0, 1.2)) * 0.25 + redLightRough(fp + vec3(N.x * 1.4, 0.0, -1.2)) * 0.25;
@@ -1258,6 +1298,11 @@ const FRAG = `
 	varying vec3 v_pos, v_nrm, v_eye;
 	varying float v_kind;
 	varying vec2 v_uv;
+	#ifdef HAS_BAKE
+	uniform float bakeOn;
+	uniform sampler2D rrBake, rrBakeSoft, rrBakeSofter;
+	varying vec3 v_lm;
+	#endif
 	${COMMON}
 
 	const float DHW = ${f(DOOR.hw)}, DH = ${f(DOOR.h)};
@@ -1360,18 +1405,41 @@ const FRAG = `
 
 			// light: straight through the windows, and back off the floor
 			vec3 lit = vec3(0.0);
-			float nl = max(0.0, dot(N, LDIR_L)) + max(0.0, dot(N, LDIR_R));
-			${require('./quality').exp('rrnostatic') ? '' : ''}
-			if (flr) lit = redLight(lp, max(wpx * 0.6, 0.004)) * 3.2 * LDIR_L.y;
-			else if (nl > 0.0) lit = redLight(lp + N * 0.02, max(wpx, 0.01)) * 2.0 * min(1.0, nl);
-			vec3 amb = ambient(lp, N) * (flr ? 1.4 : 1.0);
-			${require('./quality').exp('rrnostatic') ? 'lit = vec3(0.0);' : 'if (!flr) amb += bounce(lp, N);'}
-			// the deep sides of the windows catch the glass's glow
-			if (k == 2) {
-				float sideL = lp.x < RW * 0.5 ? 1.0 : -1.0;
-				vec2 q = winLocal(lp.z, lp.y);
-				float depth = lp.x < RW * 0.5 ? -lp.x : lp.x - RW;
-				if (abs(N.x) < 0.5 && lp.z > 0.5 && lp.z < RL - 0.5) amb += vec3(1.0, 0.08, 0.05) * 0.5 * smoothstep(0.0, RT * 0.6, depth) * (0.6 + 0.4 * rfbm(q * 2.0));
+			vec3 amb;
+			bool fromBake = false;
+			#ifdef HAS_BAKE
+			// (the light that never changes, baked: staticLight below)
+			if (bakeOn > 0.5 && v_lm.z > 0.5) {
+				vec4 bk = texture2D(rrBake, v_lm.xy);
+				if (bk.a > 0.5 / 255.0) {
+					// (two bakes, the leading sharp and blurred: far off, where a
+					// pixel spans more of the floor, the blurred one, as the live
+					// light blurs its leading by the pixel's width)
+					float sharp = flr ? 0.025 : 0.05;
+					float sw = flr ? max(wpx * 0.6, 0.004) : max(wpx, 0.01);
+					vec3 S = rrDec(bk.rgb);
+					if (sw > sharp) {
+						vec3 S1 = rrDec(texture2D(rrBakeSoft, v_lm.xy).rgb);
+						if (sw < 0.1) S = mix(S, S1, (sw - sharp) / (0.1 - sharp));
+						else S = mix(S1, rrDec(texture2D(rrBakeSofter, v_lm.xy).rgb), min((sw - 0.1) / 0.3, 1.0));
+					}
+					amb = S + ambientLive(lp, N) * (flr ? 1.4 : 1.0);
+					fromBake = true;
+				}
+			}
+			#endif
+			if (!fromBake) {
+				float nl = max(0.0, dot(N, LDIR_L)) + max(0.0, dot(N, LDIR_R));
+				if (flr) lit = redLight(lp, max(wpx * 0.6, 0.004)) * 3.2 * LDIR_L.y;
+				else if (nl > 0.0) lit = redLight(lp + N * 0.02, max(wpx, 0.01)) * 2.0 * min(1.0, nl);
+				amb = ambient(lp, N) * (flr ? 1.4 : 1.0);
+				if (!flr) amb += bounce(lp, N);
+				// the deep sides of the windows catch the glass's glow
+				if (k == 2) {
+					vec2 q = winLocal(lp.z, lp.y);
+					float depth = lp.x < RW * 0.5 ? -lp.x : lp.x - RW;
+					if (abs(N.x) < 0.5 && lp.z > 0.5 && lp.z < RL - 0.5) amb += vec3(1.0, 0.08, 0.05) * 0.5 * smoothstep(0.0, RT * 0.6, depth) * (0.6 + 0.4 * rfbm(q * 2.0));
+				}
 			}
 			col = alb * (amb + lit);
 			if (k == 14) col += amb * 0.5 * pow(1.0 - max(0.0, dot(N, V)), 3.0);
@@ -1480,6 +1548,36 @@ const FRAG = `
 // HER BREATH (in her model's units): her shoulders rise a little and her
 // back widens as she breathes in; the chair stays still (its vertices are
 // flagged 0, hers -1, in woman_all.bin). Shared by her veil.
+// the bake's own shader: for each texel of the room's surfaces, the light
+// that never changes there (staticLight), cut away where the windows and the
+// doorway are open, as the room's shader cuts them
+const BAKE_FRAG = `
+	precision highp float;
+	uniform float time, softer;
+	varying vec3 v_pos, v_nrm;
+	varying float v_kind;
+	varying vec2 v_uv;
+	${COMMON}
+	const float DHW = ${f(DOOR.hw)}, DH = ${f(DOOR.h)};
+	${SHADE}
+	void main() {
+		vec3 lp = v_pos - RO;
+		vec3 N = normalize(v_nrm);
+		int k = int(v_kind + 0.5);
+		bool flr = k == 0 || k == 13;
+		if (k == 1) {
+			if (abs(N.x) > 0.5) {
+				vec2 q = lp.x > RW * 0.5 ? winLocalR(lp.z, lp.y) : winLocal(lp.z, lp.y);
+				if (pointedSD(q, HW, SILL, SPRING) > 0.0 && (lp.x > RW * 0.5 || leftOpen(lp.z) > 0.5)) discard;
+			} else {
+				vec2 q = vec2(lp.x - RW * 0.5, lp.y);
+				if (lp.z < RL * 0.5 && abs(q.x) < DHW && q.y < DH) discard;
+			}
+		}
+		vec3 S = staticLight(lp, N, k, flr, softer > 1.5 ? 0.4 : (softer > 0.5 ? 0.1 : (flr ? 0.025 : 0.05)));
+		gl_FragColor = vec4(rrEnc(S), 1.0);
+	}`;
+
 const BREATHE = `
 	vec3 breathe(vec3 p, float b) {
 		float up = smoothstep(0.3, 0.62, p.y);
@@ -2073,14 +2171,49 @@ const DUST_FRAG = `
 
 // ------------------------------------------------------------------
 module.exports = function (regl) {
-	const geo = build();
+	const geo0 = build();
+	// THE BAKED LIGHT (bake.js): the floor, the walls, the windows' deep
+	// sides, the vault and the darkroom's concrete, laid flat; the light on
+	// them that never changes (the windows' red light and its lattice, the
+	// still ambient, the bounce, the safelights) worked out once, when the
+	// room is made. The screens, the sign, the candles and the spot stay live.
+	let lm = null;
+	if (!require('./quality').exp('rrnobake')) {
+		try {
+			lm = require('./bake').charts({ pos: geo0.pos, nrm: geo0.nrm, idx: geo0.idx, extra: { kind: [geo0.kind, 1], uv: [geo0.uv, 2] } }, {
+				width: 2048, maxHeight: 2048, scale: require('./quality').isPhone ? 0.75 : 1,
+				bakeTri: (t, a) => [K.FLOOR, K.WALL, K.REVEAL, K.VAULT, K.CONC, K.CFLOOR].indexOf(Math.round(geo0.kind[a])) >= 0,
+				kind: (n, p) => (n[1] > 0.9 && p[1] - O[1] < 0.05 ? 'floor' : (n[1] < -0.5 ? 'ceiling' : 'wall')),
+				density: (kd) => ({ floor: 40, wall: 20, ceiling: 12 }[kd])
+			});
+		} catch (e) {
+			lm = null;
+		}
+	}
+	const geo = lm ? { pos: lm.position, nrm: lm.normal, kind: lm.kind, uv: lm.uv, idx: lm.elements } : geo0;
 	const buf = {
 		position: regl.buffer(geo.pos),
 		normal: regl.buffer(geo.nrm),
 		kind: regl.buffer(geo.kind),
 		uv: regl.buffer(geo.uv)
 	};
+	if (lm) buf.a_lm = regl.buffer(lm.lm);
 	const elements = regl.elements({ data: geo.idx.length > 65535 ? new Uint32Array(geo.idx) : new Uint16Array(geo.idx), type: geo.idx.length > 65535 ? 'uint32' : 'uint16' });
+	let baked = null;
+	if (lm) {
+		try {
+			baked = require('./bake').baker(regl, lm, { position: lm.position, normal: lm.normal, kind: lm.kind, uv: lm.uv }, [0, 1, 2].map((softer) => ({
+				frag: BAKE_FRAG,
+				uniforms: { softer },
+				vertDecl: 'varying vec3 v_pos, v_nrm; varying float v_kind; varying vec2 v_uv;',
+				vertMain: 'v_pos = position; v_nrm = normal; v_kind = kind; v_uv = uv;'
+			})));
+			baked.bake();
+		} catch (e) {
+			baked = null;
+		}
+	}
+	const bakeDummy = regl.texture({ width: 1, height: 1 });
 
 	// the reflection under the floor: drawn into a picture of its own at
 	// half the size, not every frame (as in the studio)
@@ -2174,12 +2307,16 @@ module.exports = function (regl) {
 		SHARED['tvHi[' + i + ']'] = [W / 2 + t[2] + m.w * G / 2, t.base + m.h * G, TV.z + t[4] + m.d * G];
 	});
 	const room = regl({
-		vert: VERT,
-		frag: FRAG,
+		vert: (baked ? '#define HAS_BAKE\n' : '') + VERT,
+		frag: (baked ? '#define HAS_BAKE\n' : '') + FRAG,
 		attributes: buf,
 		elements,
 		cull: { enable: false },
 		uniforms: {
+			bakeOn: () => (baked && baked.ready ? 1 : 0),
+			rrBake: () => (baked && baked.ready ? baked.tex[0] : bakeDummy),
+			rrBakeSoft: () => (baked && baked.ready ? baked.tex[1] : bakeDummy),
+			rrBakeSofter: () => (baked && baked.ready ? baked.tex[2] : bakeDummy),
 			reflTex: () => reflTex,
 			reflSize: () => reflSize,
 			reflOn: () => reflOn,
