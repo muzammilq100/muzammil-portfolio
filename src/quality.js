@@ -43,12 +43,11 @@ const isPhone =
 const dpr = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
 const studioPage = typeof location !== 'undefined' && /[?&](studio|redroom)\b/.test(location.search);
 
-// (temporary measuring switches: ?exp=a,b)
-const EXP = (() => { try { return ((/[?&]exp=([\w,]+)/.exec(location.search) || [])[1] || '').split(','); } catch (e) { return []; } })();
-
 const Q = {
 	isPhone,
-	exp: (k) => EXP.indexOf(k) >= 0,
+	// ?nobake: every room's light worked out live, as before the baked
+	// light (mesh.js, bake.js), to compare
+	noBake: (() => { try { return /[?&]nobake\b/.test(location.search); } catch (e) { return false; } })(),
 
 	// fixed at start-up
 	// (the painter's studio is heavy, and soft and dusty anyway: fewer pixels)

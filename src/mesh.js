@@ -44,8 +44,7 @@ const EMAX = 4.0;
 const GMAX = 4.0;
 
 // (?nobake: the light worked out live everywhere, as before, to compare)
-let BAKE = true;
-try { if (/[?&]nobake\b/.test(location.search)) BAKE = false; } catch (e) { /* baked */ }
+const BAKE = !quality.noBake;
 
 module.exports = (regl, data, useReflexion, ranged) => {
 

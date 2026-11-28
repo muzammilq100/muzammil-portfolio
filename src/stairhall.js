@@ -300,7 +300,7 @@ function candleBakeFrag(k) {
 }
 
 function roomGLSL() {
-	const lights = require('./quality').exp('shnolights') ? '' : LIGHTS.map((l, i) => `
+	const lights = LIGHTS.map((l, i) => `
 		{
 			vec3 d = ${v3(l)} - p;
 			float dd = dot(d, d);
@@ -813,7 +813,7 @@ module.exports = (regl) => {
 	// floor, the round wall, the stair, its ribbon and string, the ceiling
 	// (not the oculus's sky, nor the surround seen from the hall)
 	let lm = null;
-	if (!require('./quality').exp('shnobake')) try {
+	if (!require('./quality').noBake) try {
 		const B = require('./bake');
 		lm = B.charts({ pos: g0.pos, nrm: g0.nrm, idx: g0.idx, extra: { kind: [g0.kind, 1], uv: [g0.uv, 2] } }, {
 			width: 1024, maxHeight: 2048, scale: require('./quality').isPhone ? 0.75 : 1,

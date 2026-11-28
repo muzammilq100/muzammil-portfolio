@@ -1252,7 +1252,7 @@ const SHADE = `
 	}
 	// and the light that moves: the screens, the sign, the candles, the spot
 	vec3 ambientLive(vec3 lp, vec3 N) {
-		return ${require('./quality').exp('rrnodyn') ? 'vec3(0.0)' : 'tvGlow(lp, N) + signGlow(lp, N) + candleLight(lp, N) + spotLight(lp, N)'};
+		return tvGlow(lp, N) + signGlow(lp, N) + candleLight(lp, N) + spotLight(lp, N);
 	}
 	vec3 ambient(vec3 lp, vec3 N) {
 		return ambientStatic(lp, N) + ambientLive(lp, N);
@@ -2178,7 +2178,7 @@ module.exports = function (regl) {
 	// still ambient, the bounce, the safelights) worked out once, when the
 	// room is made. The screens, the sign, the candles and the spot stay live.
 	let lm = null;
-	if (!require('./quality').exp('rrnobake')) {
+	if (!require('./quality').noBake) {
 		try {
 			lm = require('./bake').charts({ pos: geo0.pos, nrm: geo0.nrm, idx: geo0.idx, extra: { kind: [geo0.kind, 1], uv: [geo0.uv, 2] } }, {
 				width: 2048, maxHeight: 2048, scale: require('./quality').isPhone ? 0.75 : 1,
