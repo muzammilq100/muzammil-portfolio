@@ -199,7 +199,14 @@ function warm(w) {
 	if (warmed[w] || PREVIEW || typeof fetch === 'undefined') return;
 	warmed[w] = true;
 	const go = () => {
-		loadRoom(w).catch(() => { /* fetched again when needed */ });
+		// (and the red room built, baked and shown once to the graphics
+		// chip while the story is read, so the way in never stops to wait
+		// for it; the conservatory is built while its question is open)
+		loadRoom(w).then(() => {
+			if (w !== 'red') return;
+			const later = (fn) => (window.requestIdleCallback ? window.requestIdleCallback(fn, { timeout: 2500 }) : setTimeout(fn, 600));
+			later(() => { if (phase === 'idle') prebuild('red').catch(() => { /* built when needed */ }); });
+		}).catch(() => { /* fetched again when needed */ });
 		const list = ASSETS[w].slice();
 		const next = () => {
 			const u = list.shift();
@@ -212,7 +219,8 @@ function warm(w) {
 	};
 	if (window.requestIdleCallback) window.requestIdleCallback(go, { timeout: 1500 }); else setTimeout(go, 300);
 }
-// the room built ahead (not yet the one in use)
+// the room built ahead (not yet the one in use), and drawn once out of
+// sight (index.js's warm), so its shaders are ready before the way in
 function prebuild(w) {
 	return loadRoom(w).then((r) => {
 		mods[w] = r;
@@ -220,9 +228,16 @@ function prebuild(w) {
 			const t0 = performance.now();
 			draws[w] = r.studio(regl);
 			if (/tourdebug/.test(location.search)) console.log('room built in ' + Math.round(performance.now() - t0) + ' ms');
+			warmRoom(w);
 		}
 		return r;
 	});
+}
+let warmFn = null;
+function warmRoom(w) {
+	if (!warmFn || !draws[w]) return;
+	const d = draws[w];
+	warmFn(() => { if (d.prewarm) d.prewarm(); else d({ reflected: true }); });
 }
 
 // THE ROSES LEFT BEFORE: every rose laid on the grave stays there for the
@@ -624,6 +639,7 @@ module.exports = {
 	init(opts) {
 		regl = opts.regl;
 		post = opts.post;
+		warmFn = opts.warm || null;
 		const st = document.createElement('style');
 		st.textContent = CSS;
 		document.head.appendChild(st);
